@@ -40,16 +40,16 @@ Pentra AI is not a vulnerability scanner. It is an **AI research companion** tha
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│              WEB UI (React + Vite)                   │
+│              WEB UI (React + Vite)                  │
 │   Dashboard · Live Feed · Findings · KB · Reports   │
 └─────────────────────┬───────────────────────────────┘
                       │ WebSocket + REST
 ┌─────────────────────▼───────────────────────────────┐
-│              API GATEWAY (FastAPI)                   │
+│              API GATEWAY (FastAPI)                  │
 └──────────┬──────────────────────────┬───────────────┘
            │                          │
-┌──────────▼──────────┐  ┌───────────▼───────────────┐
-│    AGENT ENGINE      │  │    KNOWLEDGE ENGINE        │
+┌──────────▼────────── ┐  ┌───────────▼───────────────┐
+│    AGENT ENGINE      │  │    KNOWLEDGE ENGINE       │
 │    (LangGraph)       │◄─┤    BGE-M3 + Qdrant        │
 │                      │  │    H1/Bugcrowd RAG        │
 │  Recon → Vuln Hunt   │  └───────────────────────────┘
@@ -58,14 +58,14 @@ Pentra AI is not a vulnerability scanner. It is an **AI research companion** tha
 └──────────┬───────────┘
            │
 ┌──────────▼───────────────────────────────────────┐
-│              TOOL INTEGRATION LAYER               │
+│              TOOL INTEGRATION LAYER              │
 │  Burp Suite Pro (MCP) · nmap · nuclei · ffuf     │
 │  subfinder · httpx · dalfox · sqlmap · katana    │
 └──────────────────────────────────────────────────┘
            │
 ┌──────────▼───────────────────────────────────────┐
-│              LLM LAYER (Ollama)                   │
-│  Qwen2.5-Coder-32B · DeepSeek-R1-32B · BGE-M3   │
+│              LLM LAYER (Ollama)                  │
+│  Qwen2.5-Coder-32B · DeepSeek-R1-32B · BGE-M3    │
 └──────────────────────────────────────────────────┘
 ```
 
