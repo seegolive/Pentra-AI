@@ -1,0 +1,17 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pentra-scope"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "pentra-shared",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["pentra_scope"]
+
+[tool.uv.sources]
+pentra-shared = { path = "../../packages/pentra-shared", editable = true }

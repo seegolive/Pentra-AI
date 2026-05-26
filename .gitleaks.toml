@@ -1,0 +1,45 @@
+title = "Pentra AI — Gitleaks Configuration"
+
+# ── Global allowlist ──────────────────────────────────────────────────────────
+[allowlist]
+  description = "Known-safe placeholders and example files"
+
+  paths = [
+    # Example files are safe to commit — they contain only placeholders
+    '''^\.env\.example$''',
+    '''apps/api/\.env\.example''',
+    # Documentation may reference example passwords/keys
+    '''docs/.*\.md$''',
+    '''PROGRESS\.md''',
+    '''CLAUDE\.md''',
+    '''PHASE-.*\.md''',
+    # Lock files, dependency trees — not secrets
+    '''uv\.lock''',
+    '''pnpm-lock\.yaml''',
+  ]
+
+  regexes = [
+    # Dev placeholder values used throughout config examples
+    '''changeme''',
+    '''pentra123''',
+    '''change-this-in-production-min-32-chars''',
+    '''your-strong-password''',
+    # Database URL with dev credentials (local only)
+    '''postgresql\+asyncpg://pentra:pentra@localhost''',
+    # MinIO dev credentials
+    '''pentra_minio_secret''',
+    # Test file fake hashed passwords
+    '''"hashed"''',
+  ]
+
+  stopwords = [
+    "placeholder",
+    "example",
+    "changeme",
+    "your-secret-here",
+  ]
+
+  commits = [
+    # Add any historical commits with accidental secrets here
+    # e.g. "abc1234567890abcdef1234567890abcdef123456"
+  ]

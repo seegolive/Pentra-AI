@@ -1,0 +1,155 @@
+services:
+
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: pentra
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pentra}
+      POSTGRES_DB: pentra
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pentra"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    volumes:
+      - qdrant_data:/qdrant/storage
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/readyz | grep -q '\"result\":true' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-pentra}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-pentra_minio_secret}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── App services ─────────────────────────────────────────────────────────────
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/docker/Dockerfile.api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://pentra:${POSTGRES_PASSWORD:-pentra}@db:5432/pentra
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      MINIO_URL: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-pentra}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-pentra_minio_secret}
+      MINIO_BUCKET_EVIDENCE: evidence
+      # Ollama runs on host machine
+      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL_DEFAULT: ${OLLAMA_MODEL_DEFAULT:-qwen2.5-coder:32b}
+      OLLAMA_MODEL_REASONING: ${OLLAMA_MODEL_REASONING:-deepseek-r1:32b}
+      OLLAMA_MODEL_FAST: ${OLLAMA_MODEL_FAST:-qwen2.5-coder:7b}
+      OLLAMA_MODEL_EMBEDDING: ${OLLAMA_MODEL_EMBEDDING:-bge-m3}
+      SECRET_KEY: ${SECRET_KEY:-change-this-in-production-min-32-chars}
+      DEBUG: ${DEBUG:-false}
+      ALLOWED_ORIGINS: http://localhost:5173,http://localhost:3000
+      BURP_MCP_URL: http://host.docker.internal:9876
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health | grep -q ok || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  worker:
+    build:
+      context: ..
+      dockerfile: infra/docker/Dockerfile.worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://pentra:${POSTGRES_PASSWORD:-pentra}@db:5432/pentra
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      MINIO_URL: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-pentra}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-pentra_minio_secret}
+      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL_DEFAULT: ${OLLAMA_MODEL_DEFAULT:-qwen2.5-coder:32b}
+      OLLAMA_MODEL_FAST: ${OLLAMA_MODEL_FAST:-qwen2.5-coder:7b}
+      OLLAMA_MODEL_EMBEDDING: ${OLLAMA_MODEL_EMBEDDING:-bge-m3}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    command: >
+      uv run celery -A app.worker worker
+      -l info
+      -Q default,knowledge
+      --concurrency 2
+
+  web:
+    build:
+      context: ..
+      dockerfile: infra/docker/Dockerfile.web
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    environment:
+      VITE_API_URL: http://localhost:8000
+
+# ── Volumes ──────────────────────────────────────────────────────────────────
+
+volumes:
+  postgres_data:
+  redis_data:
+  qdrant_data:
+  minio_data:

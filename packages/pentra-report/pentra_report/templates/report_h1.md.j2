@@ -1,0 +1,49 @@
+## {{ finding.title }}
+
+**Severity:** {{ finding.severity_label }}
+**Vulnerability Class:** {{ finding.vuln_class | replace("_"," ") | upper_first }}
+{% if finding.cvss_score %}**CVSS Score:** {{ finding.cvss_score }}{% endif %}
+
+### Summary
+
+{{ finding.description if finding.description else "A " + finding.severity + "-severity " + finding.vuln_class.replace("_"," ") + " vulnerability was identified on `" + finding.target_url + "`." }}
+
+**Target:** `{{ finding.target_url }}`
+**HTTP Method:** `{{ finding.http_method }}`
+
+### Steps to Reproduce
+
+{% if finding.reproduction_steps %}
+{% for step in finding.reproduction_steps %}
+{{ loop.index }}. {{ step }}
+{% endfor %}
+{% else %}
+1. Send the following request to `{{ finding.target_url }}`:
+
+```http
+{{ finding.request_raw if finding.request_raw else "# HTTP request details not captured" }}
+```
+{% endif %}
+
+{% if finding.curl_command %}
+**cURL PoC:**
+```bash
+{{ finding.curl_command }}
+```
+{% endif %}
+
+### Impact
+
+This {{ finding.severity }}-severity vulnerability{% if finding.vuln_class == "idor" %} allows an attacker to access or modify resources belonging to other users{% elif finding.vuln_class == "xss" %} allows an attacker to execute arbitrary JavaScript in victims' browsers{% elif finding.vuln_class == "sqli" %} allows an attacker to read or modify the underlying database{% elif finding.vuln_class == "rce" %} allows an attacker to execute arbitrary commands on the server{% elif finding.vuln_class == "ssrf" %} allows an attacker to make server-side requests to internal services{% else %} poses a security risk to the application and its users{% endif %}.
+
+### Supporting Material
+
+{% if finding.response_raw %}
+**HTTP Response:**
+```http
+{{ finding.response_raw[:3000] }}{% if finding.response_raw | length > 3000 %}
+… (truncated){% endif %}
+```
+{% else %}
+_No supporting material captured._
+{% endif %}

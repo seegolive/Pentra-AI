@@ -1,0 +1,66 @@
+# ── Stage 1: builder ──────────────────────────────────────────────────────────
+FROM python:3.12-slim AS builder
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+WORKDIR /app
+
+COPY packages/ ./packages/
+COPY apps/worker/ ./apps/worker/
+
+WORKDIR /app/apps/worker
+RUN uv sync --frozen --no-dev
+
+# ── Stage 2: runtime ──────────────────────────────────────────────────────────
+FROM python:3.12-slim AS runtime
+
+# ── System packages ────────────────────────────────────────────────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nmap \
+    sqlmap \
+    curl \
+    wget \
+    git \
+    python3-pip \
+    # playwright deps (minimal)
+    libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 \
+    libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 libasound2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Go 1.26.3 (official tarball — newer than apt golang) ──────────────────────
+RUN curl -fsSL https://go.dev/dl/go1.26.3.linux-amd64.tar.gz \
+    | tar -C /usr/local -xzf -
+
+ENV GOPATH=/opt/go
+ENV PATH="$GOPATH/bin:/usr/local/go/bin:$PATH"
+
+# ── Go security tools ──────────────────────────────────────────────────────────
+RUN go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest 2>/dev/null || true
+RUN go install github.com/projectdiscovery/httpx/cmd/httpx@latest 2>/dev/null || true
+RUN go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest 2>/dev/null || true
+RUN go install github.com/projectdiscovery/katana/cmd/katana@latest 2>/dev/null || true
+RUN go install github.com/ffuf/ffuf/v2@latest 2>/dev/null || true
+RUN go install github.com/hahwul/dalfox/v2@latest 2>/dev/null || true
+RUN go install github.com/owasp-amass/amass/v4/...@latest 2>/dev/null || true
+
+# ── nuclei templates (pre-download di build time) ─────────────────────────────
+RUN nuclei -update-templates -silent 2>/dev/null || true
+
+# ── Playwright (Chromium headless) ─────────────────────────────────────────────
+RUN pip install --no-cache-dir playwright && playwright install chromium --with-deps
+
+# ── SecLists wordlists ─────────────────────────────────────────────────────────
+RUN git clone --depth 1 --filter=blob:none --sparse \
+    https://github.com/danielmiessler/SecLists.git /usr/share/seclists && \
+    cd /usr/share/seclists && \
+    git sparse-checkout set Discovery/Web-Content
+
+WORKDIR /app
+
+COPY --from=builder /app /app
+
+ENV PATH="/app/apps/worker/.venv/bin:$GOPATH/bin:$PATH"
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+WORKDIR /app/apps/worker

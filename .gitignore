@@ -1,0 +1,61 @@
+# ── Dependencies ─────────────────────────────────────────────────────────────
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# ── Build outputs ─────────────────────────────────────────────────────────────
+dist/
+build/
+*.egg-info/
+.next/
+.turbo/
+
+# ── Environment / Secrets ─────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+# Keep .env.example (safe to commit — contains only placeholders)
+!.env.example
+apps/**/.env
+apps/**/.env.local
+!apps/**/.env.example
+
+# ── Test / Coverage ───────────────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+# Windows Zone.Identifier metadata files (created by Windows file download)
+*:Zone.Identifier
+
+# ── Binary / large files ──────────────────────────────────────────────────────
+*.tar.gz
+*.zip
+*.tar.bz2
+
+# ── Docker volumes / data ─────────────────────────────────────────────────────
+infra/data/
+infra/volumes/
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Backup files ──────────────────────────────────────────────────────────────
+/tmp/pentra_backup_*
+

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Security Report — {{ data.engagement_name }}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; color: #1e293b; background: #fff; }
+  .page { max-width: 900px; margin: 0 auto; padding: 40px; }
+
+  /* Cover */
+  .cover { text-align: center; padding: 80px 40px; border-bottom: 4px solid #0f172a; margin-bottom: 48px; }
+  .cover .logo { font-size: 28px; font-weight: 800; letter-spacing: -1px; color: #0f172a; }
+  .cover .logo span { color: #6366f1; }
+  .cover h1 { font-size: 22px; font-weight: 700; margin-top: 32px; }
+  .cover .meta { margin-top: 24px; color: #64748b; font-size: 13px; line-height: 2; }
+
+  /* Section */
+  h2 { font-size: 16px; font-weight: 700; color: #0f172a; margin: 40px 0 12px;
+       border-bottom: 2px solid #e2e8f0; padding-bottom: 6px; }
+  h3 { font-size: 14px; font-weight: 600; color: #1e293b; margin: 32px 0 8px; }
+
+  /* Scope pills */
+  .pill { display: inline-block; background: #f1f5f9; border: 1px solid #cbd5e1;
+          border-radius: 4px; padding: 2px 8px; font-family: monospace; font-size: 12px;
+          margin: 2px; }
+
+  /* Summary table */
+  .summary-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 20px 0; }
+  .sev-card { text-align: center; border-radius: 8px; padding: 16px 8px; }
+  .sev-card .count { font-size: 28px; font-weight: 800; }
+  .sev-card .label { font-size: 11px; font-weight: 600; text-transform: uppercase; margin-top: 4px; }
+  .sev-critical { background: #fee2e2; color: #dc2626; }
+  .sev-high     { background: #ffedd5; color: #ea580c; }
+  .sev-medium   { background: #fef3c7; color: #d97706; }
+  .sev-low      { background: #dbeafe; color: #2563eb; }
+  .sev-info     { background: #f1f5f9; color: #64748b; }
+
+  /* Finding cards */
+  .finding { border: 1px solid #e2e8f0; border-radius: 8px; margin: 20px 0;
+             padding: 20px; page-break-inside: avoid; }
+  .finding-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .badge { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+           padding: 3px 8px; border-radius: 4px; color: #fff; white-space: nowrap; }
+  .finding-title { font-size: 15px; font-weight: 700; }
+  .meta-table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 12px; }
+  .meta-table td { padding: 4px 8px; border-bottom: 1px solid #f1f5f9; }
+  .meta-table td:first-child { font-weight: 600; color: #64748b; width: 130px; }
+  pre { background: #0f172a; color: #e2e8f0; padding: 12px 16px; border-radius: 6px;
+        font-size: 11px; overflow-x: auto; white-space: pre-wrap; margin: 8px 0; }
+  details summary { cursor: pointer; color: #6366f1; font-size: 12px; font-weight: 600;
+                    margin: 8px 0; user-select: none; }
+  ol { padding-left: 20px; line-height: 2; }
+
+  /* Footer */
+  .footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid #e2e8f0;
+            text-align: center; font-size: 11px; color: #94a3b8; }
+
+  @media print {
+    .page { padding: 20px; }
+    .finding { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Cover -->
+  <div class="cover">
+    <div class="logo">Pentra<span>AI</span></div>
+    <h1>Security Assessment Report</h1>
+    <div class="meta">
+      <strong>Engagement:</strong> {{ data.engagement_name }}<br>
+      <strong>Target:</strong> {{ data.target_domain }}<br>
+      <strong>Generated:</strong> {{ data.generated_at[:10] }}<br>
+      {% if data.llm_model %}<strong>AI Model:</strong> {{ data.llm_model }}<br>{% endif %}
+    </div>
+  </div>
+
+  <!-- Scope -->
+  <h2>Scope</h2>
+  <p><strong>In Scope:</strong></p>
+  <p style="margin:8px 0">
+    {% for s in data.in_scope %}<span class="pill">{{ s }}</span> {% endfor %}
+  </p>
+  {% if data.out_of_scope %}
+  <p style="margin-top:8px"><strong>Out of Scope:</strong></p>
+  <p style="margin:8px 0">
+    {% for s in data.out_of_scope %}<span class="pill">{{ s }}</span> {% endfor %}
+  </p>
+  {% endif %}
+
+  <!-- Summary -->
+  <h2>Executive Summary</h2>
+  <div class="summary-grid">
+    <div class="sev-card sev-critical"><div class="count">{{ data.critical_count }}</div><div class="label">Critical</div></div>
+    <div class="sev-card sev-high"><div class="count">{{ data.high_count }}</div><div class="label">High</div></div>
+    <div class="sev-card sev-medium"><div class="count">{{ data.medium_count }}</div><div class="label">Medium</div></div>
+    <div class="sev-card sev-low"><div class="count">{{ data.low_count }}</div><div class="label">Low</div></div>
+    <div class="sev-card sev-info"><div class="count">{{ data.info_count }}</div><div class="label">Info</div></div>
+  </div>
+
+  {% if data.tech_stack %}
+  <p style="margin:12px 0"><strong>Technology Stack:</strong>
+    {% for t in data.tech_stack %}<span class="pill">{{ t }}</span> {% endfor %}
+  </p>
+  {% endif %}
+
+  {% if data.subdomains %}
+  <p style="margin-top:8px"><strong>Subdomains Discovered ({{ data.subdomains | length }}):</strong></p>
+  <p style="margin:8px 0">
+    {% for s in data.subdomains[:20] %}<span class="pill">{{ s }}</span> {% endfor %}
+    {% if data.subdomains | length > 20 %}<em>…and {{ data.subdomains | length - 20 }} more</em>{% endif %}
+  </p>
+  {% endif %}
+
+  {% if data.analyst_notes %}
+  <h2>Analyst Notes</h2>
+  <p style="line-height:1.7">{{ data.analyst_notes }}</p>
+  {% endif %}
+
+  <!-- Findings -->
+  <h2>Findings</h2>
+
+  {% if not data.open_findings %}
+  <p style="color:#64748b">No open findings for this engagement.</p>
+  {% else %}
+  {% for f in data.open_findings %}
+  <div class="finding">
+    <div class="finding-header">
+      <span class="badge" style="background:{{ f.severity | severity_color }}">{{ f.severity_label }}</span>
+      <span class="finding-title">{{ loop.index }}. {{ f.title }}</span>
+    </div>
+
+    <table class="meta-table">
+      <tr><td>Vulnerability Class</td><td>{{ f.vuln_class | replace("_"," ") | upper_first }}</td></tr>
+      {% if f.cvss_score %}<tr><td>CVSS Score</td><td>{{ f.cvss_score }}</td></tr>{% endif %}
+      <tr><td>Target URL</td><td><code>{{ f.target_url }}</code></td></tr>
+      <tr><td>HTTP Method</td><td><code>{{ f.http_method }}</code></td></tr>
+      <tr><td>Status</td><td>{{ f.status }}</td></tr>
+      <tr><td>Discovered By</td><td>{{ f.discovered_by }}</td></tr>
+      {% if f.discovered_at %}<tr><td>Discovered At</td><td>{{ f.discovered_at[:10] }}</td></tr>{% endif %}
+    </table>
+
+    {% if f.description %}
+    <p style="line-height:1.7;margin:8px 0">{{ f.description }}</p>
+    {% endif %}
+
+    {% if f.reproduction_steps %}
+    <p style="margin-top:12px"><strong>Steps to Reproduce:</strong></p>
+    <ol>{% for step in f.reproduction_steps %}<li>{{ step }}</li>{% endfor %}</ol>
+    {% endif %}
+
+    {% if f.curl_command %}
+    <p style="margin-top:12px"><strong>cURL PoC:</strong></p>
+    <pre>{{ f.curl_command }}</pre>
+    {% endif %}
+
+    {% if f.request_raw %}
+    <details>
+      <summary>Raw HTTP Request</summary>
+      <pre>{{ f.request_raw }}</pre>
+    </details>
+    {% endif %}
+
+    {% if f.response_raw %}
+    <details>
+      <summary>Raw HTTP Response (excerpt)</summary>
+      <pre>{{ f.response_raw[:2000] }}{% if f.response_raw | length > 2000 %}&#10;… (truncated){% endif %}</pre>
+    </details>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <div class="footer">
+    Report generated by <strong>Pentra AI</strong> — self-hosted AI security research platform.
+    All information is confidential.
+  </div>
+</div>
+</body>
+</html>

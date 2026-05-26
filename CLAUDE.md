@@ -530,10 +530,23 @@ ACCESS_TOKEN_EXPIRE_MINUTES=480
 REFRESH_TOKEN_EXPIRE_DAYS=30
 
 # Burp Suite MCP
-BURP_MCP_URL=http://host.docker.internal:9876
-
-# App
-DEBUG=false
+# BURP_MCP_URL wajib di-set agar Burp aktif di agent nodes.
+# Tanpa ini, agent skip proxy history + active scan + Collaborator.
+  # Tanda aktif: INFO [vuln_hunt_node] Burp MCP connected at http://127.0.0.1:9877
+  # Tanda tidak aktif: INFO [vuln_hunt_node] BURP_MCP_URL not set — Burp integration disabled
+  #
+  # CATATAN PORT: default Burp MCP adalah 9876, tapi bisa konflik dengan svchost.exe
+  # di Windows. Gunakan port alternatif (misal 9877) jika terjadi konflik.
+  #
+  # WSL2 NAT (default): gunakan IP gateway Windows, bukan localhost
+  # Pastikan Burp MCP bind ke 0.0.0.0 (Advanced Options → Server host)
+  BURP_MCP_URL=http://172.31.192.1:9877
+  BURP_MCP_ENABLED=true
+  # WSL2 Mirrored networking (setelah wsl --shutdown + edit .wslconfig):
+  # networkingMode=mirrored di /mnt/c/Users/<user>/.wslconfig
+  # BURP_MCP_URL=http://localhost:9877
+  # Docker (worker di container):
+  # BURP_MCP_URL=http://host.docker.internal:9877
 ALLOWED_ORIGINS=http://localhost:5173,https://localhost
 ```
 
