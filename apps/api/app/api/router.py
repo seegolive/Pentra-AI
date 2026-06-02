@@ -930,8 +930,8 @@ async def _run_agent(eng: EngagementORM) -> None:
             # ── Update DB status → awaiting_approval ──────────────────────
             from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
             from sqlalchemy.orm import sessionmaker as _sm
-            from app.core.config import settings as _s
-            _engine = create_async_engine(_s.database_url, echo=False)
+            from app.core.config import get_api_settings as _get_s
+            _engine = create_async_engine(_get_s().database_url, echo=False)
             _asession = _sm(_engine, class_=AsyncSession, expire_on_commit=False)
             async with _asession() as _sess:
                 _eng = await _sess.get(EngagementORM, engagement_id)
@@ -951,8 +951,8 @@ async def _run_agent(eng: EngagementORM) -> None:
             # ── Update DB status → completed ──────────────────────────────
             from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
             from sqlalchemy.orm import sessionmaker as _sm
-            from app.core.config import settings as _s
-            _engine = create_async_engine(_s.database_url, echo=False)
+            from app.core.config import get_api_settings as _get_s
+            _engine = create_async_engine(_get_s().database_url, echo=False)
             _asession = _sm(_engine, class_=AsyncSession, expire_on_commit=False)
             async with _asession() as _sess:
                 _eng = await _sess.get(EngagementORM, engagement_id)
@@ -969,6 +969,23 @@ async def _run_agent(eng: EngagementORM) -> None:
             })
 
     except Exception as exc:  # noqa: BLE001
+        import logging as _log
+        _log.getLogger(__name__).error("[_run_agent] %s: %s", type(exc).__name__, exc, exc_info=True)
+        # Update DB status → failed so the engagement doesn't stay stuck as active
+        try:
+            from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+            from sqlalchemy.orm import sessionmaker as _sm
+            from app.core.config import get_api_settings as _get_s
+            _engine2 = create_async_engine(_get_s().database_url, echo=False)
+            _asession2 = _sm(_engine2, class_=AsyncSession, expire_on_commit=False)
+            async with _asession2() as _sess2:
+                _eng2 = await _sess2.get(EngagementORM, engagement_id)
+                if _eng2 and _eng2.status not in ("completed", "awaiting_approval"):
+                    _eng2.status = "failed"
+                    await _sess2.commit()
+            await _engine2.dispose()
+        except Exception:  # noqa: BLE001
+            pass
         await ws_manager.broadcast(engagement_id, {
             "type": "error",
             "message": f"❌ Agent error: {exc}",
@@ -994,8 +1011,8 @@ async def _resume_agent(engagement_id: str, user_decision: str) -> None:
         # ── Update DB status → active (leaving awaiting_approval) ──────────────
         from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
         from sqlalchemy.orm import sessionmaker as _sm
-        from app.core.config import settings as _s
-        _engine = create_async_engine(_s.database_url, echo=False)
+        from app.core.config import get_api_settings as _get_s
+        _engine = create_async_engine(_get_s().database_url, echo=False)
         _asession = _sm(_engine, class_=AsyncSession, expire_on_commit=False)
         async with _asession() as _sess:
             _eng = await _sess.get(EngagementORM, engagement_id)
@@ -1047,8 +1064,8 @@ async def _resume_agent(engagement_id: str, user_decision: str) -> None:
             # ── Update DB status → awaiting_approval ──────────────────────
             from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
             from sqlalchemy.orm import sessionmaker as _sm
-            from app.core.config import settings as _s
-            _engine = create_async_engine(_s.database_url, echo=False)
+            from app.core.config import get_api_settings as _get_s
+            _engine = create_async_engine(_get_s().database_url, echo=False)
             _asession = _sm(_engine, class_=AsyncSession, expire_on_commit=False)
             async with _asession() as _sess:
                 _eng = await _sess.get(EngagementORM, engagement_id)
@@ -1068,8 +1085,8 @@ async def _resume_agent(engagement_id: str, user_decision: str) -> None:
             # ── Update DB status → completed ──────────────────────────────
             from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
             from sqlalchemy.orm import sessionmaker as _sm
-            from app.core.config import settings as _s
-            _engine = create_async_engine(_s.database_url, echo=False)
+            from app.core.config import get_api_settings as _get_s
+            _engine = create_async_engine(_get_s().database_url, echo=False)
             _asession = _sm(_engine, class_=AsyncSession, expire_on_commit=False)
             async with _asession() as _sess:
                 _eng = await _sess.get(EngagementORM, engagement_id)

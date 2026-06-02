@@ -20,7 +20,7 @@ class LLMClient:
         base_url: str,          # e.g. "http://localhost:11434/v1"
         model: str,             # e.g. "qwen2.5-coder:32b"
         temperature: float = 0.3,
-        timeout: float = 120.0,
+        timeout: float = 600.0,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model

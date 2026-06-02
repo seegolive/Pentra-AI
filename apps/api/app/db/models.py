@@ -69,7 +69,7 @@ class EngagementORM(Base):
     in_scope: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     out_of_scope: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
 
-    llm_model: Mapped[str] = mapped_column(String(100), nullable=False, default="qwen2.5-coder:32b")
+    llm_model: Mapped[str] = mapped_column(String(100), nullable=False, default="qwen2.5:32b")
     langgraph_thread_id: Mapped[str] = mapped_column(String(100), nullable=False)
 
     created_by: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)
