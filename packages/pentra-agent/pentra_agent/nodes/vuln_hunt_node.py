@@ -170,6 +170,9 @@ async def vuln_hunt_node(state: PentraState) -> dict:
         burp_proxy_results,
         burp_extended,
         soap_xxe_results,
+        graphql_results,
+        race_condition_results,
+        cors_results,
     ) = await asyncio.gather(
         _run_nuclei(endpoints, state["scope"], tech_stack=state.get("tech_stack", [])) if _RUN_NUCLEI else _noop_list(),
         _run_ffuf(endpoints[:5]) if _RUN_FFUF else _noop_list(),
@@ -177,6 +180,9 @@ async def vuln_hunt_node(state: PentraState) -> dict:
         _get_burp_proxy_findings(domain, state["scope"]),
         _run_burp_extended_checks(domain, state["scope"], endpoints),
         _run_soap_xxe_scan(domain, state["scope"], state.get("auth_credentials")) if _RUN_SOAP_XXE else _noop_list(),
+        _run_graphql_scan(domain, state["scope"], state.get("auth_credentials")),
+        _run_race_condition_scan(endpoints, state["scope"], state.get("auth_credentials")),
+        _run_cors_scan(endpoints, state["scope"], state.get("auth_credentials")),
         return_exceptions=False,
     )
     raw_findings.extend(nuclei_results)
@@ -185,10 +191,14 @@ async def vuln_hunt_node(state: PentraState) -> dict:
     raw_findings.extend(burp_proxy_results)
     raw_findings.extend(burp_extended)
     raw_findings.extend(soap_xxe_results)
+    raw_findings.extend(graphql_results)
+    raw_findings.extend(race_condition_results)
+    raw_findings.extend(cors_results)
     log.info(
-        "[vuln_hunt_node] Concurrent scan done: nuclei=%d ffuf=%d burp_scan=%d proxy=%d ext=%d soap_xxe=%d",
+        "[vuln_hunt_node] Concurrent scan done: nuclei=%d ffuf=%d burp_scan=%d proxy=%d ext=%d soap_xxe=%d graphql=%d race=%d cors=%d",
         len(nuclei_results), len(ffuf_results), len(burp_scan_results),
         len(burp_proxy_results), len(burp_extended), len(soap_xxe_results),
+        len(graphql_results), len(race_condition_results), len(cors_results),
     )
 
     # ── 5. Collaborator payload (expose in tool_outputs for LLM) ─────────────
@@ -3212,3 +3222,190 @@ async def _run_soap_xxe_scan(
     except Exception as exc:
         log.debug("[vuln_hunt_node] SOAP/XXE scan failed (non-fatal): %s", exc)
         return []
+
+
+async def _run_graphql_scan(
+    domain: str,
+    scope: dict,
+    auth_credentials: dict | None = None,
+) -> list[dict]:
+    """Task 19.1 — GraphQL endpoint discovery + security analysis.
+
+    Probes common GraphQL paths, then runs introspection/SQLi/batch/DoS tests.
+    Runs silently on non-GraphQL targets.
+    """
+    try:
+        from pentra_tools.vuln.graphql_analyzer import (
+            detect_graphql_endpoints,
+            analyze_graphql_endpoint,
+        )
+    except ImportError:
+        return []
+
+    in_scope: list[str] = scope.get("in_scope", [])
+    if not in_scope:
+        return []
+
+    base_url = f"https://{domain}" if not domain.startswith("http") else domain
+    burp_proxy = _get_burp_proxy()
+
+    # Build auth headers from credentials
+    auth_headers: dict[str, str] = {}
+    if auth_credentials:
+        try:
+            from pentra_tools.auth.session_manager import AuthCredentials, SessionManager
+            _creds = AuthCredentials(**auth_credentials)
+            if not _creds.is_empty() and _creds.type != "auto_login":
+                auth_headers, _ = SessionManager(_creds).get_auth_headers()
+        except Exception:
+            pass
+
+    try:
+        import httpx as _httpx
+        proxies = {"http://": burp_proxy, "https://": burp_proxy} if burp_proxy else None
+        async with _httpx.AsyncClient(
+            verify=False,  # noqa: S501
+            follow_redirects=True,
+            timeout=8.0,
+            proxies=proxies,  # type: ignore[arg-type]
+        ) as client:
+            graphql_endpoints = await detect_graphql_endpoints(
+                base_url, client, auth_headers or None
+            )
+
+        if not graphql_endpoints:
+            log.debug("[vuln_hunt_node] No GraphQL endpoints on %s", domain)
+            return []
+
+        log.info("[vuln_hunt] GraphQL: %d endpoint(s) found — running analysis", len(graphql_endpoints))
+
+        all_findings: list[dict] = []
+        for ep in graphql_endpoints[:3]:  # cap at 3 endpoints
+            findings = await analyze_graphql_endpoint(
+                ep,
+                auth_headers=auth_headers or None,
+            )
+            all_findings.extend(findings)
+
+        if all_findings:
+            log.info("[vuln_hunt] GraphQL: %d finding(s)", len(all_findings))
+        return all_findings
+
+    except Exception as exc:
+        log.debug("[vuln_hunt_node] GraphQL scan failed (non-fatal): %s", exc)
+        return []
+
+
+async def _run_race_condition_scan(
+    endpoints: list[dict],
+    scope: dict,
+    auth_credentials: dict | None = None,
+) -> list[dict]:
+    """Task 19.2 — Race condition detection on POST/PATCH endpoints.
+
+    Identifies race-prone endpoints by URL pattern, then sends concurrent
+    requests to detect timing-based business logic flaws.
+    """
+    try:
+        from pentra_tools.vuln.race_condition import identify_race_candidates, check_race_condition
+    except ImportError:
+        return []
+
+    in_scope: list[str] = scope.get("in_scope", [])
+    enforcer = ScopeEnforcer(in_scope=in_scope, out_of_scope=scope.get("out_of_scope", []))
+    burp_proxy = _get_burp_proxy()
+
+    auth_headers: dict[str, str] = {}
+    if auth_credentials:
+        try:
+            from pentra_tools.auth.session_manager import AuthCredentials, SessionManager
+            _creds = AuthCredentials(**auth_credentials)
+            if not _creds.is_empty() and _creds.type != "auto_login":
+                auth_headers, _ = SessionManager(_creds).get_auth_headers()
+        except Exception:
+            pass
+
+    candidates = identify_race_candidates(endpoints)
+    if not candidates:
+        return []
+
+    log.info("[vuln_hunt] Race condition: testing %d candidates", len(candidates))
+    all_findings: list[dict] = []
+
+    for candidate in candidates[:5]:  # cap at 5
+        url = candidate.get("url", "")
+        if not url:
+            continue
+        try:
+            enforcer.validate_or_raise(url)
+        except ScopeViolationError:
+            continue
+        try:
+            result = await check_race_condition(
+                url=url,
+                method=candidate.get("method", "POST"),
+                headers=auth_headers or None,
+                concurrency=15,
+                scope_check_fn=lambda u: True,  # already scope-checked above
+                proxy_url=burp_proxy,
+            )
+            if result and result.race_detected:
+                finding = result.to_finding()
+                if finding:
+                    all_findings.append(finding)
+                    log.info("[vuln_hunt] Race condition CONFIRMED at %s", url)
+        except Exception as exc:
+            log.debug("[vuln_hunt_node] Race condition test failed for %s: %s", url, exc)
+
+    return all_findings
+
+
+async def _run_cors_scan(
+    endpoints: list[dict],
+    scope: dict,
+    auth_credentials: dict | None = None,
+) -> list[dict]:
+    """Task 19.3 — CORS misconfiguration detection on live endpoints.
+
+    Tests Origin header reflection and credentials-enabled CORS misconfigs.
+    """
+    try:
+        from pentra_tools.vuln.cors_tester import check_cors
+    except ImportError:
+        return []
+
+    in_scope: list[str] = scope.get("in_scope", [])
+    enforcer = ScopeEnforcer(in_scope=in_scope, out_of_scope=scope.get("out_of_scope", []))
+    burp_proxy = _get_burp_proxy()
+
+    auth_headers: dict[str, str] = {}
+    if auth_credentials:
+        try:
+            from pentra_tools.auth.session_manager import AuthCredentials, SessionManager
+            _creds = AuthCredentials(**auth_credentials)
+            if not _creds.is_empty() and _creds.type != "auto_login":
+                auth_headers, _ = SessionManager(_creds).get_auth_headers()
+        except Exception:
+            pass
+
+    all_findings: list[dict] = []
+    tested = 0
+
+    for ep in endpoints[:8]:  # cap at 8 endpoints
+        url = ep.get("url", "")
+        if not url:
+            continue
+        try:
+            enforcer.validate_or_raise(url)
+        except ScopeViolationError:
+            continue
+        try:
+            findings = await check_cors(url, auth_headers=auth_headers or None, proxy_url=burp_proxy)
+            all_findings.extend(findings)
+            tested += 1
+        except Exception as exc:
+            log.debug("[vuln_hunt_node] CORS test failed for %s: %s", url, exc)
+
+    if all_findings:
+        log.info("[vuln_hunt] CORS: %d finding(s) on %d endpoints", len(all_findings), tested)
+    return all_findings
