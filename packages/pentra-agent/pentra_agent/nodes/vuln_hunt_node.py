@@ -36,12 +36,22 @@ from pentra_scope.errors import ScopeViolationError
 
 log = logging.getLogger(__name__)
 
-# ── Task 18.9: Concurrent testing constants ───────────────────────────────────
+# ── Task 18.9: Concurrent testing constants (overridden by Task 18.11 presets) ─
 # Number of candidates tested in parallel. Semaphore limits burst to target/Burp.
 # Set to 1 to disable concurrency (sequential fallback).
 CONCURRENT_CANDIDATES: int = int(os.getenv("PENTRA_CONCURRENT_CANDIDATES", "3"))
 # Polite inter-payload delay (seconds). Reduced vs sequential (was 0.5s).
 _PAYLOAD_PACING_S: float = float(os.getenv("PENTRA_PAYLOAD_PACING", "0.15"))
+# Task 18.11 preset-controlled limits
+_MAX_CANDIDATES: int = int(os.getenv("PENTRA_MAX_CANDIDATES", "20"))
+_MAX_PAYLOADS_PER_CANDIDATE: int = int(os.getenv("PENTRA_MAX_PAYLOADS", "4"))
+_RUN_NUCLEI: bool = os.getenv("PENTRA_RUN_NUCLEI", "true").lower() == "true"
+_RUN_FFUF: bool = os.getenv("PENTRA_RUN_FFUF", "true").lower() == "true"
+_RUN_BURP_SCAN: bool = os.getenv("PENTRA_RUN_BURP_SCAN", "true").lower() == "true"
+_RUN_SOAP_XXE: bool = os.getenv("PENTRA_RUN_SOAP_XXE", "true").lower() == "true"
+_RUN_CSRF_CHECK: bool = os.getenv("PENTRA_RUN_CSRF_CHECK", "true").lower() == "true"
+_CRAWL_PAGES: int = int(os.getenv("PENTRA_CRAWL_PAGES", "49"))
+_NUCLEI_TIMEOUT_S: int = int(os.getenv("PENTRA_NUCLEI_TIMEOUT", "180"))
 
 
 # ── Burp MCP config helpers ───────────────────────────────────────────────────
@@ -104,6 +114,11 @@ async def _check_burp_connection(burp_url: str) -> bool:
         return False
 
 
+async def _noop_list() -> list:
+    """Async no-op returning empty list — used when a tool is disabled by preset."""
+    return []
+
+
 async def vuln_hunt_node(state: PentraState) -> dict:
     """Orchestrate active vuln scanning across discovered endpoints."""
     domain = state["target"]["domain"]
@@ -142,7 +157,12 @@ async def vuln_hunt_node(state: PentraState) -> dict:
     # ── 1–4.5. Run all passive/scan tools CONCURRENTLY ────────────────────────
     # Each tool is I/O-bound (network/subprocess) and independent — running them
     # in parallel cuts wall-clock time from ~sum(all timeouts) to ~max(longest).
-    log.info("[vuln_hunt_node] Launching nuclei + ffuf + Burp scan/proxy/extended concurrently")
+    # Task 18.11: preset flags gate individual tools on/off.
+    log.info(
+        "[vuln_hunt_node] Launching tools concurrently "
+        "[nuclei=%s ffuf=%s burp_scan=%s soap_xxe=%s csrf=%s]",
+        _RUN_NUCLEI, _RUN_FFUF, _RUN_BURP_SCAN, _RUN_SOAP_XXE, _RUN_CSRF_CHECK,
+    )
     (
         nuclei_results,
         ffuf_results,
@@ -151,12 +171,12 @@ async def vuln_hunt_node(state: PentraState) -> dict:
         burp_extended,
         soap_xxe_results,
     ) = await asyncio.gather(
-        _run_nuclei(endpoints, state["scope"], tech_stack=state.get("tech_stack", [])),
-        _run_ffuf(endpoints[:5]),
-        _run_burp_active_scan(endpoints[:10], state["scope"]),
+        _run_nuclei(endpoints, state["scope"], tech_stack=state.get("tech_stack", [])) if _RUN_NUCLEI else _noop_list(),
+        _run_ffuf(endpoints[:5]) if _RUN_FFUF else _noop_list(),
+        _run_burp_active_scan(endpoints[:10], state["scope"]) if _RUN_BURP_SCAN else _noop_list(),
         _get_burp_proxy_findings(domain, state["scope"]),
         _run_burp_extended_checks(domain, state["scope"], endpoints),
-        _run_soap_xxe_scan(domain, state["scope"], state.get("auth_credentials")),
+        _run_soap_xxe_scan(domain, state["scope"], state.get("auth_credentials")) if _RUN_SOAP_XXE else _noop_list(),
         return_exceptions=False,
     )
     raw_findings.extend(nuclei_results)
@@ -223,7 +243,7 @@ async def vuln_hunt_node(state: PentraState) -> dict:
                 kb_context=_prescan_kb,
                 auth_credentials=state.get("auth_credentials"),
             ),
-            _passive_csrf_check(domain, state["scope"]),
+            _passive_csrf_check(domain, state["scope"]) if _RUN_CSRF_CHECK else _noop_list(),
         )
         raw_findings.extend(llm_burp_results)
         raw_findings.extend(csrf_results)
@@ -1323,7 +1343,7 @@ async def _run_llm_burp_active_testing(
             "Burp" if burp_available else "httpx",
         )
         idx = 0
-        while idx < len(crawl_queue) and idx < 30:  # cap total crawl at 30 URLs
+        while idx < len(crawl_queue) and idx < _CRAWL_PAGES:  # preset-controlled crawl depth
             crawl_url = crawl_queue[idx]
             idx += 1
             if crawl_url in discovered_urls:
@@ -1501,6 +1521,11 @@ async def _run_llm_burp_active_testing(
     # Backward-compat alias for react_history (now inside memory)
     react_history = memory.react_history
 
+    # ── Task 18.13: Incremental tracker — skip unchanged endpoints ────────────
+    from pentra_agent.incremental import IncrementalTracker
+    _incremental = IncrementalTracker.for_domain(domain)
+    _incremental.load()
+
     # ── Task 18.9 — Concurrent candidate testing (XBOW pattern) ─────────────
     # Run up to CONCURRENT_CANDIDATES candidates in parallel.
     # asyncio single-thread model makes shared list appends safe without locks.
@@ -1596,7 +1621,13 @@ async def _run_llm_burp_active_testing(
             except Exception as exc:
                 log.debug("[llm_burp] baseline request failed for %s: %s", cand_url, exc)
                 original_response = ""
-    
+
+            # ── Task 18.13: Incremental skip gate ────────────────────────────
+            # Skip endpoint if response fingerprint matches cached value — unchanged.
+            if _incremental.is_unchanged(cand_url, param_name, original_response):
+                log.info("[incremental] Skipping %s[%s] — unchanged since last scan", cand_url, param_name)
+                return
+
             # ── ReAct step: Reason before acting ─────────────────────────────────
             # Task 18.10: prepend memory summary so LLM knows what was already found
             _mem_prefix = memory.observation_prefix(cand_url, param_name)
@@ -1747,7 +1778,7 @@ async def _run_llm_burp_active_testing(
             log.info("[llm_burp] Testing %d payloads on %s[%s]", len(payloads), param_name, param_location)
     
             # Send each payload
-            for payload_spec in payloads[:4]:  # max 4 payloads per candidate
+            for payload_spec in payloads[:_MAX_PAYLOADS_PER_CANDIDATE]:  # preset-controlled cap
                 test_payload = str(payload_spec.get("injected_value", payload_spec.get("payload", "")))
                 test_type = payload_spec.get("test_type", "unknown")
                 detection_hint = payload_spec.get("detection_hint", "")
@@ -1915,12 +1946,34 @@ async def _run_llm_burp_active_testing(
             if not memory.is_confirmed(cand_url, param_name):
                 memory.mark_exhausted(cand_url, param_name)
                 log.debug("[memory] Exhausted: %s[%s]", cand_url, param_name)
-    await asyncio.gather(*[_test_one(c) for c in candidates[:20]], return_exceptions=True)
+
+            # Task 18.13: update incremental fingerprint with baseline response
+            _incremental.update(
+                cand_url, param_name, original_response,
+                vuln_found=memory.is_confirmed(cand_url, param_name),
+            )
+    await asyncio.gather(*[_test_one(c) for c in candidates[:_MAX_CANDIDATES]], return_exceptions=True)
     log.info(
         "[memory] Stats: confirmed=%d exhausted=%d effective_classes=%s",
         memory.stats["confirmed"], memory.stats["exhausted"],
         memory.stats["effective_payload_classes"],
     )
+    # Task 18.13: persist incremental fingerprint cache
+    _incremental.save()
+    log.info("[incremental] Stats: %s", _incremental.stats)
+
+    # Task 18.14: Export confirmed findings as fine-tuning data
+    if confirmed_findings:
+        try:
+            from pentra_agent.finetune_export import FineTuneExporter
+            _ft = FineTuneExporter()
+            _ft.export_from_state(
+                {"findings": confirmed_findings, "tech_stack": tech_stack, "engagement_id": engagement_id},
+                memory=memory,
+            )
+            _ft.save(append=True)
+        except Exception as _ft_exc:
+            log.debug("[finetune] Export failed (non-fatal): %s", _ft_exc)
 
     # ── Step 9: Poll Collaborator for OOB hits (Burp Pro only) ───────────────
     if burp_available and client and blind_payload_ids and collab_payload_id:

@@ -238,6 +238,19 @@ def main() -> None:
     parser.add_argument("--mode", default="agentic", choices=["agentic", "semi_auto"],
                         help="Agent mode")
 
+    # ── Scan Engine Presets (Task 18.11) ──────────────────────────────────────
+    parser.add_argument(
+        "--preset",
+        default=None,
+        choices=["full", "fast", "stealth", "quick", "authenticated"],
+        help=(
+            "Scan engine preset — controls which tools run, concurrency, and pacing. "
+            "full: max coverage (~40-60 min) | fast: speed over depth (~10-15 min) | "
+            "stealth: low-noise passive only (~60-90 min) | quick: smoke test (~5-8 min) | "
+            "authenticated: full with auth support"
+        ),
+    )
+
     # ── Authenticated scan options (Task 18.6) ────────────────────────────────
     auth_group = parser.add_argument_group("Authenticated scan (optional)")
     auth_group.add_argument("--auth-cookie",
@@ -285,6 +298,18 @@ def main() -> None:
 
     if auth_credentials:
         print(f"\n  Auth mode:    {auth_credentials['type']}")
+
+    # Apply preset before launching scan (writes env vars read by vuln_hunt_node)
+    if args.preset:
+        import sys
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../packages/pentra-agent"))
+        try:
+            from pentra_agent.scan_presets import get_preset
+            preset = get_preset(args.preset)
+            preset.apply_to_env()
+            print(f"  Preset:       {args.preset} — {preset.description[:60]}...")
+        except ImportError:
+            print(f"  [WARNING] Could not load scan presets — using defaults")
 
     asyncio.run(run_live_scan(args.domain, args.mode, auth_credentials=auth_credentials))
 
