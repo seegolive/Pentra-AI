@@ -36,6 +36,13 @@ from pentra_scope.errors import ScopeViolationError
 
 log = logging.getLogger(__name__)
 
+# ── Task 18.9: Concurrent testing constants ───────────────────────────────────
+# Number of candidates tested in parallel. Semaphore limits burst to target/Burp.
+# Set to 1 to disable concurrency (sequential fallback).
+CONCURRENT_CANDIDATES: int = int(os.getenv("PENTRA_CONCURRENT_CANDIDATES", "3"))
+# Polite inter-payload delay (seconds). Reduced vs sequential (was 0.5s).
+_PAYLOAD_PACING_S: float = float(os.getenv("PENTRA_PAYLOAD_PACING", "0.15"))
+
 
 # ── Burp MCP config helpers ───────────────────────────────────────────────────
 
@@ -1486,393 +1493,400 @@ async def _run_llm_burp_active_testing(
     blind_payload_ids: list[tuple[str, dict]] = []  # (payload_id, candidate)
     react_history: list[dict] = []  # rolling ReAct history for this engagement
 
-    # Cap at top-20 high/medium candidates (increased from 10 to allow tech-default coverage)
-    for candidate in candidates[:20]:
-        cand_url = candidate.get("url", "")
-        cand_method = candidate.get("method", "GET")
-        param_name = candidate.get("param_name", "")
-        param_location = candidate.get("param_location", "query")
-        original_value = candidate.get("original_value") or ""
-        test_types = candidate.get("test_types") or []
+    # ── Task 18.9 — Concurrent candidate testing (XBOW pattern) ─────────────
+    # Run up to CONCURRENT_CANDIDATES candidates in parallel.
+    # asyncio single-thread model makes shared list appends safe without locks.
+    # Semaphore prevents burst-hitting the target and Burp session limit.
+    _CAND_SEM = asyncio.Semaphore(CONCURRENT_CANDIDATES)
 
-        # Fix 2 — Auto-add path_traversal/lfi for LFI-candidate parameters.
-        # Ensures NewsAd and other file-path params always get traversal testing
-        # even when LLM candidate extraction misses them.
-        if _is_lfi_candidate(param_name, original_value):
-            _lfi_types_to_add = [
-                t for t in ("path_traversal", "lfi")
-                if t not in [x.lower() for x in test_types]
-            ]
-            if _lfi_types_to_add:
-                test_types = list(test_types) + _lfi_types_to_add
-                log.info(
-                    "[vuln_hunt] LFI candidate: %s=%s — adding tests: %s",
-                    param_name, original_value, _lfi_types_to_add,
-                )
-
-        if not cand_url or not param_name or not test_types:
-            continue
-        try:
-            enforcer.validate_or_raise(cand_url)
-        except ScopeViolationError:
-            log.warning("[llm_burp] candidate %s out of scope — skip", cand_url)
-            continue
-
-        log.info(
-            "[llm_burp] Testing %s param=%r location=%s tests=%s",
-            cand_url, param_name, param_location, test_types,
-        )
-
-        # ── Playbook selection ────────────────────────────────────────────────
-        try:
-            from pentra_agent.playbooks import get_playbook_for_context, run_playbook
-            matched_playbooks = get_playbook_for_context(
-                tech_stack=tech_stack,
-                url=cand_url,
-                param=param_name,
-            )
-            if matched_playbooks:
-                log.info(
-                    "[vuln_hunt] %d playbook(s) matched for %s[%s]: %s",
-                    len(matched_playbooks),
-                    cand_url,
-                    param_name,
-                    [p.name for p in matched_playbooks[:3]],
-                )
-                for pb in matched_playbooks[:2]:  # max 2 playbooks per candidate
-                    pb_result = run_playbook(pb, cand_url, param_name, tech_stack)
-                    # Inject playbook vuln_class into test_types if not already present
-                    if pb.vuln_class.lower() not in [t.lower() for t in test_types]:
-                        test_types = list(test_types) + [pb.vuln_class.lower()]
-        except Exception as _pb_exc:
-            log.debug("[vuln_hunt] playbook selection failed (non-fatal): %s", _pb_exc)
-
-        # Get original response for baseline
-        import time as _time
-        try:
-            _t0 = _time.monotonic()
-            if burp_available and client:
-                _, original_response = await client.send_request(
-                    cand_url, method=cand_method,
-                    extra_headers=_auth_headers or None,
-                    cookies=_auth_cookies or None,
-                )
-            else:
-                _, original_response = await _direct_request(
-                    cand_url, method=cand_method,
-                    headers=_auth_headers or None,
-                )
-            _baseline_time = _time.monotonic() - _t0
-        except Exception as exc:
-            log.debug("[llm_burp] baseline request failed for %s: %s", cand_url, exc)
-            original_response = ""
-
-        # ── ReAct step: Reason before acting ─────────────────────────────────
-        observation = (
-            f"URL: {cand_url}\n"
-            f"Parameter: {param_name} ({param_location})\n"
-            f"Test types: {test_types}\n"
-            f"Tech stack: {tech_stack}\n"
-            f"Baseline response snippet (first 400 chars):\n{original_response[:400]}\n\n"
-            f"{DEVELOPER_PSYCHOLOGY_HEURISTICS}"
-        )
-        try:
-            react_out = await llm.react_step(
-                observation=observation,
-                available_actions=["test_injection", "skip_candidate"],
-                history=react_history,
-            )
-            react_history.append({
-                "url": cand_url,
-                "param": param_name,
-                "thought": react_out.thought,
-                "action": react_out.action,
-            })
+    async def _test_one(candidate: dict) -> None:
+        """Test a single injection candidate — guarded by concurrency semaphore."""
+        async with _CAND_SEM:
+            cand_url = candidate.get("url", "")
+            cand_method = candidate.get("method", "GET")
+            param_name = candidate.get("param_name", "")
+            param_location = candidate.get("param_location", "query")
+            original_value = candidate.get("original_value") or ""
+            test_types = candidate.get("test_types") or []
+    
+            # Fix 2 — Auto-add path_traversal/lfi for LFI-candidate parameters.
+            # Ensures NewsAd and other file-path params always get traversal testing
+            # even when LLM candidate extraction misses them.
+            if _is_lfi_candidate(param_name, original_value):
+                _lfi_types_to_add = [
+                    t for t in ("path_traversal", "lfi")
+                    if t not in [x.lower() for x in test_types]
+                ]
+                if _lfi_types_to_add:
+                    test_types = list(test_types) + _lfi_types_to_add
+                    log.info(
+                        "[vuln_hunt] LFI candidate: %s=%s — adding tests: %s",
+                        param_name, original_value, _lfi_types_to_add,
+                    )
+    
+            if not cand_url or not param_name or not test_types:
+                return
+            try:
+                enforcer.validate_or_raise(cand_url)
+            except ScopeViolationError:
+                log.warning("[llm_burp] candidate %s out of scope — skip", cand_url)
+                return
+    
             log.info(
-                "[vuln_hunt] ReAct Thought: %s | Action: %s",
-                react_out.thought, react_out.action,
+                "[llm_burp] Testing %s param=%r location=%s tests=%s",
+                cand_url, param_name, param_location, test_types,
             )
-            # Fire-and-forget audit log for the Thought
-            await write_audit_log(
-                engagement_id=engagement_id,
-                actor="agent/vuln_hunt",
-                action="react_thought",
-                detail={
-                    "thought": react_out.thought,
-                    "action": react_out.action,
+    
+            # ── Playbook selection ────────────────────────────────────────────────
+            try:
+                from pentra_agent.playbooks import get_playbook_for_context, run_playbook
+                matched_playbooks = get_playbook_for_context(
+                    tech_stack=tech_stack,
+                    url=cand_url,
+                    param=param_name,
+                )
+                if matched_playbooks:
+                    log.info(
+                        "[vuln_hunt] %d playbook(s) matched for %s[%s]: %s",
+                        len(matched_playbooks),
+                        cand_url,
+                        param_name,
+                        [p.name for p in matched_playbooks[:3]],
+                    )
+                    for pb in matched_playbooks[:2]:  # max 2 playbooks per candidate
+                        pb_result = run_playbook(pb, cand_url, param_name, tech_stack)
+                        # Inject playbook vuln_class into test_types if not already present
+                        if pb.vuln_class.lower() not in [t.lower() for t in test_types]:
+                            test_types = list(test_types) + [pb.vuln_class.lower()]
+            except Exception as _pb_exc:
+                log.debug("[vuln_hunt] playbook selection failed (non-fatal): %s", _pb_exc)
+    
+            # Get original response for baseline
+            import time as _time
+            try:
+                _t0 = _time.monotonic()
+                if burp_available and client:
+                    _, original_response = await client.send_request(
+                        cand_url, method=cand_method,
+                        extra_headers=_auth_headers or None,
+                        cookies=_auth_cookies or None,
+                    )
+                else:
+                    _, original_response = await _direct_request(
+                        cand_url, method=cand_method,
+                        headers=_auth_headers or None,
+                    )
+                _baseline_time = _time.monotonic() - _t0
+            except Exception as exc:
+                log.debug("[llm_burp] baseline request failed for %s: %s", cand_url, exc)
+                original_response = ""
+    
+            # ── ReAct step: Reason before acting ─────────────────────────────────
+            observation = (
+                f"URL: {cand_url}\n"
+                f"Parameter: {param_name} ({param_location})\n"
+                f"Test types: {test_types}\n"
+                f"Tech stack: {tech_stack}\n"
+                f"Baseline response snippet (first 400 chars):\n{original_response[:400]}\n\n"
+                f"{DEVELOPER_PSYCHOLOGY_HEURISTICS}"
+            )
+            try:
+                react_out = await llm.react_step(
+                    observation=observation,
+                    available_actions=["test_injection", "skip_candidate"],
+                    history=react_history,
+                )
+                react_history.append({
                     "url": cand_url,
                     "param": param_name,
-                    "test_types": test_types,
-                },
-            )
-            if react_out.action == "skip_candidate":
+                    "thought": react_out.thought,
+                    "action": react_out.action,
+                })
                 log.info(
-                    "[vuln_hunt] ReAct: skip_candidate for %s[%s] — reasoning: %s",
-                    cand_url, param_name, react_out.thought,
+                    "[vuln_hunt] ReAct Thought: %s | Action: %s",
+                    react_out.thought, react_out.action,
                 )
-                continue
-        except Exception as exc:
-            log.warning("[vuln_hunt] react_step failed (non-fatal): %s — proceeding with test", exc)
-
-        # LLM crafts payloads (only reached if react said test_injection or react_step failed)
-        try:
-            payloads = await llm.craft_exploit_payloads(
-                url=cand_url,
-                method=cand_method,
-                param_name=param_name,
-                param_location=param_location,
-                original_value=original_value,
-                test_types=test_types,
-                tech_stack=tech_stack,
-                collaborator_url=collab_url,
-            )
-        except Exception as exc:
-            log.warning("[llm_burp] craft_exploit_payloads failed: %s", exc)
-            payloads = []
-
-        # ── ExploitArsenal supplement ─────────────────────────────────────────
-        # Merge proven arsenal payloads with LLM payloads so we always have
-        # reliable base payloads even when LLM returns fewer variants.
-        try:
-            from pentra_agent.arsenal.exploit_arsenal import ExploitArsenal
-
-            _vuln_map = {
-                "sqli": "SQL_INJECTION", "sql_injection": "SQL_INJECTION",
-                "xss": "XSS", "cross_site_scripting": "XSS",
-                "lfi": "PATH_TRAVERSAL", "path_traversal": "PATH_TRAVERSAL",
-                "ssrf": "SSRF",
-                "idor": "IDOR",
-                "ssti": "SSTI",
-            }
-            _first_test_type = (test_types[0] if test_types else "").lower().replace("-", "_")
-            _vuln_class = _vuln_map.get(_first_test_type)
-            if _vuln_class:
-                arsenal_raw = ExploitArsenal.get_payloads(_vuln_class, tech_stack=tech_stack)
-                # Convert plain strings to payload spec dicts
-                _existing_vals: set[str] = {
-                    str(p.get("injected_value", p.get("payload", "")))
-                    for p in (payloads or [])
-                }
-                arsenal_specs = [
-                    {
-                        "injected_value": raw_p,
-                        "payload": raw_p,
-                        "test_type": _first_test_type,
-                        "detection_hint": f"ExploitArsenal proven payload",
-                        "uses_collaborator": False,
-                    }
-                    for raw_p in arsenal_raw[:6]   # cap at 6 arsenal payloads
-                    if raw_p not in _existing_vals
-                ]
-                if arsenal_specs:
-                    payloads = list(payloads or []) + arsenal_specs
+                # Fire-and-forget audit log for the Thought
+                await write_audit_log(
+                    engagement_id=engagement_id,
+                    actor="agent/vuln_hunt",
+                    action="react_thought",
+                    detail={
+                        "thought": react_out.thought,
+                        "action": react_out.action,
+                        "url": cand_url,
+                        "param": param_name,
+                        "test_types": test_types,
+                    },
+                )
+                if react_out.action == "skip_candidate":
                     log.info(
-                        "[llm_burp] ExploitArsenal +%d %s payloads for %s[%s]",
-                        len(arsenal_specs), _vuln_class, param_name, param_location,
+                        "[vuln_hunt] ReAct: skip_candidate for %s[%s] — reasoning: %s",
+                        cand_url, param_name, react_out.thought,
                     )
-        except Exception as _ea_exc:
-            log.debug("[llm_burp] ExploitArsenal supplement failed (non-fatal): %s", _ea_exc)
-
-        if not payloads:
-            continue
-
-        # ── WAF bypass variants via Burp encoding ─────────────────────────────
-        # For reflection-based tests (XSS, SQLi, SSTI), also test URL-encoded
-        # and double-URL-encoded variants to detect WAF bypass opportunities.
-        if burp_available and client:
-            from pentra_agent.utils.burp_utils import encode_payload_for_injection as _enc_fn
-            _bypass_additions: list[dict] = []
-            for _ps in payloads[:2]:   # limit to first 2 payloads to avoid burst
-                _raw = str(_ps.get("injected_value", _ps.get("payload", "")))
-                _ttype = _ps.get("test_type", "")
-                if not _raw or _ps.get("uses_collaborator") or "time" in _ttype:
-                    continue   # skip OOB / time-based payloads
-                for _enc_type in ("url", "double_url"):
-                    try:
-                        _encoded = await _enc_fn(client, _raw, _enc_type)
-                        if _encoded and _encoded != _raw:
-                            _bypass_additions.append({
-                                **_ps,
-                                "injected_value": _encoded,
-                                "payload": _encoded,
-                                "test_type": _ttype + f"_waf_{_enc_type}",
-                                "detection_hint": (
-                                    f"WAF bypass via {_enc_type} encoding. "
-                                    + _ps.get("detection_hint", "")
-                                ),
-                                "uses_collaborator": False,
-                            })
-                    except Exception:
-                        pass
-            if _bypass_additions:
-                log.info(
-                    "[llm_burp] +%d WAF bypass variants for %s[%s]",
-                    len(_bypass_additions), param_name, param_location,
-                )
-                payloads = list(payloads) + _bypass_additions
-
-        log.info("[llm_burp] Testing %d payloads on %s[%s]", len(payloads), param_name, param_location)
-
-        # Send each payload
-        for payload_spec in payloads[:4]:  # max 4 payloads per candidate
-            test_payload = str(payload_spec.get("injected_value", payload_spec.get("payload", "")))
-            test_type = payload_spec.get("test_type", "unknown")
-            detection_hint = payload_spec.get("detection_hint", "")
-            uses_collab = payload_spec.get("uses_collaborator", False)
-
-            if not test_payload:
-                continue
-
-            # Sanitize: LLM sometimes returns "param=value" instead of just "value".
-            # Strip the leading "<param_name>=" prefix if present so that
-            # _inject_payload doesn't double-encode it as "?id=id%3Dvalue".
-            _prefix = f"{param_name}="
-            if test_payload.startswith(_prefix):
-                test_payload = test_payload[len(_prefix):]  # noqa: PLW2901 (intentional rebind)
-
+                    return  # skip — exit _test_one for this candidate
+            except Exception as exc:
+                log.warning("[vuln_hunt] react_step failed (non-fatal): %s — proceeding with test", exc)
+    
+            # LLM crafts payloads (only reached if react said test_injection or react_step failed)
             try:
-                test_url, test_method, test_body, test_headers = _inject_payload(
+                payloads = await llm.craft_exploit_payloads(
                     url=cand_url,
                     method=cand_method,
                     param_name=param_name,
                     param_location=param_location,
-                    payload_value=test_payload,
+                    original_value=original_value,
+                    test_types=test_types,
+                    tech_stack=tech_stack,
+                    collaborator_url=collab_url,
                 )
-                enforcer.validate_or_raise(test_url)
-                await asyncio.sleep(0.5)  # polite pacing between payloads
-
-                _t1 = _time.monotonic()
-                if burp_available and client:
-                    test_raw_req, test_response = await client.send_request(
-                        test_url,
-                        method=test_method,
-                        body=test_body,
-                        headers={**(_auth_headers or {}), **(test_headers or {})},
-                        cookies=_auth_cookies or None,
-                    )
-                else:
-                    test_raw_req, test_response = await _direct_request(
-                        test_url,
-                        method=test_method,
-                        body=test_body,
-                        headers={**(_auth_headers or {}), **(test_headers or {})},
-                    )
-                _test_time = _time.monotonic() - _t1
-            except ScopeViolationError:
-                continue
             except Exception as exc:
-                log.debug("[llm_burp] payload send failed: %s", exc)
-                continue
-
-            # Enhancement E — Anomaly detection before LLM analysis
-            anomalies = detect_anomalies(
-                baseline_body=original_response,
-                test_body=test_response,
-                test_payload=test_payload,
-                baseline_time_s=_baseline_time,
-                test_time_s=_test_time,
-            )
-            if anomalies:
-                log.info("[llm_burp] Anomalies detected for %s[%s]: %s", cand_url, param_name, anomalies)
-                detection_hint = (
-                    detection_hint + "\n\nANOMALY SIGNALS:\n" + "\n".join(f"- {a}" for a in anomalies)
-                ).strip()
-
-            # Fix 2 — Fast-path LFI confirmation.
-            # When PATH_INCLUSION anomaly fires on an LFI-candidate param, probe
-            # deeper traversal payloads directly rather than relying solely on LLM
-            # judgment (which historically misses web.config exposure).
-            if any("PATH_INCLUSION" in a for a in anomalies) and _is_lfi_candidate(
-                param_name, original_value
-            ):
-                log.info(
-                    "[llm_burp] PATH_INCLUSION on %s[%s] — running LFI confirmation sequence",
-                    cand_url, param_name,
+                log.warning("[llm_burp] craft_exploit_payloads failed: %s", exc)
+                payloads = []
+    
+            # ── ExploitArsenal supplement ─────────────────────────────────────────
+            # Merge proven arsenal payloads with LLM payloads so we always have
+            # reliable base payloads even when LLM returns fewer variants.
+            try:
+                from pentra_agent.arsenal.exploit_arsenal import ExploitArsenal
+    
+                _vuln_map = {
+                    "sqli": "SQL_INJECTION", "sql_injection": "SQL_INJECTION",
+                    "xss": "XSS", "cross_site_scripting": "XSS",
+                    "lfi": "PATH_TRAVERSAL", "path_traversal": "PATH_TRAVERSAL",
+                    "ssrf": "SSRF",
+                    "idor": "IDOR",
+                    "ssti": "SSTI",
+                }
+                _first_test_type = (test_types[0] if test_types else "").lower().replace("-", "_")
+                _vuln_class = _vuln_map.get(_first_test_type)
+                if _vuln_class:
+                    arsenal_raw = ExploitArsenal.get_payloads(_vuln_class, tech_stack=tech_stack)
+                    # Convert plain strings to payload spec dicts
+                    _existing_vals: set[str] = {
+                        str(p.get("injected_value", p.get("payload", "")))
+                        for p in (payloads or [])
+                    }
+                    arsenal_specs = [
+                        {
+                            "injected_value": raw_p,
+                            "payload": raw_p,
+                            "test_type": _first_test_type,
+                            "detection_hint": f"ExploitArsenal proven payload",
+                            "uses_collaborator": False,
+                        }
+                        for raw_p in arsenal_raw[:6]   # cap at 6 arsenal payloads
+                        if raw_p not in _existing_vals
+                    ]
+                    if arsenal_specs:
+                        payloads = list(payloads or []) + arsenal_specs
+                        log.info(
+                            "[llm_burp] ExploitArsenal +%d %s payloads for %s[%s]",
+                            len(arsenal_specs), _vuln_class, param_name, param_location,
+                        )
+            except Exception as _ea_exc:
+                log.debug("[llm_burp] ExploitArsenal supplement failed (non-fatal): %s", _ea_exc)
+    
+            if not payloads:
+                return  # no payloads to test — exit _test_one
+            # For reflection-based tests (XSS, SQLi, SSTI), also test URL-encoded
+            # and double-URL-encoded variants to detect WAF bypass opportunities.
+            if burp_available and client:
+                from pentra_agent.utils.burp_utils import encode_payload_for_injection as _enc_fn
+                _bypass_additions: list[dict] = []
+                for _ps in payloads[:2]:   # limit to first 2 payloads to avoid burst
+                    _raw = str(_ps.get("injected_value", _ps.get("payload", "")))
+                    _ttype = _ps.get("test_type", "")
+                    if not _raw or _ps.get("uses_collaborator") or "time" in _ttype:
+                        continue   # skip OOB / time-based payloads
+                    for _enc_type in ("url", "double_url"):
+                        try:
+                            _encoded = await _enc_fn(client, _raw, _enc_type)
+                            if _encoded and _encoded != _raw:
+                                _bypass_additions.append({
+                                    **_ps,
+                                    "injected_value": _encoded,
+                                    "payload": _encoded,
+                                    "test_type": _ttype + f"_waf_{_enc_type}",
+                                    "detection_hint": (
+                                        f"WAF bypass via {_enc_type} encoding. "
+                                        + _ps.get("detection_hint", "")
+                                    ),
+                                    "uses_collaborator": False,
+                                })
+                        except Exception:
+                            pass
+                if _bypass_additions:
+                    log.info(
+                        "[llm_burp] +%d WAF bypass variants for %s[%s]",
+                        len(_bypass_additions), param_name, param_location,
+                    )
+                    payloads = list(payloads) + _bypass_additions
+    
+            log.info("[llm_burp] Testing %d payloads on %s[%s]", len(payloads), param_name, param_location)
+    
+            # Send each payload
+            for payload_spec in payloads[:4]:  # max 4 payloads per candidate
+                test_payload = str(payload_spec.get("injected_value", payload_spec.get("payload", "")))
+                test_type = payload_spec.get("test_type", "unknown")
+                detection_hint = payload_spec.get("detection_hint", "")
+                uses_collab = payload_spec.get("uses_collaborator", False)
+    
+                if not test_payload:
+                    continue
+    
+                # Sanitize: LLM sometimes returns "param=value" instead of just "value".
+                # Strip the leading "<param_name>=" prefix if present so that
+                # _inject_payload doesn't double-encode it as "?id=id%3Dvalue".
+                _prefix = f"{param_name}="
+                if test_payload.startswith(_prefix):
+                    test_payload = test_payload[len(_prefix):]  # noqa: PLW2901 (intentional rebind)
+    
+                try:
+                    test_url, test_method, test_body, test_headers = _inject_payload(
+                        url=cand_url,
+                        method=cand_method,
+                        param_name=param_name,
+                        param_location=param_location,
+                        payload_value=test_payload,
+                    )
+                    enforcer.validate_or_raise(test_url)
+                    await asyncio.sleep(_PAYLOAD_PACING_S)  # polite pacing (Task 18.9: reduced)
+                    _t1 = _time.monotonic()
+                    if burp_available and client:
+                        test_raw_req, test_response = await client.send_request(
+                            test_url,
+                            method=test_method,
+                            body=test_body,
+                            headers={**(_auth_headers or {}), **(test_headers or {})},
+                            cookies=_auth_cookies or None,
+                        )
+                    else:
+                        test_raw_req, test_response = await _direct_request(
+                            test_url,
+                            method=test_method,
+                            body=test_body,
+                            headers={**(_auth_headers or {}), **(test_headers or {})},
+                        )
+                    _test_time = _time.monotonic() - _t1
+                except ScopeViolationError:
+                    continue
+                except Exception as exc:
+                    log.debug("[llm_burp] payload send failed: %s", exc)
+                    continue
+    
+                # Enhancement E — Anomaly detection before LLM analysis
+                anomalies = detect_anomalies(
+                    baseline_body=original_response,
+                    test_body=test_response,
+                    test_payload=test_payload,
+                    baseline_time_s=_baseline_time,
+                    test_time_s=_test_time,
                 )
-                _lfi_finding = await _confirm_lfi(
-                    base_url=cand_url,
-                    param_name=param_name,
-                    param_location=param_location,
-                    burp=client if burp_available else None,
-                    enforcer=enforcer,
-                )
-                if _lfi_finding:
-                    confirmed_findings.append(_lfi_finding)
+                if anomalies:
+                    log.info("[llm_burp] Anomalies detected for %s[%s]: %s", cand_url, param_name, anomalies)
+                    detection_hint = (
+                        detection_hint + "\n\nANOMALY SIGNALS:\n" + "\n".join(f"- {a}" for a in anomalies)
+                    ).strip()
+    
+                # Fix 2 — Fast-path LFI confirmation.
+                # When PATH_INCLUSION anomaly fires on an LFI-candidate param, probe
+                # deeper traversal payloads directly rather than relying solely on LLM
+                # judgment (which historically misses web.config exposure).
+                if any("PATH_INCLUSION" in a for a in anomalies) and _is_lfi_candidate(
+                    param_name, original_value
+                ):
+                    log.info(
+                        "[llm_burp] PATH_INCLUSION on %s[%s] — running LFI confirmation sequence",
+                        cand_url, param_name,
+                    )
+                    _lfi_finding = await _confirm_lfi(
+                        base_url=cand_url,
+                        param_name=param_name,
+                        param_location=param_location,
+                        burp=client if burp_available else None,
+                        enforcer=enforcer,
+                    )
+                    if _lfi_finding:
+                        confirmed_findings.append(_lfi_finding)
+                        if burp_available and client:
+                            await _save_interesting_request_to_repeater(
+                                burp=client,
+                                url=cand_url,
+                                request=_lfi_finding["request"],
+                                finding_title=f"[CRITICAL] LFI — {param_name}",
+                            )
+                        break  # one confirmed finding per candidate is enough
+    
+                # LLM analyzes response
+                try:
+                    analysis = await llm.analyze_exploit_response(
+                        test_type=test_type,
+                        payload=test_payload,
+                        detection_hint=detection_hint,
+                        original_response=original_response,
+                        test_response=test_response,
+                        url=cand_url,
+                        param_name=param_name,
+                    )
+                except Exception as exc:
+                    log.warning("[llm_burp] analyze_exploit_response failed: %s", exc)
+                    continue
+    
+                if analysis.get("confirmed"):
+                    vuln_class = analysis.get("vuln_class", test_type.upper())
+                    severity = normalize_severity(analysis.get("severity", "medium"))
+                    log.info(
+                        "[llm_burp] CONFIRMED [%s] %s param=%r payload=%r",
+                        severity.upper(), vuln_class, param_name, test_payload[:50],
+                    )
+                    finding = {
+                        "title": f"{vuln_class} in {param_name} parameter",
+                        "description": (
+                            f"{analysis.get('evidence', '')}\n\n"
+                            f"Payload: {test_payload!r}\n"
+                            f"Parameter: {param_name} ({param_location})"
+                        ),
+                        "severity": severity,
+                        "target_url": cand_url,
+                        "vuln_class": vuln_class,
+                        "request": test_raw_req,
+                        "response": test_response[:3000],
+                        "source": "llm_active" if not burp_available else "llm_burp_active",
+                        "impact": analysis.get("impact", ""),
+                        "remediation": analysis.get("remediation", ""),
+                        "cvss_score": analysis.get("cvss_score"),
+                        "param_name": param_name,
+                        "param_location": param_location,
+                        "payload": test_payload,
+                    }
+                    confirmed_findings.append(finding)
+    
+                    # Open in Burp Repeater (only when Burp available)
                     if burp_available and client:
                         await _save_interesting_request_to_repeater(
                             burp=client,
                             url=cand_url,
-                            request=_lfi_finding["request"],
-                            finding_title=f"[CRITICAL] LFI — {param_name}",
+                            request=test_raw_req,
+                            finding_title=f"[{severity.upper()}] {vuln_class} – {param_name}",
                         )
+                        # For SQLi, also set up Intruder so researcher can launch full fuzz
+                        if vuln_class in ("SQLI", "SQLi", "sql_injection") or "sqli" in test_type:
+                            await _setup_intruder_for_sqli(
+                                burp=client,
+                                scope=enforcer,
+                                url=cand_url,
+                                param=param_name,
+                                base_request=test_raw_req,
+                            )
+    
                     break  # one confirmed finding per candidate is enough
+    
+                elif uses_collab and collab_payload_id:
+                    blind_payload_ids.append((collab_payload_id, candidate))
 
-            # LLM analyzes response
-            try:
-                analysis = await llm.analyze_exploit_response(
-                    test_type=test_type,
-                    payload=test_payload,
-                    detection_hint=detection_hint,
-                    original_response=original_response,
-                    test_response=test_response,
-                    url=cand_url,
-                    param_name=param_name,
-                )
-            except Exception as exc:
-                log.warning("[llm_burp] analyze_exploit_response failed: %s", exc)
-                continue
-
-            if analysis.get("confirmed"):
-                vuln_class = analysis.get("vuln_class", test_type.upper())
-                severity = normalize_severity(analysis.get("severity", "medium"))
-                log.info(
-                    "[llm_burp] CONFIRMED [%s] %s param=%r payload=%r",
-                    severity.upper(), vuln_class, param_name, test_payload[:50],
-                )
-                finding = {
-                    "title": f"{vuln_class} in {param_name} parameter",
-                    "description": (
-                        f"{analysis.get('evidence', '')}\n\n"
-                        f"Payload: {test_payload!r}\n"
-                        f"Parameter: {param_name} ({param_location})"
-                    ),
-                    "severity": severity,
-                    "target_url": cand_url,
-                    "vuln_class": vuln_class,
-                    "request": test_raw_req,
-                    "response": test_response[:3000],
-                    "source": "llm_active" if not burp_available else "llm_burp_active",
-                    "impact": analysis.get("impact", ""),
-                    "remediation": analysis.get("remediation", ""),
-                    "cvss_score": analysis.get("cvss_score"),
-                    "param_name": param_name,
-                    "param_location": param_location,
-                    "payload": test_payload,
-                }
-                confirmed_findings.append(finding)
-
-                # Open in Burp Repeater (only when Burp available)
-                if burp_available and client:
-                    await _save_interesting_request_to_repeater(
-                        burp=client,
-                        url=cand_url,
-                        request=test_raw_req,
-                        finding_title=f"[{severity.upper()}] {vuln_class} – {param_name}",
-                    )
-                    # For SQLi, also set up Intruder so researcher can launch full fuzz
-                    if vuln_class in ("SQLI", "SQLi", "sql_injection") or "sqli" in test_type:
-                        await _setup_intruder_for_sqli(
-                            burp=client,
-                            scope=enforcer,
-                            url=cand_url,
-                            param=param_name,
-                            base_request=test_raw_req,
-                        )
-
-                break  # one confirmed finding per candidate is enough
-
-            elif uses_collab and collab_payload_id:
-                blind_payload_ids.append((collab_payload_id, candidate))
+    # ── Task 18.9: Launch all candidate tests concurrently ───────────────────
+    await asyncio.gather(*[_test_one(c) for c in candidates[:20]], return_exceptions=True)
 
     # ── Step 9: Poll Collaborator for OOB hits (Burp Pro only) ───────────────
     if burp_available and client and blind_payload_ids and collab_payload_id:
