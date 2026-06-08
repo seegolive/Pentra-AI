@@ -32,9 +32,11 @@ class WorkerSettings(BaseSettings):
     ollama_model_embedding: str = "bge-m3"
 
     # H1 scraper settings
-    h1_graphql_url: str = "https://hackerone.com/graphql"
-    h1_scrape_page_size: int = 25          # H1 limits to 25 per page
-    h1_scrape_concurrency: int = 2         # concurrent page fetches — be polite
+    h1_api_url: str = "https://api.hackerone.com/v1"
+    h1_api_username: str = ""              # H1 API username (from account settings)
+    h1_api_token: str = ""                 # H1 API token (from account settings)
+    h1_scrape_page_size: int = 50          # H1 hacktivity API returns max 50 per page
+    h1_scrape_concurrency: int = 1         # concurrent page fetches — be polite
     h1_scrape_delay_seconds: float = 2.0   # delay between requests
     h1_max_pages: int = 0                  # 0 = no limit (scrape all)
 

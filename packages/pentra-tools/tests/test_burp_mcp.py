@@ -128,6 +128,68 @@ class TestProxyEntryParsing:
         entry = ProxyEntry.from_burp_json(raw)
         assert entry.url == "http://x.com/"
 
+    def test_url_extracted_from_raw_http_request_when_url_absent(self):
+        """When Burp omits 'url', reconstruct it from the raw request line + Host header.
+
+        No port/isHttps in raw dict → defaults to port 443 → https scheme.
+        """
+        raw = {
+            "request": "GET /ip HTTP/1.1\r\nHost: httpbin.org\r\nAccept: */*\r\n\r\n",
+            "response": "HTTP/1.1 200 OK\r\n\r\n{}",
+            "notes": "",
+        }
+        entry = ProxyEntry.from_burp_json(raw)
+        assert entry.url == "https://httpbin.org/ip"  # default port=443 → https
+        assert entry.method == "GET"
+
+    def test_url_extracted_with_https_port(self):
+        """Port 443 → https scheme."""
+        raw = {
+            "request": "POST /login HTTP/1.1\r\nHost: secure.example.com\r\n\r\nbody",
+            "response": "HTTP/1.1 302 Found\r\n\r\n",
+            "port": 443,
+            "isHttps": True,
+        }
+        entry = ProxyEntry.from_burp_json(raw)
+        assert entry.url == "https://secure.example.com/login"
+        assert entry.method == "POST"
+
+
+class TestMultiEntryBlobParsing:
+    """Burp sometimes returns multiple JSON objects in one TextContent blob."""
+
+    @pytest.mark.asyncio
+    async def test_multi_entry_blob_parsed_correctly(self):
+        entry1 = json.dumps({
+            "request": "GET /ip HTTP/1.1\r\nHost: httpbin.org\r\n\r\n",
+            "response": "HTTP/1.1 200 OK\r\n\r\n{}",
+            "notes": "",
+            "port": 80,
+            "isHttps": False,
+        })
+        entry2 = json.dumps({
+            "request": "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n",
+            "response": "HTTP/1.1 200 OK\r\n\r\n",
+            "notes": "",
+            "port": 80,
+            "isHttps": False,
+        })
+        blob = entry1 + "\n\n" + entry2  # Burp-style multi-entry blob
+
+        mock_session = AsyncMock()
+        mock_session.call_tool.side_effect = [
+            _make_call_result([blob]),
+            _make_call_result([]),
+        ]
+
+        client = BurpMCPClient()
+        with patch.object(client, "_session", return_value=_mock_session_ctx(mock_session)):
+            entries = await client.get_proxy_history(limit=50)
+
+        assert len(entries) == 2
+        assert entries[0].url == "http://httpbin.org/ip"
+        assert entries[1].url == "http://example.com/"
+
 
 class TestHealthCheck:
     @pytest.mark.asyncio
@@ -417,6 +479,11 @@ class TestBurpIntegration:
             assert entries[0].url
 
     @pytest.mark.asyncio
+    @pytest.mark.xfail(
+        reason="Burp Collaborator requires Pro edition — Community raises BurpNotProError",
+        raises=BurpConnectionError,
+        strict=False,
+    )
     async def test_generate_collaborator_payload(self):
         client = BurpMCPClient()
         cp = await client.generate_collaborator_payload(custom_data="pentra-test")

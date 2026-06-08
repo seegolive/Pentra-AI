@@ -87,7 +87,7 @@ export interface WorkspaceCreate {
 // ── Engagement ────────────────────────────────────────────────────────────────
 
 export type EngagementMode = "semi_auto" | "agentic";
-export type EngagementStatus = "planning" | "active" | "paused" | "completed" | "failed";
+export type EngagementStatus = "planning" | "active" | "awaiting_approval" | "paused" | "completed" | "failed";
 
 export interface Engagement {
   id: string;
@@ -125,6 +125,14 @@ export interface EngagementCreate {
 
 export type FindingStatus = "open" | "confirmed" | "false_positive" | "wont_fix" | "resolved";
 
+export interface ChainInfo {
+  name: string;
+  scenario: string;
+  upgraded_severity?: string | null;
+  business_impact?: string | null;
+  chain_size?: number | null;
+}
+
 export interface Finding {
   id: string;
   engagement_id: string;
@@ -132,12 +140,15 @@ export interface Finding {
   vuln_class: string;
   severity: Severity;
   cvss_score: number | null;
+  cvss_vector?: string | null;
   target_url: string;
   http_method: string;
   status: FindingStatus;
   discovered_by: string;
   discovered_at: string;
   description?: string | null;
+  impact?: string | null;
+  remediation?: string | null;
   cve_ids: string[];
   cve_data?: {
     cve_id: string;
@@ -149,20 +160,33 @@ export interface Finding {
     references: string[];
     cpe: string[];
   } | null;
+  chains?: ChainInfo[] | null;
 }
 
 // ── Live Feed ─────────────────────────────────────────────────────────────────
 
 export type FeedEventType =
   | "ping"
+  // legacy / generic
   | "agent_start"
   | "agent_step"
   | "agent_complete"
+  | "error"
+  // actual backend events (service.py)
+  | "NODE_START"
+  | "NODE_COMPLETE"
   | "AWAITING_APPROVAL"
-  | "error";
+  | "FINDINGS_UPDATED"
+  | "LLM_STREAM";
 
 export interface FeedEvent {
   type: FeedEventType;
+  /** Node name (present on NODE_* and LLM_STREAM events) */
+  node?: string;
+  /** Single LLM token (LLM_STREAM events) */
+  token?: string;
+  /** Finding count delta (FINDINGS_UPDATED events) */
+  count?: number;
   data?: Record<string, unknown>;
   message?: string;
   timestamp?: string;

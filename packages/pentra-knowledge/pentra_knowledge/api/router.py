@@ -8,7 +8,7 @@ Endpoints:
 """
 
 from uuid import UUID, uuid4
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -107,7 +107,7 @@ async def inject_knowledge(
             detail=f"Record with source_id '{payload.source_id}' already exists",
         )
 
-    now = datetime.utcnow()  # noqa: DTZ003 — naive UTC for asyncpg 0.31
+    now = datetime.now(timezone.utc)
     record_id = uuid4()
 
     await repo.create(
@@ -178,7 +178,7 @@ async def inject_knowledge_raw(
             detail=f"Record with source_id '{source_id}' already exists",
         )
 
-    now = datetime.utcnow()  # noqa: DTZ003
+    now = datetime.now(timezone.utc)
     record_id = uuid4()
 
     # Save minimal record immediately — LLM will fill the rest
@@ -326,8 +326,8 @@ Extract this JSON:
                 raw = parts[1].lstrip("json").strip() if len(parts) >= 2 else ""
             llm = json.loads(raw)
 
-        from datetime import datetime
-        now = datetime.utcnow()  # noqa: DTZ003
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
         await repo.update(record_id, {
             "updated_at": now,
             "vuln_class": llm.get("vuln_class", "other"),

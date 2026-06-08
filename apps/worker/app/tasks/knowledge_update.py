@@ -22,7 +22,7 @@ import asyncio
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
@@ -273,7 +273,7 @@ async def _run_reextract_sparse(batch_size: int, max_records: int) -> dict[str, 
 
     stats = {"processed": 0, "updated": 0, "re_embedded": 0, "errors": 0}
     semaphore = asyncio.Semaphore(3)
-    now = datetime.utcnow()  # noqa: DTZ003
+    now = datetime.now(timezone.utc)
 
     offset = 0
     async with httpx.AsyncClient(base_url=kb.ollama_url) as llm_client:

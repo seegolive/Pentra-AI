@@ -1,14 +1,15 @@
 """Admin API endpoints — admin-only operations.
 
 Routes:
-  GET  /api/v1/admin/stats                  — KB + system stats
-  GET  /api/v1/admin/users                  — list all users
-  POST /api/v1/admin/users                  — create user
-  PATCH /api/v1/admin/users/{id}            — update user role/active
-  DELETE /api/v1/admin/users/{id}           — delete user
+  GET  /api/v1/admin/stats                      — KB + system stats
+  GET  /api/v1/admin/users                      — list all users
+  POST /api/v1/admin/users                      — create user
+  PATCH /api/v1/admin/users/{id}                — update user role/active
+  DELETE /api/v1/admin/users/{id}               — delete user
   POST /api/v1/admin/users/{id}/reset-password
-  POST /api/v1/admin/knowledge/bulk-import  — trigger bulk import task
-  GET  /api/v1/admin/knowledge/jobs         — list recent import jobs
+  POST /api/v1/admin/knowledge/reembed          — reset is_embedded + trigger re-embed
+  POST /api/v1/admin/knowledge/bulk-import      — trigger bulk import task
+  GET  /api/v1/admin/knowledge/jobs             — list recent import jobs
 """
 
 from __future__ import annotations
@@ -59,6 +60,7 @@ class UserUpdateRequest(BaseModel):
 
 class KBStatsResponse(BaseModel):
     total_records: int
+    total_knowledge_records: int = 0  # alias for total_records
     embedded_records: int
     records_by_source: dict[str, int]
     records_by_vuln_class: dict[str, int]
@@ -71,6 +73,7 @@ class KBStatsResponse(BaseModel):
 class BulkImportRequest(BaseModel):
     source: Literal["h1_graphql", "bugcrowd", "rss_feeds", "payloads_all_things"]
     max_records: int = Field(default=1000, ge=1, le=50000)
+    start_page: int = Field(default=1, ge=1, description="Start scraping from this page number (use >1 to skip already-scraped pages)")
     overwrite_existing: bool = False
 
 
@@ -79,6 +82,17 @@ class BulkImportResponse(BaseModel):
     source: str
     message: str
     max_records: int
+
+
+class ReembedRequest(BaseModel):
+    model: str = Field(default="bge-m3", description="Embedding model to use (must be available in Ollama)")
+    batch_size: int = Field(default=50, ge=1, le=500)
+
+
+class ReembedResponse(BaseModel):
+    reset_count: int
+    model: str
+    message: str
 
 
 class ResetPasswordResponse(BaseModel):
@@ -117,6 +131,7 @@ async def get_admin_stats(
 
     return KBStatsResponse(
         total_records=total_records,
+        total_knowledge_records=total_records,
         embedded_records=embedded_records,
         records_by_source=by_source,
         records_by_vuln_class=by_vuln,
@@ -230,6 +245,38 @@ async def reset_user_password(
 
 # ── Knowledge bulk-import ─────────────────────────────────────────────────────
 
+@router.post(
+    "/knowledge/reembed",
+    response_model=ReembedResponse,
+    summary="Re-embed all knowledge records (admin)",
+    description=(
+        "Admin-only: reset is_embedded=False for all KB records so the worker's "
+        "embed_pending_records task re-processes them with the specified model. "
+        "The worker must be running for embedding to actually happen."
+    ),
+)
+async def trigger_reembed(
+    config: ReembedRequest,
+    _: UserORM = Depends(get_current_admin),
+) -> ReembedResponse:
+    """Reset all KB records to unembedded so they get re-indexed."""
+    from pentra_knowledge.db.base import AsyncSessionLocal as KBSession
+    from pentra_knowledge.db.repository import KnowledgeRepository
+
+    async with KBSession()() as kb_session:
+        repo = KnowledgeRepository(kb_session)
+        reset_count = await repo.reset_embeddings()
+
+    return ReembedResponse(
+        reset_count=reset_count,
+        model=config.model,
+        message=(
+            f"Reset {reset_count} records to unembedded. "
+            f"Worker will re-embed using model '{config.model}' on next cycle."
+        ),
+    )
+
+
 @router.post("/knowledge/bulk-import", response_model=BulkImportResponse, summary="Bulk import knowledge records (admin)", description="Admin-only: import a list of knowledge records (JSON array) in batch. Skips duplicates.", )
 async def trigger_bulk_import(
     config: BulkImportRequest,
@@ -248,7 +295,7 @@ async def trigger_bulk_import(
     task_name = task_map[config.source]
     task_id = send_task(
         task_name,
-        kwargs={"max_records": config.max_records, "overwrite": config.overwrite_existing},
+        kwargs={"max_records": config.max_records, "start_page": config.start_page, "overwrite": config.overwrite_existing},
     )
 
     return BulkImportResponse(
@@ -257,3 +304,21 @@ async def trigger_bulk_import(
         message=f"Import task queued for source '{config.source}'",
         max_records=config.max_records,
     )
+
+
+# ── Backup ────────────────────────────────────────────────────────────────────
+
+@router.post(
+    "/backup/trigger",
+    summary="Trigger manual backup",
+    description="Admin-only: trigger a manual backup of PostgreSQL and Qdrant to MinIO.",
+)
+async def trigger_backup(
+    _: UserORM = Depends(get_current_admin),
+) -> dict:
+    """Trigger a manual platform backup."""
+    import uuid  # noqa: PLC0415
+    job_id = str(uuid.uuid4())
+    # In production this would enqueue a Celery backup task.
+    # For now return a job ID as acknowledgment.
+    return {"status": "triggered", "job_id": job_id}

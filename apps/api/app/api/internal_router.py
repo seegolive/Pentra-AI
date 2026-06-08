@@ -38,7 +38,7 @@ def verify_internal_token(
         )
     if x_internal_token != expected:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid internal token",
         )
 
@@ -57,9 +57,11 @@ class FindingPayload(BaseModel):
     impact: str | None = None
     remediation: str | None = None
     cvss_score: float | None = None
+    cvss_vector: str | None = None
     reproduction_steps: list = Field(default_factory=list)
     knowledge_refs: list = Field(default_factory=list)
     cve_ids: list = Field(default_factory=list)
+    chains: list | None = None
     discovered_by: str = "agent"
 
 
@@ -134,9 +136,11 @@ async def bulk_create_findings(
             impact=f.impact,
             remediation=f.remediation,
             cvss_score=f.cvss_score,
+            cvss_vector=f.cvss_vector,
             reproduction_steps=f.reproduction_steps,
             knowledge_refs=f.knowledge_refs,
             cve_ids=f.cve_ids,
+            chains=f.chains,
             discovered_by=f.discovered_by,
             discovered_at=datetime.now(timezone.utc).replace(tzinfo=None),
             status="new",

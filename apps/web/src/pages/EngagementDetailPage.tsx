@@ -2,10 +2,10 @@ import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import {
   ChevronRight,
+  ChevronDown,
   Loader2,
   Play,
   CheckCircle2,
-  XCircle,
   SkipForward,
   Wifi,
   WifiOff,
@@ -14,8 +14,12 @@ import {
   ScrollText,
   Activity,
   Download,
+  Zap,
+  Cpu,
+  ListChecks,
+  AlertCircle,
 } from "lucide-react";
-import { useEngagement, useStartEngagement, useApproveAction, useFindings, downloadEngagementExport } from "../lib/api";
+import { useEngagement, useStartEngagement, useApproveAction, useFindings, downloadEngagementExport, useUpdateEngagementMode, useWorkspaces, useMonitoringAlerts } from "../lib/api";
 import { MonitoringPanel } from "../components/monitoring/MonitoringPanel";
 import { FindingsTable } from "../components/findings/FindingsTable";
 import { ReportViewer } from "../components/engagement/ReportViewer";
@@ -23,35 +27,181 @@ import type { FeedEvent, EngagementStatus } from "../lib/types";
 import { useEngagementFeed } from "../hooks/useEngagementFeed";
 import { cn } from "../lib/utils";
 
-// ── Feed event row ─────────────────────────────────────────────────────────────
+// ── Feed helpers ──────────────────────────────────────────────────────────────
+
+const NODE_LABELS: Record<string, string> = {
+  plan: "Planning",
+  hitl_plan: "Plan Review",
+  recon: "Reconnaissance",
+  hitl_recon: "Recon Review",
+  vuln_hunt: "Vulnerability Hunt",
+  hitl_exploit: "Exploit Review",
+  report: "Report Generation",
+};
+
+const TYPE_META: Record<
+  string,
+  { label: string; color: string; icon: React.ReactNode }
+> = {
+  NODE_START: {
+    label: "Node start",
+    color: "text-blue-400",
+    icon: <Play className="h-3 w-3" />,
+  },
+  NODE_COMPLETE: {
+    label: "Node done",
+    color: "text-emerald-400",
+    icon: <CheckCircle2 className="h-3 w-3" />,
+  },
+  FINDINGS_UPDATED: {
+    label: "Findings",
+    color: "text-orange-400",
+    icon: <ListChecks className="h-3 w-3" />,
+  },
+  AWAITING_APPROVAL: {
+    label: "Approval",
+    color: "text-yellow-400",
+    icon: <ShieldAlert className="h-3 w-3" />,
+  },
+  LLM_STREAM: {
+    label: "LLM",
+    color: "text-violet-400",
+    icon: <Cpu className="h-3 w-3" />,
+  },
+  error: {
+    label: "Error",
+    color: "text-red-400",
+    icon: <AlertCircle className="h-3 w-3" />,
+  },
+  agent_start: {
+    label: "Start",
+    color: "text-green-400",
+    icon: <Play className="h-3 w-3" />,
+  },
+  agent_step: {
+    label: "Step",
+    color: "text-blue-400",
+    icon: <Activity className="h-3 w-3" />,
+  },
+  agent_complete: {
+    label: "Complete",
+    color: "text-emerald-400",
+    icon: <CheckCircle2 className="h-3 w-3" />,
+  },
+};
+
+// ── Grouped item type ─────────────────────────────────────────────────────────
+
+type FeedGroup =
+  | { kind: "single"; event: FeedEvent }
+  | { kind: "llm"; node: string; tokens: string[]; timestamp?: string };
+
+/** Collapse consecutive LLM_STREAM tokens from the same node into groups.
+ *  Input arrives newest-first (as stored in state). */
+function groupFeedEvents(events: FeedEvent[]): FeedGroup[] {
+  const result: FeedGroup[] = [];
+  // events are newest-first; iterate in reverse (oldest-first) to detect runs
+  const reversed = [...events].reverse();
+
+  for (const ev of reversed) {
+    if (ev.type === "LLM_STREAM") {
+      const last = result[result.length - 1];
+      if (last?.kind === "llm" && last.node === (ev.node ?? "")) {
+        last.tokens.push(ev.token ?? "");
+        if (ev.timestamp) last.timestamp = ev.timestamp;
+      } else {
+        result.push({
+          kind: "llm",
+          node: ev.node ?? "",
+          tokens: [ev.token ?? ""],
+          timestamp: ev.timestamp,
+        });
+      }
+    } else {
+      result.push({ kind: "single", event: ev });
+    }
+  }
+
+  return result.reverse(); // back to newest-first
+}
+
+// ── LLM stream group row ──────────────────────────────────────────────────────
+
+function LLMStreamGroup({ group }: { group: Extract<FeedGroup, { kind: "llm" }> }) {
+  const [expanded, setExpanded] = useState(false);
+  const text = group.tokens.join("");
+  const label = NODE_LABELS[group.node] ?? group.node ?? "LLM";
+  const preview = text.slice(0, 80).replace(/\n/g, " ");
+
+  return (
+    <div className="border-b border-border/30 last:border-0">
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-start gap-2 py-1.5 px-2 hover:bg-white/5 rounded text-xs font-mono text-left"
+      >
+        <span className="flex-shrink-0 mt-0.5 text-violet-400">
+          <Cpu className="h-3 w-3" />
+        </span>
+        <span className="flex-1 min-w-0">
+          <span className="text-violet-400 font-medium">{label}</span>
+          <span className="text-muted-foreground ml-2">
+            LLM · {group.tokens.length} tokens
+          </span>
+          {!expanded && (
+            <span className="block text-muted-foreground/70 truncate text-[10px] mt-0.5">
+              {preview}{text.length > 80 ? "…" : ""}
+            </span>
+          )}
+        </span>
+        <span className="flex items-center gap-1 flex-shrink-0 text-muted-foreground">
+          {group.timestamp && (
+            <span className="text-[10px]">
+              {new Date(group.timestamp).toLocaleTimeString()}
+            </span>
+          )}
+          <ChevronDown
+            className={cn(
+              "h-3 w-3 transition-transform",
+              expanded && "rotate-180"
+            )}
+          />
+        </span>
+      </button>
+      {expanded && (
+        <div className="mx-2 mb-1.5 px-3 py-2 rounded bg-violet-500/5 border border-violet-500/20 text-[11px] font-mono text-foreground/80 whitespace-pre-wrap leading-relaxed max-h-80 overflow-auto">
+          {text}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Single event row ──────────────────────────────────────────────────────────
 
 function FeedRow({ event }: { event: FeedEvent }) {
-  const typeColors: Record<string, string> = {
-    agent_start: "text-green-400",
-    agent_step: "text-blue-400",
-    agent_complete: "text-emerald-400",
-    AWAITING_APPROVAL: "text-yellow-400 font-semibold",
-    error: "text-red-400",
-  };
+  const meta = TYPE_META[event.type];
+  const color = meta?.color ?? "text-muted-foreground";
+  const icon = meta?.icon ?? <Activity className="h-3 w-3" />;
 
-  const typeIcons: Record<string, React.ReactNode> = {
-    agent_start: <Play className="h-3 w-3" />,
-    agent_step: <Activity className="h-3 w-3" />,
-    agent_complete: <CheckCircle2 className="h-3 w-3" />,
-    AWAITING_APPROVAL: <ShieldAlert className="h-3 w-3" />,
-    error: <XCircle className="h-3 w-3" />,
-  };
-
-  const colorClass = typeColors[event.type] ?? "text-muted-foreground";
+  let label = event.message;
+  if (!label) {
+    if (event.type === "NODE_START" && event.node) {
+      label = `▶ ${NODE_LABELS[event.node] ?? event.node}`;
+    } else if (event.type === "NODE_COMPLETE" && event.node) {
+      label = `✓ ${NODE_LABELS[event.node] ?? event.node}`;
+    } else if (event.type === "FINDINGS_UPDATED") {
+      label = `${event.count ?? "?"} finding(s) discovered`;
+    } else {
+      label = meta?.label ?? event.type;
+    }
+  }
 
   return (
     <div className="flex items-start gap-2 py-1.5 px-2 hover:bg-white/5 rounded text-xs font-mono border-b border-border/30 last:border-0">
-      <span className={cn("flex-shrink-0 mt-0.5", colorClass)}>
-        {typeIcons[event.type] ?? <Activity className="h-3 w-3" />}
-      </span>
-      <span className={cn("flex-1", colorClass)}>
-        {event.message ?? event.type}
-        {event.data && (
+      <span className={cn("flex-shrink-0 mt-0.5", color)}>{icon}</span>
+      <span className={cn("flex-1", color)}>
+        {label}
+        {event.data && Object.keys(event.data).length > 0 && (
           <span className="text-muted-foreground ml-2 text-[10px]">
             {JSON.stringify(event.data).slice(0, 120)}
           </span>
@@ -173,10 +323,19 @@ export default function EngagementDetailPage() {
   }
 
   const { data: engagement, isLoading } = useEngagement(engagementId);
+  const { data: workspaces } = useWorkspaces();
+  const workspace = workspaces?.find((w) => w.id === engagement?.workspace_id);
   const startMutation = useStartEngagement(engagementId!);
+  const modeMutation = useUpdateEngagementMode(engagementId!);
   const { events, pendingApproval, connected, clearApproval } = useEngagementFeed(
-    engagement?.status === "active" ? engagementId : undefined
+    (engagement?.status === "active" || engagement?.status === "awaiting_approval") ? engagementId : undefined
   );
+
+  // Counters for tab badges
+  const { data: findings } = useFindings(engagementId ?? "");
+  const { data: unreadAlerts } = useMonitoringAlerts(engagementId ?? "", { is_read: false });
+  const findingsCount = findings?.length ?? 0;
+  const alertCount = unreadAlerts?.length ?? 0;
 
   if (isLoading) {
     return (
@@ -198,6 +357,7 @@ export default function EngagementDetailPage() {
   const statusColor: Record<EngagementStatus, string> = {
     planning: "text-slate-400",
     active: "text-green-400",
+    awaiting_approval: "text-yellow-400",
     paused: "text-yellow-400",
     completed: "text-blue-400",
     failed: "text-red-400",
@@ -214,6 +374,19 @@ export default function EngagementDetailPage() {
           >
             Workspaces
           </button>
+          {workspace && (
+            <>
+              <ChevronRight className="h-3.5 w-3.5" />
+              <button
+                onClick={() =>
+                  navigate(`/workspaces/${workspace.id}/engagements`)
+                }
+                className="hover:text-foreground transition-colors"
+              >
+                {workspace.name}
+              </button>
+            </>
+          )}
           <ChevronRight className="h-3.5 w-3.5" />
           <button
             onClick={() => navigate(-1)}
@@ -250,6 +423,34 @@ export default function EngagementDetailPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Auto Approve toggle — visible when engagement is active or awaiting approval */}
+            {(engagement.status === "active" || engagement.status === "awaiting_approval") && (
+              <button
+                onClick={() => {
+                  const next = engagement.mode === "agentic" ? "semi_auto" : "agentic";
+                  modeMutation.mutate(next);
+                }}
+                disabled={modeMutation.isPending}
+                title={
+                  engagement.mode === "agentic"
+                    ? "Auto Approve is ON — click to require manual approval"
+                    : "Click to enable Auto Approve (agentic mode, no HITL prompts)"
+                }
+                className={cn(
+                  "flex items-center gap-2 px-3 py-2 border rounded-md text-sm font-medium transition-colors",
+                  engagement.mode === "agentic"
+                    ? "border-yellow-500/60 text-yellow-400 bg-yellow-500/10 hover:bg-yellow-500/20"
+                    : "border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+                )}
+              >
+                {modeMutation.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Zap className={cn("h-3.5 w-3.5", engagement.mode === "agentic" ? "fill-yellow-400" : "")} />
+                )}
+                {engagement.mode === "agentic" ? "Auto Approve ON" : "Auto Approve"}
+              </button>
+            )}
             <button
               onClick={handleExport}
               disabled={exporting}
@@ -304,11 +505,31 @@ export default function EngagementDetailPage() {
       {/* Tab bar */}
       <div className="flex border-b border-border px-8 flex-shrink-0 bg-background/50">
         {[
-          { key: "feed" as Tab, label: "Live Feed", icon: <Activity className="h-3.5 w-3.5" /> },
-          { key: "findings" as Tab, label: "Findings", icon: <Bug className="h-3.5 w-3.5" /> },
-          { key: "monitoring" as Tab, label: "Monitoring", icon: <ShieldAlert className="h-3.5 w-3.5" /> },
-          { key: "reports" as Tab, label: "Reports", icon: <Download className="h-3.5 w-3.5" /> },
-        ].map(({ key, label, icon }) => (
+          {
+            key: "feed" as Tab,
+            label: "Live Feed",
+            icon: <Activity className="h-3.5 w-3.5" />,
+            count: events.length > 0 ? events.length : undefined,
+          },
+          {
+            key: "findings" as Tab,
+            label: "Findings",
+            icon: <Bug className="h-3.5 w-3.5" />,
+            count: findingsCount > 0 ? findingsCount : undefined,
+          },
+          {
+            key: "monitoring" as Tab,
+            label: "Monitoring",
+            icon: <ShieldAlert className="h-3.5 w-3.5" />,
+            count: alertCount > 0 ? alertCount : undefined,
+          },
+          {
+            key: "reports" as Tab,
+            label: "Reports",
+            icon: <Download className="h-3.5 w-3.5" />,
+            count: undefined,
+          },
+        ].map(({ key, label, icon, count }) => (
           <button
             key={key}
             onClick={() => setTab(key)}
@@ -321,6 +542,18 @@ export default function EngagementDetailPage() {
           >
             {icon}
             {label}
+            {count !== undefined && (
+              <span
+                className={cn(
+                  "inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-[10px] font-semibold",
+                  tab === key
+                    ? "bg-primary/20 text-primary"
+                    : "bg-muted text-muted-foreground"
+                )}
+              >
+                {count}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -342,9 +575,13 @@ export default function EngagementDetailPage() {
               </div>
             ) : (
               <div className="flex-1 overflow-auto rounded-lg bg-background border border-border p-2">
-                {events.map((ev, idx) => (
-                  <FeedRow key={idx} event={ev} />
-                ))}
+                {groupFeedEvents(events).map((group, idx) =>
+                  group.kind === "llm" ? (
+                    <LLMStreamGroup key={idx} group={group} />
+                  ) : (
+                    <FeedRow key={idx} event={group.event} />
+                  )
+                )}
               </div>
             )}
           </div>

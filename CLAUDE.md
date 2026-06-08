@@ -651,20 +651,28 @@ def test_scope_enforcer_blocks_out_of_scope():
 Focus exclusively on `packages/pentra-knowledge/` until Phase 1 is complete.
 
 **Phase 1 tasks in order:**
-1. `[ ]` Monorepo scaffold (Turborepo + uv workspaces)
-2. `[ ]` `pentra-shared` — core Pydantic types (VulnClass, Severity, KnowledgeRecord)
-3. `[ ]` `pentra-knowledge` — PostgreSQL schema + Alembic migration
-4. `[ ]` `pentra-knowledge` — seed data importer (reddelexc CSV format)
-5. `[ ]` `pentra-knowledge` — LLM extraction pipeline (key_insight, technique, indicators)
-6. `[ ]` `pentra-knowledge` — BGE-M3 embedding via Ollama
-7. `[ ]` `pentra-knowledge` — Qdrant collection setup + hybrid indexing
-8. `[ ]` `pentra-knowledge` — hybrid search service
-9. `[ ]` `pentra-knowledge` — FastAPI router (search, get, list endpoints)
-10. `[ ]` `apps/worker` — H1 GraphQL scraper (Celery task)
-11. `[ ]` `apps/worker` — manual knowledge inject API
-12. `[ ]` `apps/web` — KB Browser UI (read-only, search + filter + detail)
+1. `[x]` Monorepo scaffold (Turborepo + uv workspaces)
+2. `[x]` `pentra-shared` — core Pydantic types (VulnClass, Severity, KnowledgeRecord)
+3. `[x]` `pentra-knowledge` — PostgreSQL schema + Alembic migration
+4. `[x]` `pentra-knowledge` — seed data importer (reddelexc CSV format)
+5. `[x]` `pentra-knowledge` — LLM extraction pipeline (key_insight, technique, indicators)
+6. `[x]` `pentra-knowledge` — BGE-M3 embedding via Ollama (using qwen2.5:32b fallback; bge-m3 pending install)
+7. `[x]` `pentra-knowledge` — Qdrant collection setup + hybrid indexing
+8. `[x]` `pentra-knowledge` — hybrid search service
+9. `[x]` `pentra-knowledge` — FastAPI router (search, get, list endpoints)
+10. `[x]` `apps/worker` — H1 GraphQL scraper (Celery task) — 1004+ records in DB, scaling to 3000+
+11. `[x]` `apps/worker` — manual knowledge inject API
+12. `[x]` `apps/web` — KB Browser UI (read-only, search + filter + detail)
 
-**Do not start Phase 2 (Agent Engine) until Phase 1 tasks are all checked.**
+**Phase 1 COMPLETE. Phase 2 (Agent Engine) is active.**
+
+**Sprint 17 tasks:**
+- `[x]` 17.1 — DO NOT STOP routing (`hunt_rounds` + `route_after_triage()`) — 6/6 tests passing
+- `[ ]` 17.2 — E2E-v16 Live Run (manual validation)
+- `[x]` 17.3 — Frontend BLOK 6 Smoke Test (10/10 playwright tests passing, ST-6.1/2/3/4/5)
+- `[x]` 17.5 — E2E Playwright BLOK 6 — 3/3 tests passing
+- `[ ]` bge-m3 install → re-embed all records for better semantic search quality
+- `[ ]` KB scale: scraping pages 21–60 → ~3000 records (in progress, task 98d8624f)
 
 ---
 

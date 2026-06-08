@@ -3,9 +3,6 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import {
   ShieldCheck,
-  User,
-  Cpu,
-  Database,
   CheckCircle2,
   XCircle,
   Loader2,

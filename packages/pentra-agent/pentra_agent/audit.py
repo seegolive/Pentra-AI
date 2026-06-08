@@ -51,17 +51,23 @@ async def write_audit_log(
             await conn.execute(
                 text(
                     "INSERT INTO audit_logs (engagement_id, actor, action, detail, created_at) "
-                    "VALUES (:engagement_id::uuid, :actor, :action, :detail::jsonb, :created_at)"
+                    "VALUES (CAST(:engagement_id AS uuid), :actor, :action, CAST(:detail AS jsonb), :created_at)"
                 ),
                 {
                     "engagement_id": engagement_id,
                     "actor": actor,
                     "action": action,
                     "detail": json.dumps(detail or {}),
-                    "created_at": datetime.now(UTC),
+                    "created_at": datetime.now(UTC).replace(tzinfo=None),
                 },
             )
         await engine.dispose()
         log.debug("[audit] %s / %s / %s", engagement_id, actor, action)
     except Exception as exc:  # noqa: BLE001
+        exc_str = str(exc)
+        # FK violation = engagement doesn't exist in DB (e.g. live_scan.py script mode).
+        # This is expected when running outside the API — skip silently, no spam.
+        if "ForeignKeyViolationError" in exc_str or "foreign key" in exc_str.lower():
+            log.debug("[audit] skipping audit_log — engagement %s not in DB (script mode)", engagement_id)
+            return
         log.warning("[audit] write_audit_log failed (non-fatal): %s", exc)

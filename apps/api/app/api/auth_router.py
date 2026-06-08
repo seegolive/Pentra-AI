@@ -1,10 +1,11 @@
-"""Auth endpoints: register, login, refresh, /me.
+"""Auth endpoints: register, login, refresh, /me, change-password.
 
 Routes:
-  POST /api/v1/auth/register   create account
-  POST /api/v1/auth/login      get access + refresh tokens
-  POST /api/v1/auth/refresh    rotate refresh token
-  GET  /api/v1/auth/me         current user info
+  POST /api/v1/auth/register         create account
+  POST /api/v1/auth/login            get access + refresh tokens
+  POST /api/v1/auth/refresh          rotate refresh token
+  GET  /api/v1/auth/me               current user info
+  POST /api/v1/auth/change-password  update own password
 """
 
 from __future__ import annotations
@@ -170,3 +171,28 @@ async def get_me(current_user: UserORM = Depends(get_current_user)) -> UserRespo
         email=current_user.email,
         is_admin=current_user.is_admin,
     )
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8)
+
+
+@router.post(
+    "/change-password",
+    status_code=204,
+    summary="Change own password",
+    description="Verify the current password then replace it with a new one.",
+)
+async def change_password(
+    data: ChangePasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserORM = Depends(get_current_user),
+) -> None:
+    if not verify_password(data.current_password, current_user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+    current_user.hashed_password = hash_password(data.new_password)
+    await db.commit()

@@ -1,5 +1,6 @@
 import axios from "axios";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toastError } from "./toast";
 import type {
   KnowledgeRecord,
   KnowledgeSummary,
@@ -17,7 +18,7 @@ import type {
 } from "./types";
 import { useAuthStore } from "./authStore";
 
-const apiClient = axios.create({
+export const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? "http://localhost:8000",
   timeout: 15_000,
 });
@@ -37,6 +38,12 @@ apiClient.interceptors.response.use(
   (err) => {
     if (err.response?.status === 401) {
       useAuthStore.getState().logout();
+    } else if (err.response?.status >= 500) {
+      const msg =
+        err.response?.data?.detail ??
+        err.response?.data?.message ??
+        "Server error";
+      toastError("API Error", typeof msg === "string" ? msg : JSON.stringify(msg));
     }
     return Promise.reject(err);
   }
@@ -232,6 +239,20 @@ export function useApproveAction(id: string) {
   return useMutation<{ status: string }, Error, HitlDecision>({
     mutationFn: async (decision) => {
       const res = await apiClient.post<{ status: string }>(`/api/v1/engagements/${id}/approve`, decision);
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["engagement", id] }),
+  });
+}
+
+export function useUpdateEngagementMode(id: string) {
+  const qc = useQueryClient();
+  return useMutation<{ status: string; mode: string; auto_resumed: boolean }, Error, "semi_auto" | "agentic">({
+    mutationFn: async (mode) => {
+      const res = await apiClient.patch<{ status: string; mode: string; auto_resumed: boolean }>(
+        `/api/v1/engagements/${id}/mode`,
+        { mode }
+      );
       return res.data;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["engagement", id] }),
@@ -518,3 +539,39 @@ export function useSnapshotDiff(
     enabled: !!engagementId && !!snapshotA && !!snapshotB,
   });
 }
+
+// ── Version ──────────────────────────────────────────────────────────────────
+
+export interface VersionInfo {
+  version: string;
+  phase: string;
+  build_date: string;
+}
+
+export function useVersionInfo() {
+  return useQuery<VersionInfo>({
+    queryKey: ["version"],
+    queryFn: async () => {
+      const res = await apiClient.get<VersionInfo>("/api/v1/version");
+      return res.data;
+    },
+    staleTime: Infinity, // version doesn't change while running
+  });
+}
+
+// ── Settings ─────────────────────────────────────────────────────────────────
+
+export interface ChangePasswordRequest {
+  current_password: string;
+  new_password: string;
+}
+
+export function useChangePassword() {
+  return useMutation<void, Error, ChangePasswordRequest>({
+    mutationFn: async (data) => {
+      await apiClient.post("/api/v1/auth/change-password", data);
+    },
+  });
+}
+
+

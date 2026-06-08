@@ -38,6 +38,7 @@ class FindingReport(BaseModel):
     severity: str          # critical / high / medium / low / info
     vuln_class: str
     cvss_score: float | None = None
+    cvss_vector: str | None = None
     target_url: str
     http_method: str = "GET"
     description: str = ""
@@ -165,13 +166,41 @@ class ReportGenerator:
         return weasyprint.HTML(string=html).write_pdf()
 
     def _render_h1(self, data: ReportData) -> str:
-        """Render one HackerOne report per finding (joined with ---).
+        """Render HackerOne submission format as a JSON array (one object per finding).
 
-        HackerOne format: Title, Severity, Summary, Steps to Reproduce,
-        Impact, Supporting Material.
+        Returns JSON string containing list of dicts with keys:
+        title, severity, steps, impact, cvss_score, cvss_vector, target_url, vuln_class
         """
+        import json  # noqa: PLC0415
         tmpl = self._env.get_template("report_h1.md.j2")
-        parts = []
+        results = []
         for finding in data.open_findings:
-            parts.append(tmpl.render(finding=finding, data=data))
-        return "\n\n---\n\n".join(parts) if parts else "# No open findings to report."
+            md_body = tmpl.render(finding=finding, data=data)
+            # Extract steps section from markdown for the steps field
+            steps_lines = []
+            in_steps = False
+            for line in md_body.splitlines():
+                if "### Steps to Reproduce" in line:
+                    in_steps = True
+                    continue
+                if in_steps and line.startswith("### "):
+                    break
+                if in_steps and line.strip():
+                    steps_lines.append(line.strip())
+            results.append({
+                "title": finding.title,
+                "severity": finding.severity,
+                "vuln_class": finding.vuln_class,
+                "target_url": finding.target_url,
+                "cvss_score": finding.cvss_score,
+                "cvss_vector": finding.cvss_vector,
+                "description": finding.description,
+                "steps": steps_lines or finding.reproduction_steps,
+                "impact": f"This {finding.severity}-severity {finding.vuln_class} vulnerability poses a security risk.",
+                "request_raw": finding.request_raw,
+                "response_raw": finding.response_raw[:500] if finding.response_raw else "",
+                "status": finding.status,
+                "discovered_by": finding.discovered_by,
+                "discovered_at": finding.discovered_at,
+            })
+        return json.dumps(results, indent=2)

@@ -10,7 +10,7 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import HTMLResponse, PlainTextResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -63,6 +63,7 @@ async def get_report(
             severity=f.severity,
             vuln_class=f.vuln_class,
             cvss_score=f.cvss_score,
+            cvss_vector=f.cvss_vector,
             target_url=f.target_url or "",
             http_method=f.http_method or "GET",
             description=f.description or "",
@@ -71,7 +72,7 @@ async def get_report(
             response_raw=f.response_raw or "",
             status=f.status or "open",
             discovered_by=f.discovered_by or "",
-            discovered_at=str(f.created_at)[:10] if f.created_at else "",
+            discovered_at=str(f.discovered_at)[:10] if f.discovered_at else "",
         )
         for f in findings_orm
     ]
@@ -102,5 +103,8 @@ async def get_report(
         )
     elif fmt == ReportFormat.HTML:
         return HTMLResponse(content=output)
+    elif fmt == ReportFormat.H1:
+        import json  # noqa: PLC0415
+        return JSONResponse(content=json.loads(output))
     else:
         return PlainTextResponse(content=output)

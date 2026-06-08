@@ -14,7 +14,8 @@ import {
   Check,
 } from "lucide-react";
 import { useSubmitFindingToKB, useGeneratePayloads } from "../../lib/api";
-import type { Finding, FindingStatus, Severity, GeneratedPayload } from "../../lib/types";
+import type { GeneratedPayload } from "../../lib/api";
+import type { Finding, FindingStatus, Severity } from "../../lib/types";
 import { cn } from "../../lib/utils";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -55,7 +56,7 @@ const STATUS_STYLES: Record<FindingStatus, string> = {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function SortIcon({ field, active, dir }: { field: string; active: boolean; dir: SortDir }) {
+function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
   if (!active) return <ChevronsUpDown className="h-3 w-3 opacity-30" />;
   return dir === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />;
 }
@@ -375,7 +376,7 @@ export function FindingsTable({ findings }: FindingsTableProps) {
                   >
                     <span className="flex items-center gap-1">
                       {label}
-                      <SortIcon field={field} active={sortField === field} dir={sortDir} />
+                      <SortIcon active={sortField === field} dir={sortDir} />
                     </span>
                   </th>
                 ))}

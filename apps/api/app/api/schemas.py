@@ -36,7 +36,7 @@ class EngagementCreate(BaseModel):
     mode: Literal["semi_auto", "agentic"] = "semi_auto"
     in_scope: list[str] = Field(min_length=1)
     out_of_scope: list[str] = Field(default_factory=list)
-    llm_model: str = Field(default="qwen2.5-coder:32b")
+    llm_model: str = Field(default="qwen2.5:32b")
     opsec_mode: bool = False
     request_jitter_ms: int = Field(default=0, ge=0, le=30_000)
 
@@ -81,6 +81,7 @@ class FindingResponse(BaseModel):
     vuln_class: str
     severity: str
     cvss_score: float | None
+    cvss_vector: str | None = None
     target_url: str
     http_method: str
     status: str
@@ -89,6 +90,9 @@ class FindingResponse(BaseModel):
     description: str | None = None
     cve_ids: list[str] = []
     cve_data: dict | None = None
+    chains: list | None = None
+    impact: str | None = None
+    remediation: str | None = None
 
 
 # ── Export / Import ───────────────────────────────────────────────────────────

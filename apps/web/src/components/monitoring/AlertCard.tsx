@@ -84,9 +84,9 @@ export function AlertCard({ alert, onMarkRead, isMarkingRead }: AlertCardProps) 
             ? String(alert.detail.value)
             : JSON.stringify(alert.detail).slice(0, 120)}
         </p>
-        {alert.detail.host && (
+        {Boolean(alert.detail.host) && (
           <p className="text-[10px] text-muted-foreground mt-0.5">
-            host: {String(alert.detail.host)}
+            host: {String(alert.detail.host as string)}
           </p>
         )}
       </div>

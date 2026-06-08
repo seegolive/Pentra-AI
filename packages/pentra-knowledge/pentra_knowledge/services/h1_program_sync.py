@@ -23,19 +23,13 @@ query ProgramScope($handle: String!) {
   team(handle: $handle) {
     name
     url
-    structured_scope_versions(last: 1) {
+    structured_scopes(first: 200) {
       nodes {
-        max_provided_severity
-        in_scope {
-          asset_identifier
-          asset_type
-          eligible_for_bounty
-          instruction
-        }
-        out_of_scope {
-          asset_identifier
-          asset_type
-        }
+        asset_identifier
+        asset_type
+        eligible_for_bounty
+        eligible_for_submission
+        instruction
       }
     }
   }
@@ -77,7 +71,7 @@ class H1ProgramSync:
 
     _HEADERS = {
         "Content-Type": "application/json",
-        "User-Agent": "Mozilla/5.0 (Security Research — Pentra AI)",
+        "User-Agent": "Mozilla/5.0 (Security Research - Pentra AI)",
         "Accept": "application/json",
     }
 
@@ -122,20 +116,32 @@ class H1ProgramSync:
                 f"Program '{handle}' not found on HackerOne or is not public."
             )
 
-        versions = team.get("structured_scope_versions", {}).get("nodes") or []
-        if not versions:
-            raise ValueError(
-                f"Program '{handle}' has no structured scope versions published."
-            )
+        # New H1 schema: structured_scopes with eligible_for_submission flag
+        # Old schema: structured_scope_versions with in_scope/out_of_scope lists
+        all_nodes = team.get("structured_scopes", {}).get("nodes") or []
 
-        latest = versions[-1]  # last = most recent
+        if all_nodes:
+            in_scope_raw = [
+                {k: v for k, v in n.items() if k != "eligible_for_submission"}
+                for n in all_nodes if n.get("eligible_for_submission", True)
+            ]
+            out_of_scope_raw = [
+                {k: v for k, v in n.items() if k != "eligible_for_submission"}
+                for n in all_nodes if not n.get("eligible_for_submission", True)
+            ]
+        else:
+            # Fallback to legacy structured_scope_versions
+            versions = team.get("structured_scope_versions", {}).get("nodes") or []
+            if not versions:
+                raise ValueError(
+                    f"Program '{handle}' has no structured scope data published."
+                )
+            latest = versions[-1]
+            in_scope_raw = latest.get("in_scope") or []
+            out_of_scope_raw = latest.get("out_of_scope") or []
 
-        in_scope = [
-            H1ScopeItem(**item) for item in (latest.get("in_scope") or [])
-        ]
-        out_of_scope = [
-            H1ScopeItem(**item) for item in (latest.get("out_of_scope") or [])
-        ]
+        in_scope = [H1ScopeItem(**item) for item in in_scope_raw]
+        out_of_scope = [H1ScopeItem(**item) for item in out_of_scope_raw]
 
         return H1ProgramScope(
             program_name=team.get("name", handle),

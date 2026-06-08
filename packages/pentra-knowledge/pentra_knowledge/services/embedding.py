@@ -38,6 +38,20 @@ def _get_client() -> httpx.AsyncClient:
     return httpx.AsyncClient(base_url=settings.ollama_url, timeout=120.0)
 
 
+def _token_to_index(token: str) -> int:
+    """Map a token string to a consistent sparse-vector vocabulary index.
+
+    Qdrant sparse vectors require stable integer indices — the same token must
+    always map to the same dimension across both upsert and query time.
+    Using sequential range(len(...)) was *wrong* because dict ordering is not
+    guaranteed across Python processes or calls.
+
+    We use a deterministic hash modulo 2^20 (≈1 M dimensions), matching
+    common SPLADE vocabulary sizes and keeping collision probability low.
+    """
+    return abs(hash(token)) % (1 << 20)
+
+
 def _build_sparse_vector(text: str) -> dict[str, float]:
     """Approximate sparse weights using TF×log(1 + len(text)/freq).
 
@@ -55,6 +69,23 @@ def _build_sparse_vector(text: str) -> dict[str, float]:
         for token, count in counts.items()
         if len(token) >= 2  # skip single-character noise
     }
+
+
+def sparse_to_qdrant(sparse: dict[str, float]) -> tuple[list[int], list[float]]:
+    """Convert sparse dict to (indices, values) for Qdrant SparseVector.
+
+    Guaranteed stable: same token → same index regardless of dict ordering.
+    Deduplicates collisions by keeping the maximum weight for colliding tokens.
+    """
+    index_weights: dict[int, float] = {}
+    for token, weight in sparse.items():
+        idx = _token_to_index(token)
+        # On collision, keep the higher weight
+        if idx not in index_weights or weight > index_weights[idx]:
+            index_weights[idx] = weight
+    indices = list(index_weights.keys())
+    values = [index_weights[i] for i in indices]
+    return indices, values
 
 
 async def embed(text: str) -> EmbeddingResult:

@@ -29,6 +29,12 @@ try:
 except ImportError:
     _BURP_AVAILABLE = False
 
+try:
+    from pentra_tools.recon.rate_limit_detector import probe_rate_limit, RateLimitResult as _RLResult
+    _RL_AVAILABLE = True
+except ImportError:
+    _RL_AVAILABLE = False
+
 from pentra_scope import ScopeEnforcer
 from pentra_scope.errors import ScopeViolationError
 
@@ -48,17 +54,102 @@ def _get_burp_config() -> tuple[str | None, bool]:
     return (url if url else None, enabled)
 
 
+def _get_burp_proxy() -> str | None:
+    """Return Burp proxy URL for routing tool traffic through Burp.
+
+    Set BURP_PROXY_URL=http://localhost:8080 in .env to enable.
+    Only active when BURP_MCP_ENABLED=true.
+    """
+    _, enabled = _get_burp_config()
+    if not enabled:
+        return None
+    proxy = os.getenv("BURP_PROXY_URL", "").strip()
+    return proxy if proxy else None
+
+
 async def recon_node(state: PentraState) -> dict:
     """Full recon pipeline: subfinder → httpx → nmap → LLM analysis."""
     domain = state["target"]["domain"]
     in_scope = state["scope"]["in_scope"]
     log.info("[recon_node] Starting recon for %s", domain)
 
+    # ── Compress message history if approaching context limit ─────────────────
+    try:
+        from pentra_agent.llm.summarizer import maybe_summarize
+        from pentra_agent.llm.client import LLMClient as _LLMClient
+        await maybe_summarize(
+            list(state.get("messages", [])),
+            llm=_LLMClient(base_url=_ollama_url(), model=state["llm_model"]),
+        )
+    except Exception as _sum_exc:
+        log.debug("[recon_node] summarizer failed (non-fatal): %s", _sum_exc)
+
     subdomains: list[dict] = await _run_subfinder(domain, in_scope)
     subdomains = await _run_httpx_probe(subdomains)
+
+    # ── Rate limit + WAF profiling (run concurrently after httpx probe) ──────
+    primary_url = f"http://{domain}/"
+    rate_limit_info: dict = {"safe_rps": 20, "delay_ms": 0, "is_limited": False, "notes": []}
+    waf_info: dict = {"waf_type": None, "is_blocking": False, "bypass_strategies": [], "safe_rps": 20}
+
+    async def _probe_rl() -> None:
+        nonlocal rate_limit_info
+        if not _RL_AVAILABLE:
+            return
+        try:
+            rl = await probe_rate_limit(primary_url, probe_count=6, probe_interval=0.15)
+            rate_limit_info = {
+                "safe_rps": rl.safe_rps,
+                "delay_ms": rl.recommended_delay_ms,
+                "is_limited": rl.is_rate_limited,
+                "notes": rl.notes,
+            }
+            log.info(
+                "[recon_node] Rate limit probe: safe_rps=%d delay=%dms is_limited=%s",
+                rl.safe_rps, rl.recommended_delay_ms, rl.is_rate_limited,
+            )
+        except Exception as exc:
+            log.warning("[recon_node] Rate limit probe failed (non-fatal): %s", exc)
+
+    async def _probe_waf() -> None:
+        nonlocal waf_info
+        try:
+            from pentra_tools.recon.waf_profiler import profile_waf
+            waf = await profile_waf(primary_url)
+            waf_info = {
+                "waf_type": waf.waf_type,
+                "is_blocking": waf.is_blocking,
+                "bypass_strategies": waf.bypass_strategies,
+                "safe_rps": waf.block_threshold_rps,
+            }
+            if waf.waf_detected:
+                log.info(
+                    "[recon_node] WAF detected: %s (blocking=%s) → bypass: %s",
+                    waf.waf_type, waf.is_blocking, waf.bypass_strategies[:2],
+                )
+            else:
+                log.info("[recon_node] No WAF detected — normal scan speed")
+        except Exception as exc:
+            log.warning("[recon_node] WAF profile failed (non-fatal): %s", exc)
+
+    await asyncio.gather(_probe_rl(), _probe_waf())
+
     ports: list[dict] = await _run_nmap(subdomains)
     tech_stack: list[str] = _extract_tech_stack(subdomains)
-    endpoints: list[dict] = _extract_endpoints(subdomains)
+
+    # Defense-in-depth: drop any OOS subdomain before building endpoints
+    out_of_scope = state["scope"]["out_of_scope"]
+    scoped_subdomains = [
+        s for s in subdomains
+        if _is_in_scope(s["host"], in_scope)
+        and (not out_of_scope or not _is_in_scope(s["host"], out_of_scope))
+    ]
+    if len(scoped_subdomains) < len(subdomains):
+        log.warning(
+            "[recon_node] Dropped %d OOS subdomains before endpoint extraction",
+            len(subdomains) - len(scoped_subdomains),
+        )
+    endpoints: list[dict] = _extract_endpoints(scoped_subdomains)
 
     # ── Fallback: ensure at least one endpoint from the target's base URLs ──
     if not endpoints:
@@ -81,8 +172,7 @@ async def recon_node(state: PentraState) -> dict:
         domain=domain,
         in_scope=in_scope,
         out_of_scope=state["scope"]["out_of_scope"],
-    )
-    # Merge Burp endpoints (dedup by url+method)
+    )    # Merge Burp endpoints (dedup by url+method)
     existing_keys = {(e["url"], e.get("method", "GET")) for e in endpoints}
     for ep in burp_endpoints:
         if (ep["url"], ep.get("method", "GET")) not in existing_keys:
@@ -92,6 +182,29 @@ async def recon_node(state: PentraState) -> dict:
     for t in burp_tech:
         if t not in tech_stack:
             tech_stack.append(t)
+
+    # ── Smart dedup (18.2) then GF prioritization (18.1) ─────────────────────
+    try:
+        from pentra_tools.recon.dedup import smart_dedup_endpoints
+        endpoints = smart_dedup_endpoints(endpoints)
+    except Exception as exc:
+        log.warning("[recon_node] smart_dedup failed (non-fatal): %s", exc)
+
+    try:
+        from pentra_tools.recon.gf_filter import prioritize_endpoints_for_vuln_hunt
+        endpoints = prioritize_endpoints_for_vuln_hunt(endpoints, max_endpoints=150)
+        gf_matched = [ep for ep in endpoints if ep.get("gf_pattern")]
+        log.info(
+            "[recon_node] GF patterns: %d/%d endpoints have vuln hints",
+            len(gf_matched), len(endpoints),
+        )
+        if gf_matched:
+            log.info(
+                "[recon_node] Top GF matches: %s",
+                [(ep["url"], ep["gf_pattern"]) for ep in gf_matched[:5]],
+            )
+    except Exception as exc:
+        log.warning("[recon_node] GF prioritization failed (non-fatal): %s", exc)
 
     knowledge: list[dict] = []
     try:
@@ -104,7 +217,7 @@ async def recon_node(state: PentraState) -> dict:
                 db=db,
                 tech_stack=tech_stack if tech_stack else None,
                 top_k=8,
-                min_quality_score=0.4,
+                min_quality_score=0.0,
             )
         knowledge = [r.model_dump() for r in records]
     except Exception as exc:
@@ -129,8 +242,11 @@ async def recon_node(state: PentraState) -> dict:
         f"- Subdomains: {len(subdomains)}\n"
         f"- Alive hosts: {sum(1 for s in subdomains if s.get('is_alive'))}\n"
         f"- Open ports: {len(ports)}\n"
-        f"- Tech stack: {', '.join(tech_stack) or 'unknown'}\n\n"
-        f"**Analysis:** {hypothesis}"
+        f"- Tech stack: {', '.join(tech_stack) or 'unknown'}\n"
+        f"- Safe RPS: {rate_limit_info['safe_rps']}"
+        + (f" ⚠️ rate limited" if rate_limit_info['is_limited'] else "")
+        + (f"\n- WAF: {waf_info['waf_type']} (blocking={waf_info['is_blocking']})" if waf_info.get('waf_type') else "")
+        + f"\n\n**Analysis:** {hypothesis}"
     )
 
     return {
@@ -142,6 +258,8 @@ async def recon_node(state: PentraState) -> dict:
         "phase_history": ["recon"],
         "current_hypothesis": hypothesis,
         "knowledge_context": knowledge,
+        "rate_limit_info": rate_limit_info,
+        "waf_info": waf_info,
         "messages": [AIMessage(content=summary_msg)],
     }
 
@@ -173,6 +291,11 @@ async def _run_subfinder(domain: str, in_scope: list[str]) -> list[dict]:
                     })
             except (json.JSONDecodeError, KeyError):
                 continue
+        # If subfinder ran OK but found no subdomains (e.g. leaf subdomain), add the
+        # target domain itself so httpx probe and nuclei have at least one entry.
+        if not results:
+            log.info("[recon_node] subfinder found 0 subdomains — adding domain itself as fallback")
+            results = [{"host": domain, "ip": None, "source": "subfinder_fallback", "is_alive": False, "status_code": None, "tech_stack": []}]
         log.info("[recon_node] subfinder found %d subdomains", len(results))
         return results
     except FileNotFoundError:
@@ -180,7 +303,7 @@ async def _run_subfinder(domain: str, in_scope: list[str]) -> list[dict]:
         return [{"host": domain, "ip": None, "source": "manual", "is_alive": False, "status_code": None, "tech_stack": []}]
     except Exception as exc:
         log.warning("[recon_node] subfinder error: %s", exc)
-        return []
+        return [{"host": domain, "ip": None, "source": "error_fallback", "is_alive": False, "status_code": None, "tech_stack": []}]
 
 
 async def _run_httpx_probe(subdomains: list[dict]) -> list[dict]:
@@ -190,11 +313,16 @@ async def _run_httpx_probe(subdomains: list[dict]) -> list[dict]:
     try:
         import httpx as _httpx
 
+        burp_proxy = _get_burp_proxy()
+        proxy_kwargs = {"proxy": burp_proxy} if burp_proxy else {}
+        if burp_proxy:
+            log.info("[recon_node] httpx probe routing through Burp proxy: %s", burp_proxy)
+
         async def probe_one(sub: dict) -> dict:
             for scheme in ("https", "http"):
                 url = f"{scheme}://{sub['host']}"
                 try:
-                    async with _httpx.AsyncClient(timeout=10, follow_redirects=True, verify=False) as client:
+                    async with _httpx.AsyncClient(timeout=10, follow_redirects=True, verify=False, **proxy_kwargs) as client:
                         resp = await client.get(url)
                         sub["is_alive"] = True
                         sub["status_code"] = resp.status_code
@@ -337,8 +465,43 @@ def _ollama_url() -> str:
     return os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/") + "/v1"
 
 
-async def _fetch_burp_endpoints(
-    domain: str,
+async def _burp_startup_sequence(
+    client: "BurpMCPClient",
+    in_scope: list[str],
+    out_of_scope: list[str],
+) -> dict:
+    """Run Burp Pro setup for a new engagement session.
+
+    1. Sync in/out-of-scope URLs to Burp project scope.
+    2. Disable proxy intercept so automated requests flow through unblocked.
+    3. Pause task engine (will be resumed when active scan is triggered).
+
+    Returns a status dict for logging.  Never raises — failures are non-fatal.
+    """
+    status: dict = {}
+    try:
+        await client.set_project_scope(
+            in_scope_urls=in_scope,
+            out_of_scope_urls=out_of_scope,
+        )
+        status["scope_synced"] = True
+        log.info("[recon_node] Burp scope synced: %d in-scope, %d out-of-scope", len(in_scope), len(out_of_scope))
+    except Exception as exc:
+        log.warning("[recon_node] Burp scope sync failed (non-fatal): %s", exc)
+        status["scope_synced"] = False
+
+    try:
+        await client.set_proxy_intercept_state(enabled=False)
+        status["intercept_disabled"] = True
+        log.info("[recon_node] Burp proxy intercept disabled for automated scanning")
+    except Exception as exc:
+        log.warning("[recon_node] Burp intercept disable failed (non-fatal): %s", exc)
+        status["intercept_disabled"] = False
+
+    return status
+
+
+async def _fetch_burp_endpoints(    domain: str,
     in_scope: list[str],
     out_of_scope: list[str],
 ) -> tuple[list[dict], list[str]]:
@@ -375,63 +538,100 @@ async def _fetch_burp_endpoints(
         log.info("[recon_node] Burp MCP not reachable — skipping sitemap fetch")
         return [], []
 
-    endpoints: list[dict] = []
-    tech: list[str] = []
+    async with client.managed_session():
+        # ── Burp startup sequence (scope sync + intercept disable) ───────────────
+        await _burp_startup_sequence(client, in_scope=in_scope, out_of_scope=out_of_scope)
 
-    # ── Sitemap (unique URLs already deduplicated by BurpMCPClient) ──────────
-    try:
-        sitemap = await client.get_sitemap(url_prefix=f"https://{domain}")
-        for entry in sitemap:
-            try:
-                enforcer.validate_or_raise(entry.url)
-            except ScopeViolationError:
-                continue
-            endpoints.append({
-                "url": entry.url,
-                "method": entry.method,
-                "params": [],
-                "source": "burp_sitemap",
-            })
-        log.info("[recon_node] Burp sitemap: %d entries for %s", len(sitemap), domain)
-    except (BurpConnectionError, Exception) as exc:
-        log.warning("[recon_node] Burp sitemap error: %s", exc)
+        endpoints: list[dict] = []
+        tech: list[str] = []
 
-    # ── Proxy history (last 200 requests for the domain) ─────────────────────
-    try:
-        import re as _re
-        escaped = _re.escape(domain)
-        history = await client.get_proxy_history(filter_regex=escaped, limit=200)
-        for entry in history:
-            try:
-                enforcer.validate_or_raise(entry.url)
-            except ScopeViolationError:
-                continue
-            # Deduplicate against sitemap entries
-            key = (entry.url, entry.method.upper())
-            if not any(e["url"] == key[0] and e.get("method", "GET") == key[1] for e in endpoints):
+        # ── Sitemap (unique URLs already deduplicated by BurpMCPClient) ──────────
+        try:
+            sitemap = await client.get_sitemap(url_prefix=f"https://{domain}")
+            for entry in sitemap:
+                try:
+                    enforcer.validate_or_raise(entry.url)
+                except ScopeViolationError:
+                    continue
                 endpoints.append({
                     "url": entry.url,
-                    "method": entry.method.upper(),
+                    "method": entry.method,
                     "params": [],
-                    "source": "burp_proxy",
+                    "source": "burp_sitemap",
                 })
-            # Detect tech from response headers
-            for header_key, header_val in entry.response_headers.items():
-                combined = f"{header_key}: {header_val}".lower()
-                for keyword, label in [
-                    ("x-powered-by: php", "php"),
-                    ("x-powered-by: asp", "asp.net"),
-                    ("server: nginx", "nginx"),
-                    ("server: apache", "apache"),
-                    ("x-generator: wordpress", "wordpress"),
-                    ("x-drupal", "drupal"),
-                    ("laravel_session", "laravel"),
-                    ("x-rails", "ruby on rails"),
-                ]:
-                    if keyword in combined and label not in tech:
-                        tech.append(label)
-        log.info("[recon_node] Burp proxy history: %d unique endpoints", len(history))
-    except (BurpConnectionError, Exception) as exc:
-        log.warning("[recon_node] Burp proxy history error: %s", exc)
+            log.info("[recon_node] Burp sitemap: %d entries for %s", len(sitemap), domain)
+        except (BurpConnectionError, Exception) as exc:
+            log.warning("[recon_node] Burp sitemap error: %s", exc)
 
-    return endpoints, tech
+        # ── Proxy history (last 200 requests for the domain) ─────────────────────
+        try:
+            import re as _re
+            escaped = _re.escape(domain)
+            history = await client.get_proxy_history(filter_regex=escaped, limit=200)
+            for entry in history:
+                try:
+                    enforcer.validate_or_raise(entry.url)
+                except ScopeViolationError:
+                    continue
+                # Deduplicate against sitemap entries
+                key = (entry.url, entry.method.upper())
+                if not any(e["url"] == key[0] and e.get("method", "GET") == key[1] for e in endpoints):
+                    endpoints.append({
+                        "url": entry.url,
+                        "method": entry.method.upper(),
+                        "params": [],
+                        "source": "burp_proxy",
+                    })
+                # Detect tech from response headers
+                for header_key, header_val in entry.response_headers.items():
+                    combined = f"{header_key}: {header_val}".lower()
+                    for keyword, label in [
+                        ("x-powered-by: php", "php"),
+                        ("x-powered-by: asp", "asp.net"),
+                        ("server: nginx", "nginx"),
+                        ("server: apache", "apache"),
+                        ("x-generator: wordpress", "wordpress"),
+                        ("x-drupal", "drupal"),
+                        ("laravel_session", "laravel"),
+                        ("x-rails", "ruby on rails"),
+                    ]:
+                        if keyword in combined and label not in tech:
+                            tech.append(label)
+            log.info("[recon_node] Burp proxy history: %d unique endpoints", len(history))
+        except (BurpConnectionError, Exception) as exc:
+            log.warning("[recon_node] Burp proxy history error: %s", exc)
+
+        # ── Organizer items (requests saved manually by researcher) ──────────────
+        try:
+            import re as _re_org
+            # Use regex-filtered fetch to get only items relevant to this domain
+            _org_regex = _re_org.escape(domain)
+            try:
+                organizer_items = await client.get_organizer_items_regex(
+                    filter_regex=_org_regex, limit=20
+                )
+            except Exception:
+                organizer_items = await client.get_organizer_items(limit=20)
+            if organizer_items:
+                log.info("[recon_node] Burp Organizer: %d saved items", len(organizer_items))
+                enforcer_obj = ScopeEnforcer(in_scope=in_scope, out_of_scope=out_of_scope)
+                for item in organizer_items:
+                    if not item.url:
+                        continue
+                    try:
+                        enforcer_obj.validate_or_raise(item.url)
+                    except ScopeViolationError:
+                        continue
+                    key = (item.url, item.method.upper())
+                    if not any(e["url"] == key[0] and e.get("method", "GET") == key[1] for e in endpoints):
+                        endpoints.append({
+                            "url": item.url,
+                            "method": item.method.upper(),
+                            "params": [],
+                            "source": "burp_organizer",
+                            "notes": item.notes,
+                        })
+        except (BurpConnectionError, Exception) as exc:
+            log.warning("[recon_node] Burp Organizer fetch error: %s", exc)
+
+        return endpoints, tech

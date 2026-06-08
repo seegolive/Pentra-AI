@@ -21,6 +21,24 @@ os.chdir(str(_API_DIR))
 from dotenv import load_dotenv  # noqa: E402
 load_dotenv(dotenv_path=str(_API_DIR / ".env"), override=False)
 
+# ── Logging: ensure pentra_agent node logs are visible in uvicorn output ─────
+import logging as _logging  # noqa: E402
+for _logger_name in (
+    "pentra_agent",
+    "pentra_agent.nodes.plan_node",
+    "pentra_agent.nodes.recon_node",
+    "pentra_agent.nodes.vuln_hunt_node",
+    "pentra_agent.nodes.report_node",
+    "pentra_agent.llm.client",
+    "pentra_tools.burp.client",
+):
+    _logging.getLogger(_logger_name).setLevel(_logging.DEBUG)
+    if not _logging.getLogger(_logger_name).handlers:
+        _h = _logging.StreamHandler()
+        _h.setFormatter(_logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s"))
+        _logging.getLogger(_logger_name).addHandler(_h)
+        _logging.getLogger(_logger_name).propagate = True
+
 from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 
@@ -84,9 +102,10 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="Pentra AI API",
-        version="0.1.0",
+        version="1.0.0",
         description="Self-hosted AI Security Research Platform — Knowledge & Agent API",
         lifespan=lifespan,
+        redirect_slashes=False,
     )
 
     app.add_middleware(
@@ -119,7 +138,15 @@ def create_app() -> FastAPI:
     # ── Health check ──────────────────────────────────────────────────────
     @app.get("/health", tags=["system"])
     async def health() -> dict[str, str]:
-        return {"status": "ok"}
+        return {"status": "ok", "version": "1.0.0"}
+
+    @app.get("/api/v1/version", tags=["system"])
+    async def version_info() -> dict[str, str]:
+        return {
+            "version": "1.0.0",
+            "phase": "Phase 2 — Agent Engine",
+            "build_date": "2026-06-04",
+        }
 
     return app
 

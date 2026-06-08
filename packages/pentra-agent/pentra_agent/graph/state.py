@@ -104,3 +104,17 @@ class PentraState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]
     tool_outputs: Annotated[list[dict], operator.add]
     errors: Annotated[list[str], operator.add]
+
+    # ── Recon metadata ────────────────────────────────────────────────
+    rate_limit_info: dict  # {safe_rps, delay_ms, is_limited, notes}
+    waf_info: dict         # {waf_type, is_blocking, bypass_strategies, safe_rps}
+    osint_results: dict    # {ct_subdomains, h1_program, shodan}
+
+    # ── Triage gate (Sprint 16) ───────────────────────────────────────
+    # Populated by triage_node; report_node reads this instead of `findings`
+    # to honour KILL / DOWNGRADE verdicts. Plain list — last-write-wins (no reducer).
+    triaged_findings: list[dict]
+
+    # ── DO NOT STOP routing (Sprint 17) ──────────────────────────────
+    # Incremented by vuln_hunt_node each round; capped at MAX_ROUNDS=3 in router.
+    hunt_rounds: int

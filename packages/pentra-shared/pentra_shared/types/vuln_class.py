@@ -82,6 +82,9 @@ class VulnClass(str, Enum):
     PADDING_ORACLE = "padding_oracle"
     TIMING_ATTACK = "timing_attack"
 
+    # ── Catch-all ─────────────────────────────────────────────────────────
+    OTHER = "other"
+
 
 # Parent category mapping — useful for grouping/filtering
 VULN_CLASS_CATEGORIES: dict[str, list[VulnClass]] = {

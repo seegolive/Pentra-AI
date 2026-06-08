@@ -202,6 +202,12 @@ def _build_initial_state(engagement) -> dict:
     domain = _extract_domain(in_scope)
     ip_ranges = [s for s in in_scope if "/" in s and not s.startswith("http")]
     base_urls = [s for s in in_scope if s.startswith("http")]
+    # If no explicit http(s) base URL was provided, generate one from the domain.
+    # Use http for localhost/127.x targets, https for everything else.
+    if not base_urls and domain:
+        _host = domain.split(":")[0]
+        _scheme = "http" if _host in ("localhost", "127.0.0.1", "::1") else "https"
+        base_urls = [f"{_scheme}://{domain}"]
 
     mode: str = engagement.mode or "semi_auto"
     llm_model: str = engagement.llm_model or settings.ollama_model_fast

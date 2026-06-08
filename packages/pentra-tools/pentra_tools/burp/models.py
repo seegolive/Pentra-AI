@@ -68,6 +68,34 @@ class ProxyEntry(BaseModel):
             req_headers = {}
             req_body = None
 
+        # When Burp omits url/method at top level, extract from raw HTTP request line
+        # e.g. {"request": "GET /path HTTP/1.1\r\nHost: example.com\r\n..."}
+        if not url and request_raw and isinstance(request_raw, str):
+            sep = "\r\n" if "\r\n" in request_raw else "\n"
+            lines = request_raw.split(sep)
+            first_line = lines[0].strip()
+            parts = first_line.split(" ")
+            if len(parts) >= 2 and parts[0].isupper():
+                extracted_method = parts[0]
+                path = parts[1]
+                # Find Host header
+                host_header = ""
+                for line in lines[1:]:
+                    if line.lower().startswith("host:"):
+                        host_header = line.split(":", 1)[1].strip()
+                        break
+                if host_header:
+                    raw_port = raw.get("port", 443)
+                    try:
+                        raw_port_int = int(raw_port)
+                    except (TypeError, ValueError):
+                        raw_port_int = 443
+                    is_https_guess = raw.get("isHttps", raw.get("is_https", raw_port_int == 443))
+                    scheme = "https" if is_https_guess else "http"
+                    url = f"{scheme}://{host_header}{path}"
+                    if not method:
+                        method = extracted_method
+
         if isinstance(response_obj, dict):
             status = response_obj.get(
                 "statusCode",
@@ -155,7 +183,9 @@ class ScanIssue(BaseModel):
 
     model_config = {"extra": "allow"}
 
-    issue_type: str = ""
+    # Burp Pro MCP returns: {"name": "...", "baseUrl": "...", "severity": "HIGH", ...}
+    issue_type: str = ""   # populated from name / issueName / issue_type / type
+    name: str = ""         # alias for issue_type — kept for compatibility
     severity: Literal["high", "medium", "low", "information"] = "information"
     confidence: Literal["certain", "firm", "tentative"] = "tentative"
     url: str = ""
@@ -166,15 +196,46 @@ class ScanIssue(BaseModel):
 
     @classmethod
     def from_burp_json(cls, raw: dict[str, Any]) -> "ScanIssue":
+        # Burp Pro MCP uses 'name' and 'baseUrl'; legacy/alt fields also supported
+        issue_name = (
+            raw.get("name")
+            or raw.get("issueName")
+            or raw.get("issue_type")
+            or raw.get("type")
+            or ""
+        )
+        url = (
+            raw.get("baseUrl")
+            or raw.get("url")
+            or ""
+        )
+        # requestResponses is a list in Burp Pro MCP
+        req_resp = raw.get("requestResponses") or []
+        first_rr = req_resp[0] if req_resp else {}
+        request_str = (
+            first_rr.get("request") if isinstance(first_rr, dict) else None
+        ) or (
+            raw.get("requestResponse", {}).get("request")
+            if isinstance(raw.get("requestResponse"), dict)
+            else None
+        )
+        response_str = (
+            first_rr.get("response") if isinstance(first_rr, dict) else None
+        ) or (
+            raw.get("requestResponse", {}).get("response")
+            if isinstance(raw.get("requestResponse"), dict)
+            else None
+        )
         return cls(
-            issue_type=raw.get("issueName", raw.get("issue_type", raw.get("type", ""))),
+            issue_type=issue_name,
+            name=issue_name,
             severity=_normalise_severity(raw.get("severity", "information")),
             confidence=_normalise_confidence(raw.get("confidence", "tentative")),
-            url=raw.get("url", ""),
-            detail=raw.get("issueDetail", raw.get("detail", "")),
+            url=url,
+            detail=raw.get("issueDetail", raw.get("detail", "")) or "",
             remediation=raw.get("remediationDetail", raw.get("remediation")),
-            request=raw.get("requestResponse", {}).get("request") if isinstance(raw.get("requestResponse"), dict) else None,
-            response=raw.get("requestResponse", {}).get("response") if isinstance(raw.get("requestResponse"), dict) else None,
+            request=request_str,
+            response=response_str,
         )
 
 

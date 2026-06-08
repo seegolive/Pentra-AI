@@ -5,8 +5,8 @@ import { test, expect, type Page } from "@playwright/test";
  *
  * Requires:
  *  - Frontend running on http://localhost:5174
- *  - Backend API running on http://localhost:8000
- *  - Default admin account: username=admin, password=admin123
+ *  - Backend API running on http://localhost:8001
+ *  - Default admin account: username=admin, password=Pentra@2026!
  */
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -14,7 +14,7 @@ import { test, expect, type Page } from "@playwright/test";
 async function login(page: Page) {
   await page.goto("/login");
   await page.getByLabel("Username").fill("admin");
-  await page.getByLabel("Password").fill("admin123");
+  await page.getByLabel("Password").fill("Pentra@2026!");
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL("/workspaces", { timeout: 10_000 });
 }
@@ -22,9 +22,7 @@ async function login(page: Page) {
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
 test.describe("Workspace & Engagement Flow", () => {
-  test.beforeEach(async ({ page }) => {
-    await login(page);
-  });
+  // Storage state provides pre-auth; no beforeEach login needed
 
   test("buat workspace baru dan muncul di list", async ({ page }) => {
     await page.goto("/workspaces");

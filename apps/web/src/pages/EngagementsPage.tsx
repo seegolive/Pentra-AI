@@ -43,6 +43,11 @@ const STATUS_CONFIG: Record<EngagementStatus, { label: string; icon: React.React
     icon: <XCircle className="h-3.5 w-3.5" />,
     color: "text-red-500 bg-red-500/10 border-red-500/20",
   },
+  awaiting_approval: {
+    label: "Awaiting",
+    icon: <AlertTriangle className="h-3.5 w-3.5" />,
+    color: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20",
+  },
 };
 
 function StatusBadge({ status }: { status: EngagementStatus }) {

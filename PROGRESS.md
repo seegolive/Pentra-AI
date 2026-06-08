@@ -1,8 +1,8 @@
 # Pentra AI — Development Progress
 
-> **Tanggal Update:** 26 Mei 2026
-> **Status:** Sprint 1–11.2 Complete ✅ | **143 tests passing** (47 api · 15 agent · 81 tools)
-> **Alembic Head:** `cc62ee2cd0df` | **Migrations:** 10
+> **Tanggal Update:** 4 Juni 2026 (sesi 2)
+> **Status:** Sprint 1–16.x In Progress 🔄 | **170 tests passing** (51 api · 38 agent · 81 tools) | Smoke: 30/35
+> **Alembic Head:** `a28fd25517b3` | **Migrations:** 13
 
 ---
 
@@ -21,6 +21,10 @@
 | **Phase 9 — Agent Integration** | **Sprint 11.1** | ✅ | AgentService rewrite, Celery stream events, Redis pub/sub, 4 tests |
 | **Phase 9 — Hardening** | **Sprint 11.2–11.3** | ✅ | Bug fixes, nuclei tempfile, INTERNAL_API_TOKEN, 18 findings persisted |
 | **Phase 10 — Burp MCP + Worker** | **Sprint 12** | ✅ | Burp MCP WSL2 NAT fix, worker pyproject fix, SSE path + Host header fix |
+| **Phase 11 — Frontend HITL** | **Sprint 13** | ✅ | FindingsTable, ReportViewer, HITL approval modal, live feed |
+| **Phase 12 — Intelligence Upgrade** | **Sprint 14** | ✅ | EngagementLearning, ReAct loop, CVSS v3.1 auto-scoring |
+| **Phase 13 — Architecture Upgrade** | **Sprint 15** | ✅ | RateLimitDetector, VulnerabilityCorrelator, Attack Playbooks, ChainSummarizer, OSINT Node |
+| **Phase 14 — BugHunter Enhancement** | **Sprint 16** | 🔄 | Triage Gate (16.1), Anomaly Detection (16.4), Developer Psychology (16.5) |
 
 ---
 
@@ -896,13 +900,356 @@ cd apps/api && uv run pytest tests/ -q
 
 ---
 
-## Next Steps (Priority Order)
+## Sprint 13 — HITL Frontend & Live Feed ✅
 
-| # | Task | Keterangan |
-|---|------|------------|
-| 1 | **WSL2 mirrored networking** | `wsl --shutdown` dari PowerShell → update `.env` ke `localhost:9877` |
-| 2 | **FindingsTable.tsx** | Komponen tabel findings di `EngagementDetailPage` |
-| 3 | **ReportViewer.tsx** | Tampilkan markdown report dari agent |
-| 4 | **Audit worker tasks** | `cve_enrichment`, `bugcrowd_scraper`, `payloads_all_things`, `rss_ingestion` |
-| 5 | **`pentra-payload` integration** | `generator.py` + `models.py` ada tapi belum dipakai agent |
-| 6 | **Sprint 13** | HITL frontend real-time — live engagement dashboard + approval flow |
+> Real-time engagement dashboard, approval flow, FindingsTable, ReportViewer.
+
+| Task | Status | Detail |
+|------|--------|--------|
+| `FindingsTable.tsx` | ✅ | Severity badge + status pill + paginated table di `EngagementDetailPage` |
+| `ReportViewer.tsx` | ✅ | Render markdown report dari `report_node` output |
+| HITL approval modal | ✅ | WebSocket event `AWAITING_APPROVAL` → modal + Approve/Skip/Modify |
+| Live feed WebSocket | ✅ | `useEngagementFeed` hook — per-engagement event stream |
+| CVE badge in findings | ✅ | Link ke NVD per CVE ID |
+| OPSEC mode toggle | ✅ | UI toggle + jitter config di engagement form |
+
+---
+
+## Sprint 14 — Intelligence Upgrade ✅
+
+> Tanggal: 3 Juni 2026 | Alembic Head: `c8551619e47f`
+
+### ✅ Task 14.1 — EngagementLearning (Cross-Engagement Self-Learning)
+
+**Goal:** Agent belajar dari engagement sebelumnya — v12 lebih pintar dari v11.
+
+**File yang dibuat/diubah:**
+
+| File | Perubahan |
+|---|---|
+| `apps/api/app/db/models.py` | Tambah `EngagementLearningORM` — 12 kolom: `tech_stack`, `effective_tools`, `failed_tools`, `high_value_endpoints`, `findings_count`, `high_critical_count` (JSONB) |
+| `apps/api/app/services/learning.py` | `save_engagement_learning()` + `query_similar_learnings()` |
+| `apps/api/app/services/__init__.py` | Init file |
+| `apps/api/alembic/versions/fe25c4ad4fac_add_engagement_learnings.py` | Migration: CREATE TABLE `engagement_learnings` + index |
+| `apps/api/alembic/env.py` | Import `EngagementLearningORM` |
+| `packages/pentra-agent/pentra_agent/nodes/report_node.py` | Step 3: `_save_learning()` helper fire-and-forget setelah findings persist |
+| `packages/pentra-agent/pentra_agent/nodes/plan_node.py` | Query `query_similar_learnings(tech_stack)` → inject ke LLM prompt sebagai `prior_learnings` |
+| `packages/pentra-agent/pentra_agent/llm/client.py` | `plan_engagement()` terima `prior_learnings: list[dict] \| None` |
+
+**Flow:**
+1. `report_node` selesai → `_save_learning()` derivasi `effective_tools` dari finding source, `high_value_endpoints` dari confirmed findings, simpan ke DB
+2. Engagement baru `plan_node` → `query_similar_learnings(tech_stack)` JSONB `&&` overlap → top-3 by `high_critical_count DESC`
+3. LLM plan enriched: *"Dari ASP.NET engagement sebelumnya: nuclei sqli produktif, /products?cat= injectable, 3 HIGH findings"*
+
+---
+
+### ✅ Task 14.2 — ReAct Reasoning Loop
+
+**Goal:** LLM verbalize reasoning sebelum setiap injection test — audit trail + precision.
+
+**File yang dibuat/diubah:**
+
+| File | Perubahan |
+|---|---|
+| `packages/pentra-agent/pentra_agent/llm/client.py` | `ReActOutput` dataclass + `parse_react_output()` + `react_step()` method |
+| `packages/pentra-agent/pentra_agent/nodes/vuln_hunt_node.py` | ReAct block sebelum `craft_exploit_payloads()` per kandidat; `write_audit_log` tiap Thought |
+
+**ReAct loop per kandidat:**
+```
+Observation: URL + param + baseline response (400 chars)
+   ↓
+LLMClient.react_step()
+   ↓
+Thought: "This /products?cat=1 param looks injectable — integer ID, no WAF detected"
+Action: test_injection  (atau skip_candidate)
+   ↓
+audit_logs: action="react_thought", detail={thought, action, url, param}
+   ↓
+craft_exploit_payloads() → hanya jika action == test_injection
+```
+
+**Audit log format:**
+```json
+{
+  "actor": "agent/vuln_hunt",
+  "action": "react_thought",
+  "detail": {
+    "thought": "Integer param with no sanitization — SQLi candidate",
+    "action": "test_injection",
+    "url": "http://testaspnet.vulnweb.com/listproducts.aspx",
+    "param": "cat"
+  }
+}
+```
+
+---
+
+### ✅ Task 14.3 — CVSS v3.1 Auto-Calculator
+
+**Goal:** Setiap finding mendapat CVSS v3.1 score + vector string valid — H1-submission ready.
+
+**File yang dibuat/diubah:**
+
+| File | Perubahan |
+|---|---|
+| `packages/pentra-shared/pentra_shared/utils/cvss.py` | 40+ CVSS entries, `calculate_cvss()`, `normalise_vuln_class()`, `_ALIASES` map |
+| `packages/pentra-shared/pentra_shared/utils/__init__.py` | Init file |
+| `apps/api/app/db/models.py` | `FindingORM.cvss_vector: Mapped[str \| None]` — setelah `cvss_score` |
+| `apps/api/alembic/versions/c8551619e47f_add_cvss_vector_to_findings.py` | Migration: ADD COLUMN `cvss_vector VARCHAR(200)` |
+| `apps/api/app/api/schemas.py` | `FindingResponse.cvss_vector: str \| None = None` |
+| `apps/api/app/api/internal_router.py` | `FindingPayload.cvss_vector` + `FindingORM(cvss_vector=f.cvss_vector)` |
+| `packages/pentra-agent/pentra_agent/nodes/report_node.py` | Step 1b: CVSS enrichment loop per finding, auto-detect `auth_required` dari request headers |
+| `apps/web/src/lib/types.ts` | `Finding.cvss_vector?: string \| null`, tambah `impact?`, `remediation?` |
+| `apps/web/src/components/findings/FindingsTable.tsx` | `ExpandedDetail`: CVSS Vector block (10px monospace, break-all) + Impact + Remediation |
+
+**CVSS auto-enrichment logic (report_node.py):**
+```python
+request_raw = (finding.get("request") or "").lower()
+auth_required = "cookie:" in request_raw or "authorization:" in request_raw
+score, vector = calculate_cvss(vuln_class, auth_required=auth_required)
+if finding.get("cvss_score") is None:   # preserve LLM score if set
+    finding["cvss_score"] = score
+finding["cvss_vector"] = vector          # always write vector
+```
+
+**CVSS score table (sample):**
+
+| Vuln Class | Auth | Score | Vector |
+|---|---|---|---|
+| SQL Injection | No | 9.8 | `CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H` |
+| SQL Injection | Yes | 8.8 | `CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:H` |
+| XSS (Reflected) | No | 6.1 | `CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N` |
+| Stored XSS | No | 8.2 | `CVSS:3.1/AV:N/AC:L/PR:L/UI:R/S:C/C:H/I:L/A:N` |
+| IDOR | Yes | 8.1 | `CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N` |
+| RCE | No | 10.0 | `CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H` |
+| SSRF | No | 9.8 | `CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H` |
+| Path Traversal | No | 7.5 | `CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N` |
+
+Full coverage: SQL_INJECTION, XSS, STORED_XSS, IDOR, SSRF, PATH_TRAVERSAL, COMMAND_INJECTION, RCE, SSTI, OPEN_REDIRECT, XXE, CSRF, BROKEN_AUTH, ACCOUNT_TAKEOVER, MASS_ASSIGNMENT, INSECURE_DESERIALIZATION, INFORMATION_DISCLOSURE, MISCONFIGURATION, BUSINESS_LOGIC, RACE_CONDITION, OAUTH_MISCONFIGURATION, JWT_VULNERABILITY, HOST_HEADER_INJECTION.
+
+---
+
+## Database Migrations — Full History
+
+```
+bbd52d203d8e  Initial schema (workspaces, engagements, findings, audit_logs)
+6133ff6cb342  Users table + finding description
+aa834f32e5ed  Workspace owner_id
+1861c1b0307a  Performance indexes (7 indexes)
+5270364c5870  quality_score → knowledge_records
+0686d9d188a5  ReconSnapshot + MonitoringAlert
+fe72005d78b2  CVE fields → findings
+a3c91b7d0e22  opsec_mode → engagements
+f91810040c15  is_read → monitoring_alerts
+cc62ee2cd0df  impact + remediation → findings
+fe25c4ad4fac  engagement_learnings table         ← Sprint 14.1
+c8551619e47f  cvss_vector → findings             ← Sprint 14.3  [HEAD]
+```
+
+---
+
+## E2E Test History
+
+| Run | Target | Status | Findings |
+|---|---|---|---|
+| E2E-v1 … v8 | testaspnet.vulnweb.com | Iterative fixes | Pipeline bugs found + fixed |
+| E2E-v9 | testaspnet.vulnweb.com | ✅ | nuclei SQLi confirmed |
+| E2E-v10-HttpNuclei | testaspnet.vulnweb.com | ✅ | HTTP fallback fix, multi-finding pipeline |
+| E2E-v11-BurpLive | testaspnet.vulnweb.com | ✅ | 18 findings, Burp MCP live |
+| E2E-v12+ | testaspnet.vulnweb.com | 🔜 | First run with EngagementLearning + CVSS enrichment |
+
+---
+
+## Sprint 15 — Architecture Upgrade ✅
+
+> Selesai: 4 Juni 2026 | 12 tests baru | Migration: `a28fd25517b3`
+
+### ✅ Task 15.1 — RateLimitDetector
+- `packages/pentra-tools/pentra_tools/recon/rate_limit_detector.py`
+- `probe_rate_limit()` deteksi HTTP 429, `X-RateLimit-*` headers, timing variance
+- Output `safe_rps` → di-feed ke ffuf/katana/nuclei sebelum scanning
+- Integrasi di `recon_node.py` — `rate_limit_info` disimpan di `PentraState`
+- 3 tests: `test_detects_429`, `test_detects_ratelimit_headers`, `test_no_rate_limit`
+
+### ✅ Task 15.2 — VulnerabilityCorrelator
+- `correlate_findings()` di `report_node.py` — LLM identify attack chains
+- Contoh chains: SSRF→RCE, XSS+CSRF→ATO, IDOR+PII→critical data breach
+- `chains` JSONB field ditambahkan ke `FindingORM`
+- Migration `a28fd25517b3` applied — DB head updated
+- Graceful fallback: LLM error → findings dikembalikan tanpa chains
+
+### ✅ Task 15.3 — Attack Playbooks
+- `packages/pentra-agent/pentra_agent/playbooks/` — `__init__`, `base`, `registry`
+- 5 playbooks: `sqli_error`, `xss_reflected`, `idor`, `ssrf`, `path_traversal`
+- `get_playbook_for_context(tech_stack, url, param)` → sorted by relevance + priority
+- Integrasi di `vuln_hunt_node` — max 2 playbooks per parameter candidate
+- 4 tests: SQLi match, XSS match, empty context, `run_playbook` result
+
+### ✅ Task 15.4 — ChainSummarizer
+- `packages/pentra-agent/pentra_agent/llm/summarizer.py`
+- `maybe_summarize()` trigger saat `len(messages) > 40`
+- Keeps 10 pesan terbaru verbatim, compress sisanya ke 1 `SystemMessage`
+- Integrasi di `recon_node` dan `vuln_hunt_node`
+- 2 tests: threshold not triggered, compress to summary + recent
+
+### ✅ Task 15.5 — OSINT Node
+- `packages/pentra-agent/pentra_agent/nodes/osint_node.py`
+- Sources: crt.sh certificate transparency + HackerOne program lookup + Shodan (opsional)
+- Passive only — zero traffic ke target
+- `builder.py`: `START → osint → plan → hitl_plan → recon → ...`
+- `PentraState.osint_results` field untuk simpan hasil
+- 3 tests: crt.sh response, graceful on failure, subdomain enrichment
+
+### Bugs Fixed di Sprint 15
+| # | Bug | Fix |
+|---|-----|-----|
+| 9 | `hitl_exploit_review` bypass interrupt di agentic mode | Removed auto-approve — always `interrupt()` |
+| 10 | `calculate_cvss('RCE')` → 9.8 bukan 10.0 | Vector S:C (scope changed) → 10.0 |
+
+---
+
+## Sprint 16 — BugHunter Enhancement 🔄
+
+> Dimulai: 4 Juni 2026 (sesi 2) | **+11 tests** (38 agent total) | Adopsi Claude-BugHunter best practices
+
+### ✅ Task 16.1 — Triage Gate Node (7-Question Gate)
+- `packages/pentra-agent/pentra_agent/nodes/triage_node.py` — baru
+- 7-Question framework: Reproducible / In-scope / Real impact / Novel / Chainable / Evidenced / Not-duplicate
+- Verdict per finding: **PASS** / **DOWNGRADE** / **KILL** / **CHAIN_REQUIRED**
+- KILL → finding di-drop sebelum persist ke DB
+- DOWNGRADE → severity diturunkan sesuai LLM assessment
+- `triaged_findings: list[dict]` ditambah ke `PentraState` (no reducer — last write wins)
+- Graph diupdate: `vuln_hunt → triage → (hitl_exploit | report)`
+- `report_node` membaca `triaged_findings` bila ada, fallback ke `findings`
+- Graceful fallback: LLM error → finding tetap dipertahankan
+- 3 tests: PASS / KILL / DOWNGRADE verdict
+
+### ✅ Task 16.3 — FindingsTable Attack Chains UI (verifikasi)
+- Dikonfirmasi sudah fully implemented dari sprint sebelumnya
+- `ChainInfo` interface: `name`, `scenario`, `upgraded_severity`, `business_impact`, `chain_size`
+- `chains?: ChainInfo[] | null` pada `Finding` type
+- Attack Chains section di `ExpandedDetail` (guard: `chains.length > 0`)
+- `tsc --noEmit` → 0 errors
+
+### ✅ Task 16.4 — Anomaly Detection (Enhancement E)
+- `detect_anomalies(baseline_body, test_body, test_payload)` ditambah ke `vuln_hunt_node.py`
+- 4 anomaly types:
+  - `SIZE_ANOMALY` — response ≥500 bytes beda + >30% baseline
+  - `ERROR_DISCLOSURE` — SQL/trace keyword baru di test (tidak ada di baseline)
+  - `REFLECTION` — payload ter-reflect di test tapi tidak di baseline
+  - `EMPTY_RESPONSE` — baseline >100 bytes, test <20 bytes
+- Diintegrasikan ke payload loop: anomalies di-append ke `detection_hint` → dikirim ke `analyze_exploit_response`
+- 8 tests: no anomaly, size, error disclosure, baseline dedup, reflection, no-false-reflection, empty, multiple
+
+### ✅ Task 16.5 — Developer Psychology Heuristics (Enhancement D)
+- `DEVELOPER_PSYCHOLOGY_HEURISTICS` constant ditambah ke `vuln_hunt_node.py`
+- 8 heuristics: API versioning, frontend trust, integer ID → IDOR, admin endpoints,
+  debug endpoints, copy-paste auth bypass, function-level auth, verbose errors
+- Diinjeksi ke ReAct `observation` string setiap candidate test
+- LLM menerima context tentang di mana developer biasa membuat kesalahan
+- 3 tests: non-empty constant, key patterns coverage, injection in observation
+
+### Pending Tasks Sprint 16
+- `[ ]` **Task 16.2** — DO NOT STOP routing: jika ada `CHAIN_REQUIRED` findings, re-enter vuln_hunt
+- `[ ]` **Task 16.6** — Enterprise Attack Matrix: M365/Okta/VPN surface detection node
+
+---
+
+## Competitive Position (Updated 4 Juni 2026 — sesi 2)
+
+| Aspek | Pentra AI | PentAGI | HexStrike AI |
+|---|---|---|---|
+| Local LLM (privacy-first) | ✅ Ollama | ❌ Cloud | ❌ External AI |
+| Burp Pro MCP (27 tools) | ✅ First-class | ❌ | Partial |
+| H1 Knowledge RAG | ✅ BGE-M3 + Qdrant | ❌ | ❌ |
+| HITL stateful + resumable | ✅ LangGraph checkpoint | Partial | ❌ |
+| Self-learning antar engagement | ✅ Sprint 14.1 | ❌ | ❌ |
+| ReAct reasoning + audit trail | ✅ Sprint 14.2 | ✅ | ❌ |
+| CVSS v3.1 auto-scoring | ✅ Sprint 14.3 | ❌ | Partial |
+| RateLimit-aware scanning | ✅ Sprint 15.1 | ❌ | ❌ |
+| Attack chain correlation | ✅ Sprint 15.2 | ❌ | ❌ |
+| Structured attack playbooks | ✅ Sprint 15.3 | ❌ | Partial |
+| Context summarization | ✅ Sprint 15.4 | ❌ | ❌ |
+| Passive OSINT pre-recon | ✅ Sprint 15.5 | ❌ | ❌ |
+| **7-Question Triage Gate** | ✅ Sprint 16.1 | ❌ | ❌ |
+| **Anomaly detection (baseline diff)** | ✅ Sprint 16.4 | ❌ | Partial |
+| **Developer psychology heuristics** | ✅ Sprint 16.5 | ❌ | ❌ |
+| HTTPS→HTTP fallback | ✅ | ❓ | ❓ |
+| OPSEC mode + jitter | ✅ | ❌ | ❌ |
+| Web UI (React full) | ✅ | ✅ | ❌ CLI |
+| Bug bounty H1 format auto | ✅ | ❌ | ❌ |
+
+---
+
+## Smoke Test Scorecard (4 Juni 2026)
+
+```
+BLOK 1 — Infrastruktur & API          ✅ 4/4
+BLOK 2 — Workspace & Engagement       ✅ 3/3
+BLOK 3 — Knowledge Base               ✅ 3/3
+BLOK 4 — Agent Pipeline               ✅ 6/6
+BLOK 5 — Report Generation            ✅ 2/2
+BLOK 6 — Frontend UI                  ⏳ 0/5  (manual — requires pnpm dev)
+BLOK 7 — Monitoring & Admin           ✅ 3/3
+BLOK 8 — Security & Scope             ✅ 3/3
+BLOK 9 — Unit Tests                   ✅ 2/2
+BLOK 10 — Export/Import               ✅ 2/2
+BLOK 11 — Celery Worker               ✅ 2/2
+────────────────────────────────────
+TOTAL                                 30/35
+```
+
+## Unit Test History
+
+| Selesai | pentra-tools | pentra-agent | apps/api | Total |
+|---------|-------------|--------------|----------|-------|
+| Sprint 14 (Juni 3) | 81 | 15 | 47 | 143 |
+| Sprint 15 (Juni 4, sesi 1) | 84 (+3) | 24 (+9) | 51 (+4) | 159 (+16) |
+| Sprint 16 (Juni 4, sesi 2) | 84 | 38 (+14) | 51 | 170 (+11) |
+
+---
+
+## Remaining Work
+
+### Sprint 16 — Tasks Belum Selesai
+- `[ ]` **Task 16.2** — DO NOT STOP routing (chain loop): setelah triage, jika ada finding `CHAIN_REQUIRED`, re-enter vuln_hunt
+- `[ ]` **Task 16.6** — Enterprise Attack Matrix node (M365, Okta, VPN surface detection)
+
+### Frontend (BLOK 6 — manual)
+Jalankan `cd apps/web && pnpm dev`, buka browser, test:
+- ST-6.1 Login flow
+- ST-6.2 Engagement create + live feed WebSocket
+- ST-6.3 FindingsTable + HITL approval modal
+- ST-6.4 ReportViewer (Markdown + H1 export)
+- ST-6.5 KB Browser (search + filter + detail)
+
+### E2E-v16 Run
+Full engagement pada live target dengan fitur Sprint 16 aktif:
+- Verify `[triage]` KILL/DOWNGRADE di log setelah vuln_hunt
+- Verify `ANOMALY SIGNALS:` muncul di log saat error keyword terdeteksi
+- Verify `Developer Psychology` heuristics masuk observation di log
+- Verify `triaged_findings` berbeda dari `findings` (filtered)
+
+---
+
+## Quick Start
+
+```bash
+# Start API (port 8001)
+cd apps/api
+nohup uv run uvicorn app.main:app --host 0.0.0.0 --port 8001 &>/tmp/api-server.log &
+
+# Start Frontend (port 5173)
+cd apps/web && pnpm dev
+
+# Run migrations
+cd apps/api && uv run alembic upgrade head
+
+# Auth
+curl -sX POST http://localhost:8001/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"Pentra@2026!"}'
+
+# Watch logs
+tail -f /tmp/api-server.log | grep -E "CONFIRMED|react_thought|CVSS|learning|ReAct"
+```

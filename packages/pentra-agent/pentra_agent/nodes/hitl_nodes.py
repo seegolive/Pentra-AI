@@ -103,7 +103,11 @@ async def hitl_recon_review(state: PentraState) -> dict:
 # ── Exploit review — ALWAYS interrupts ────────────────────────────────────────
 
 async def hitl_exploit_review(state: PentraState) -> dict:
-    """Safety gate before exploit validation — always interrupts regardless of mode."""
+    """Safety gate before exploit validation.
+
+    ALWAYS interrupts regardless of mode — exploit actions are destructive
+    and require explicit human approval. This gate cannot be bypassed.
+    """
     decision = interrupt({
         "type": "AWAITING_APPROVAL",
         "phase": "exploit_validation",

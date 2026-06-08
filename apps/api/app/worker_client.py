@@ -24,6 +24,12 @@ def _get_celery() -> Celery:
         _celery.conf.update(
             task_serializer="json",
             accept_content=["json"],
+            # Mirror the worker's routing so tasks land in the right queues.
+            task_default_queue="default",
+            task_routes={
+                "app.tasks.knowledge_scrape.*": {"queue": "knowledge"},
+                "app.tasks.knowledge_update.*": {"queue": "knowledge"},
+            },
         )
     return _celery
 

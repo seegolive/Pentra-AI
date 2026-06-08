@@ -10,7 +10,7 @@ from alembic import context
 
 # Import all ORM models so autogenerate can detect the schema
 from app.db.base import Base  # noqa: F401
-from app.db.models import WorkspaceORM, EngagementORM, FindingORM, AuditLogORM  # noqa: F401
+from app.db.models import WorkspaceORM, EngagementORM, FindingORM, AuditLogORM, EngagementLearningORM  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

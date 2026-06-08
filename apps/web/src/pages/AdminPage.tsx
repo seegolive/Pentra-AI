@@ -1,6 +1,5 @@
 import { useState } from "react";
 import {
-  Database,
   Users,
   Target,
   FolderOpen,
@@ -258,7 +257,6 @@ function ImportPanel() {
 
 export default function AdminPage() {
   const user = useAuthStore((s) => s.user);
-  const qc = useQueryClient();
 
   // Redirect non-admins
   if (!user?.is_admin) {

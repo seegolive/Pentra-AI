@@ -99,6 +99,7 @@ class FindingORM(Base):
     vuln_class: Mapped[str] = mapped_column(String(50), nullable=False)
     severity: Mapped[str] = mapped_column(String(20), nullable=False)
     cvss_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    cvss_vector: Mapped[str | None] = mapped_column(String(200), nullable=True, comment="CVSS v3.1 vector string, e.g. CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H")
 
     target_url: Mapped[str] = mapped_column(Text, nullable=False)
     http_method: Mapped[str] = mapped_column(String(10), nullable=False, default="GET")
@@ -124,6 +125,10 @@ class FindingORM(Base):
     cve_data: Mapped[dict | None] = mapped_column(
         JSONB, nullable=True,
         comment="Enriched CVE detail from NVD (first/most severe match)",
+    )
+    chains: Mapped[list | None] = mapped_column(
+        JSONB, nullable=True,
+        comment="Attack chains this finding participates in, set by VulnerabilityCorrelator",
     )
 
     engagement: Mapped["EngagementORM"] = relationship(back_populates="findings")
@@ -162,6 +167,55 @@ class ReconSnapshotORM(Base):
     endpoints: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     tech_stack: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     raw_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class EngagementLearningORM(Base):
+    """Learning record persisted after each engagement completes.
+
+    Queried by plan_node before generating a new plan so the LLM can
+    benefit from prior experience on targets with similar tech stacks.
+    """
+
+    __tablename__ = "engagement_learnings"
+
+    id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
+    engagement_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("engagements.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+
+    # Target context
+    tech_stack: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    target_pattern: Mapped[str] = mapped_column(
+        String(200), nullable=False, default="",
+        comment="Human-readable pattern, e.g. 'ASP.NET + IIS + MSSQL'",
+    )
+
+    # What worked
+    effective_tools: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list,
+        comment='e.g. [{"tool": "nuclei", "tags": ["sqli"], "findings": 3}]',
+    )
+    effective_techniques: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list,
+        comment='e.g. [{"technique": "HTTPS→HTTP fallback", "impact": "unblocked 30 findings"}]',
+    )
+
+    # What didn't work
+    failed_tools: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    failed_techniques: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+
+    # High-value endpoints discovered
+    high_value_endpoints: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list,
+        comment='e.g. [{"pattern": "/products?cat=", "vuln": "SQLi", "confirmed": true}]',
+    )
+
+    # Metrics
+    findings_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    high_critical_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    engagement_duration_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
 
 
 class MonitoringAlertORM(Base):

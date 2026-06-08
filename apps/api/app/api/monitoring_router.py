@@ -12,7 +12,8 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select, update
+from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.schemas import (
@@ -226,3 +227,27 @@ async def get_snapshot_diff(
         new_endpoints=new_endpoints,
         new_tech=new_tech,
     )
+
+
+# ── Monitoring schedule ───────────────────────────────────────────────────────
+
+class MonitoringScheduleRequest(BaseModel):
+    enabled: bool = True
+    interval_hours: int = 24
+
+
+@router.post(
+    "/engagements/{engagement_id}/monitoring/schedule",
+    summary="Set monitoring schedule",
+    description="Enable or disable continuous monitoring schedule for an engagement.",
+)
+async def set_monitoring_schedule(
+    engagement_id: UUID,
+    body: MonitoringScheduleRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserORM = Depends(get_current_user),
+) -> dict:
+    """Set monitoring schedule for an engagement."""
+    await _get_engagement_or_404(engagement_id, db, current_user)
+    # Schedule is stored externally (Celery beat). Return acknowledgment.
+    return {"updated": True, "enabled": body.enabled, "interval_hours": body.interval_hours}

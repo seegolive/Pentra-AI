@@ -40,6 +40,7 @@ from pentra_shared.types.knowledge import (
 from pentra_shared.types.severity import (
     Severity,
     SEVERITY_CVSS_RANGES,
+    normalize_severity,
     severity_from_cvss,
 )
 from pentra_shared.types.vuln_class import (

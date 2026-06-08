@@ -17,9 +17,21 @@ export default defineConfig({
     },
   },
   projects: [
+    // 1. Auth setup — runs once, saves localStorage state for all other tests
+    {
+      name: "setup",
+      testMatch: /auth\.setup\.ts/,
+    },
+    // 2. All tests — start pre-authenticated via saved storage state
+    //    Tests that need a fresh unauthenticated state add:
+    //      test.use({ storageState: { cookies: [], origins: [] } });
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: {
+        ...devices["Desktop Chrome"],
+        storageState: "e2e/.auth-state.json",
+      },
+      dependencies: ["setup"],
     },
   ],
   // Re-use running dev server if available; otherwise start it

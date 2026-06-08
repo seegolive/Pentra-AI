@@ -5,8 +5,8 @@ import { test, expect } from "@playwright/test";
  *
  * Requires:
  *  - Frontend running on http://localhost:5174
- *  - Backend API running on http://localhost:8000
- *  - Default admin account: username=admin, password=pentra123
+ *  - Backend API running on http://localhost:8001
+ *  - Default admin account: username=admin, password=Pentra@2026!
  */
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -25,12 +25,14 @@ async function fillLoginForm(
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
 test.describe("Authentication Flow", () => {
+  // These tests navigate to /login directly — need unauthenticated state
+  test.use({ storageState: { cookies: [], origins: [] } });
   test("login dengan credentials valid berhasil redirect ke workspaces", async ({
     page,
   }) => {
     await page.goto("/login");
 
-    await fillLoginForm(page, "admin", "pentra123");
+    await fillLoginForm(page, "admin", "Pentra@2026!");
 
     // Should redirect away from /login to /workspaces
     await expect(page).toHaveURL("/workspaces", { timeout: 10_000 });
@@ -73,7 +75,7 @@ test.describe("Authentication Flow", () => {
   }) => {
     // First log in
     await page.goto("/login");
-    await fillLoginForm(page, "admin", "pentra123");
+    await fillLoginForm(page, "admin", "Pentra@2026!");
     await expect(page).toHaveURL("/workspaces", { timeout: 10_000 });
 
     // Click sign out

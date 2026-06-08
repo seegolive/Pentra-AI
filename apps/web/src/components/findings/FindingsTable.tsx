@@ -18,11 +18,11 @@ import {
   useGeneratePayloads,
   usePatchFinding,
 } from "../../lib/api";
+import type { GeneratedPayload } from "../../lib/api";
 import type {
   Finding,
   FindingStatus,
   Severity,
-  GeneratedPayload,
 } from "../../lib/types";
 import { cn } from "../../lib/utils";
 
@@ -81,11 +81,9 @@ const ALL_STATUSES: FindingStatus[] = [
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function SortIcon({
-  field,
   active,
   dir,
 }: {
-  field: string;
   active: boolean;
   dir: SortDir;
 }) {
@@ -365,6 +363,58 @@ function ExpandedDetail({ finding }: { finding: Finding }) {
           </p>
         </div>
       )}
+      {finding.cvss_vector && (
+        <div className={finding.cvss_score != null ? "" : "col-span-2"}>
+          <p className="text-muted-foreground mb-1 font-medium">CVSS Vector</p>
+          <p className="font-mono text-[10px] text-foreground/70 break-all leading-relaxed">
+            {finding.cvss_vector}
+          </p>
+        </div>
+      )}
+      {finding.impact && (
+        <div className="col-span-2">
+          <p className="text-muted-foreground mb-1 font-medium">Impact</p>
+          <p className="text-foreground/80 leading-relaxed">{finding.impact}</p>
+        </div>
+      )}
+      {finding.remediation && (
+        <div className="col-span-2">
+          <p className="text-muted-foreground mb-1 font-medium">Remediation</p>
+          <p className="text-foreground/80 leading-relaxed">{finding.remediation}</p>
+        </div>
+      )}
+      {finding.chains && finding.chains.length > 0 && (
+        <div className="col-span-2">
+          <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-2">
+            ⛓️ Attack Chains
+          </p>
+          <div className="space-y-2">
+            {finding.chains.map((chain, i) => (
+              <div
+                key={i}
+                className="bg-red-950/30 border border-red-900/40 rounded p-3"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="inline-flex items-center rounded border border-red-800 px-1.5 py-0.5 text-xs font-semibold text-red-400">
+                    {chain.upgraded_severity?.toUpperCase() ?? "CHAIN"}
+                  </span>
+                  <span className="text-sm font-medium text-red-300">
+                    {chain.name}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  {chain.scenario}
+                </p>
+                {chain.business_impact && (
+                  <p className="text-xs text-red-400 mt-1">
+                    💥 {chain.business_impact}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {finding.cve_data && (
         <div className="col-span-2">
           <p className="text-muted-foreground mb-1 font-medium">CVE Details</p>
@@ -458,7 +508,7 @@ export function FindingsTable({ engagementId, findings }: FindingsTableProps) {
     >
       <span className="inline-flex items-center gap-1">
         {children}
-        <SortIcon field={field} active={sortField === field} dir={sortDir} />
+        <SortIcon active={sortField === field} dir={sortDir} />
       </span>
     </th>
   );

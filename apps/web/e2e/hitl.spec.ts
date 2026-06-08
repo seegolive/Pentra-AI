@@ -13,12 +13,12 @@ import { test, expect, type Page } from "@playwright/test";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-const API = "http://localhost:8000";
+const API = process.env.E2E_API_URL ?? "http://localhost:8001";
 
 async function login(page: Page) {
   await page.goto("/login");
   await page.getByLabel("Username").fill("admin");
-  await page.getByLabel("Password").fill("admin123");
+  await page.getByLabel("Password").fill("Pentra@2026!");
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.waitForURL("/workspaces", { timeout: 10_000 });
 }
@@ -35,9 +35,7 @@ async function getAuthToken(page: Page): Promise<string> {
 // ── Tests ──────────────────────────────────────────────────────────────────────
 
 test.describe("HITL Approval Flow", () => {
-  test.beforeEach(async ({ page }) => {
-    await login(page);
-  });
+  // Storage state provides pre-auth; no beforeEach login needed
 
   test("engagement detail page carikan engagement yang sudah ada", async ({
     page,

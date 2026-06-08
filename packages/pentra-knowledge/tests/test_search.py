@@ -98,7 +98,11 @@ async def test_hybrid_search_returns_relevant_results() -> None:
 
 @pytest.mark.asyncio
 async def test_hybrid_search_returns_empty_on_no_hits() -> None:
-    """hybrid_search should return [] when Qdrant returns no results."""
+    """hybrid_search should return [] when Qdrant returns no results.
+
+    When Qdrant is empty (0 vectors) the fallback calls repo.full_text_search.
+    If that also returns [] we expect an empty final result.
+    """
     mock_db = AsyncMock()
 
     with (
@@ -109,13 +113,18 @@ async def test_hybrid_search_returns_empty_on_no_hits() -> None:
         patch(
             "pentra_knowledge.services.search._get_qdrant_client"
         ) as mock_qdrant_factory,
-        patch("pentra_knowledge.services.search.KnowledgeRepository"),
+        patch("pentra_knowledge.services.search.KnowledgeRepository") as mock_repo_cls,
     ):
         mock_empty_response = MagicMock()
         mock_empty_response.points = []
         mock_qdrant = AsyncMock()
         mock_qdrant.query_points = AsyncMock(return_value=mock_empty_response)
         mock_qdrant_factory.return_value = mock_qdrant
+
+        # PG fallback also returns empty
+        mock_repo = AsyncMock()
+        mock_repo.full_text_search = AsyncMock(return_value=[])
+        mock_repo_cls.return_value = mock_repo
 
         results = await hybrid_search(
             query="something obscure",

@@ -9,9 +9,11 @@ import {
   Settings,
   Users,
   Activity,
+  LayoutDashboard,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useAuthStore } from "../lib/authStore";
+import { APP_VERSION } from "../lib/version";
 
 interface NavItem {
   to: string;
@@ -21,9 +23,11 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
+  { to: "/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
   { to: "/workspaces", label: "Workspaces", icon: <FolderOpen className="h-4 w-4" /> },
   { to: "/engagements", label: "All Engagements", icon: <Target className="h-4 w-4" /> },
   { to: "/knowledge", label: "Knowledge Base", icon: <BookOpen className="h-4 w-4" /> },
+  { to: "/settings", label: "Settings", icon: <Settings className="h-4 w-4" /> },
 ];
 
 export function AppShell() {
@@ -53,7 +57,7 @@ export function AppShell() {
         {/* Logo */}
         <div
           className="flex items-center gap-2.5 px-5 py-5 border-b border-border cursor-pointer"
-          onClick={() => navigate("/workspaces")}
+          onClick={() => navigate("/dashboard")}
         >
           <ShieldCheck className="h-5 w-5 text-primary" />
           <span className="font-bold text-foreground tracking-tight">Pentra AI</span>
@@ -97,6 +101,11 @@ export function AppShell() {
             <LogOut className="h-3.5 w-3.5" />
             Sign out
           </button>
+          <div className="px-1 pt-1">
+            <span className="text-[10px] text-muted-foreground/40 font-mono">
+              v{APP_VERSION}
+            </span>
+          </div>
         </div>
       </aside>
 

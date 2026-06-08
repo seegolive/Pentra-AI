@@ -44,7 +44,7 @@ class ScopeEnforcer:
     def validate_or_raise(self, target: str) -> None:
         """Raise ScopeViolationError if *target* is not permitted."""
         host = self._extract_host(target)
-        if not self.is_allowed(host):
+        if not self.is_allowed(target):
             raise ScopeViolationError(
                 f"Target '{host}' is outside engagement scope. "
                 f"Allowed: {self._in_scope}",
@@ -54,18 +54,26 @@ class ScopeEnforcer:
     def is_allowed(self, target: str) -> bool:
         """Return True if *target* is in scope and not explicitly excluded."""
         host = self._extract_host(target).lower()
+        # Also extract host:port for port-qualified scope rules (e.g. "localhost:9999")
+        host_with_port = self._extract_host_with_port(target)
 
         # Explicit exclusion takes priority
         if any(self._matches(host, rule) for rule in self._out_of_scope):
             return False
 
-        return any(self._matches(host, rule) for rule in self._in_scope)
+        # Check in_scope: try both host-only and host:port to support port-qualified rules
+        for rule in self._in_scope:
+            if self._matches(host, rule):
+                return True
+            if host_with_port and self._matches(host_with_port, rule):
+                return True
+        return False
 
     # ── Private helpers ───────────────────────────────────────────────────
 
     @staticmethod
     def _extract_host(target: str) -> str:
-        """Strip URL scheme/path and return just the hostname or IP."""
+        """Strip URL scheme/path and return just the hostname or IP (no port)."""
         if "://" in target:
             parsed = urlparse(target)
             host = parsed.hostname or target
@@ -75,6 +83,19 @@ class ScopeEnforcer:
         # Remove port if present
         host = re.sub(r":\d+$", "", host)
         return host.lower()
+
+    @staticmethod
+    def _extract_host_with_port(target: str) -> str | None:
+        """Return 'hostname:port' if the target has an explicit port, else None."""
+        if "://" in target:
+            parsed = urlparse(target)
+            if parsed.port and parsed.hostname:
+                return f"{parsed.hostname}:{parsed.port}".lower()
+        else:
+            host_part = target.split("/")[0]
+            if re.search(r":\d+$", host_part):
+                return host_part.lower()
+        return None
 
     @staticmethod
     def _matches(host: str, rule: str) -> bool:

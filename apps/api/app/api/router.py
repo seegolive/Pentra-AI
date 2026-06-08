@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
@@ -204,7 +204,7 @@ async def start_engagement(
 
     # Update status
     eng.status = "active"
-    eng.started_at = datetime.utcnow()
+    eng.started_at = datetime.now(timezone.utc)
     await db.commit()
 
     # Audit log
@@ -256,6 +256,49 @@ async def approve_action(
     return {"status": "resumed", "decision": decision.action}
 
 
+@router.patch(
+    "/engagements/{engagement_id}/mode",
+    summary="Update engagement mode",
+    description="Switch between semi_auto (HITL required) and agentic (fully automatic, no interrupts).",
+)
+async def update_engagement_mode(
+    engagement_id: UUID,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserORM = Depends(get_current_user),
+) -> dict:
+    """Set engagement mode to 'semi_auto' or 'agentic'.
+
+    If the engagement is currently awaiting approval and mode is set to
+    'agentic', automatically resumes the graph as well.
+    """
+    mode = body.get("mode", "")
+    if mode not in ("semi_auto", "agentic"):
+        raise HTTPException(status_code=422, detail="mode must be 'semi_auto' or 'agentic'")
+
+    eng = await db.get(EngagementORM, engagement_id)
+    if eng is None:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+
+    eng.mode = mode
+    db.add(AuditLogORM(
+        engagement_id=engagement_id,
+        actor="user",
+        action="mode_changed",
+        detail={"mode": mode, "changed_by": str(current_user.id)},
+    ))
+    await db.commit()
+    await db.refresh(eng)
+
+    # If currently paused and switching to agentic, auto-resume
+    auto_resumed = False
+    if mode == "agentic" and eng.status == "awaiting_approval":
+        asyncio.create_task(_resume_agent(str(engagement_id), "approve"))
+        auto_resumed = True
+
+    return {"status": "updated", "mode": mode, "auto_resumed": auto_resumed}
+
+
 # ── Findings ──────────────────────────────────────────────────────────────────
 
 @router.get(
@@ -275,6 +318,100 @@ async def list_findings(
         .order_by(FindingORM.discovered_at.desc())
     )
     return [FindingResponse.model_validate(f) for f in result.scalars().all()]
+
+
+@router.get(
+    "/findings/recent",
+    response_model=list[FindingResponse],
+    summary="Recent findings",
+    description="Return the N most recent findings across all engagements the user can access.",
+)
+async def get_recent_findings(
+    limit: int = Query(default=5, le=20),
+    db: AsyncSession = Depends(get_db),
+    current_user: UserORM = Depends(get_current_user),
+) -> list[FindingResponse]:
+    stmt = (
+        select(FindingORM)
+        .join(EngagementORM, FindingORM.engagement_id == EngagementORM.id)
+        .join(WorkspaceORM, EngagementORM.workspace_id == WorkspaceORM.id)
+        .order_by(FindingORM.discovered_at.desc())
+        .limit(limit)
+    )
+    if not current_user.is_admin:
+        stmt = stmt.where(WorkspaceORM.owner_id == current_user.id)
+    result = await db.execute(stmt)
+    return [FindingResponse.model_validate(f) for f in result.scalars().all()]
+
+
+@router.get(
+    "/engagements/{engagement_id}/learning",
+    summary="Get engagement learning record",
+    description="Return the EngagementLearning record saved after a completed engagement.",
+)
+async def get_engagement_learning(
+    engagement_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserORM = Depends(get_current_user),
+) -> dict:
+    from app.db.models import EngagementLearningORM
+    from sqlalchemy import select as sa_select
+    result = await db.execute(
+        sa_select(EngagementLearningORM)
+        .where(EngagementLearningORM.engagement_id == engagement_id)
+        .order_by(EngagementLearningORM.created_at.desc())
+        .limit(1)
+    )
+    learning = result.scalar_one_or_none()
+    if learning is None:
+        raise HTTPException(status_code=404, detail="No learning record for this engagement")
+    return {
+        "id": str(learning.id),
+        "engagement_id": str(learning.engagement_id),
+        "tech_stack": learning.tech_stack,
+        "target_pattern": learning.target_pattern,
+        "effective_tools": learning.effective_tools,
+        "effective_techniques": learning.effective_techniques,
+        "failed_tools": learning.failed_tools,
+        "failed_techniques": learning.failed_techniques,
+        "high_value_endpoints": learning.high_value_endpoints,
+        "findings_count": learning.findings_count,
+        "high_critical_count": learning.high_critical_count,
+        "engagement_duration_minutes": learning.engagement_duration_minutes,
+        "created_at": learning.created_at.isoformat(),
+    }
+
+
+# ── Audit Logs ────────────────────────────────────────────────────────────────
+
+@router.get(
+    "/engagements/{engagement_id}/audit",
+    summary="List audit logs",
+    description="Return append-only audit log entries for an engagement.",
+)
+async def list_audit_logs(
+    engagement_id: UUID,
+    limit: int = 100,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserORM = Depends(get_current_user),
+) -> list[dict]:
+    result = await db.execute(
+        select(AuditLogORM)
+        .where(AuditLogORM.engagement_id == engagement_id)
+        .order_by(AuditLogORM.created_at.desc())
+        .limit(limit)
+    )
+    return [
+        {
+            "id": str(log.id),
+            "engagement_id": str(log.engagement_id),
+            "action": log.action,
+            "actor": log.actor,
+            "detail": log.detail,
+            "created_at": log.created_at.isoformat() if log.created_at else None,
+        }
+        for log in result.scalars().all()
+    ]
 
 
 # ── Export / Import ───────────────────────────────────────────────────────────
@@ -303,7 +440,7 @@ async def export_engagement(
     findings = findings_result.scalars().all()
 
     return EngagementExportBundle(
-        exported_at=datetime.utcnow(),
+        exported_at=datetime.now(timezone.utc),
         engagement=EngagementResponse.model_validate(eng),
         findings=[
             FindingExport(
@@ -424,7 +561,7 @@ async def submit_finding_to_knowledge(
     import hashlib
     source_id = hashlib.sha256(f"finding:{finding_id}".encode()).hexdigest()[:32]
 
-    async with KBSession() as kb_db:
+    async with KBSession()() as kb_db:
         repo = KnowledgeRepository(kb_db)
         existing = await repo.get_by_source_id(source_id)
         if existing:
@@ -528,7 +665,7 @@ async def inject_knowledge_record(
         f"manual:{current_user.id}:{body.title}".encode()
     ).hexdigest()[:32]
 
-    async with KBSession() as kb_db:
+    async with KBSession()() as kb_db:
         repo = KnowledgeRepository(kb_db)
         existing = await repo.get_by_source_id(source_id)
         if existing:
@@ -608,7 +745,7 @@ async def inject_knowledge_from_url(
     title = (title_match or h1_match)
     title = title.group(1).strip()[:200] if title else body.url
 
-    async with KBSession() as kb_db:
+    async with KBSession()() as kb_db:
         repo = KnowledgeRepository(kb_db)
         existing = await repo.get_by_source_id(source_id)
         if existing:
@@ -618,7 +755,7 @@ async def inject_knowledge_from_url(
             )
 
         record_data: dict = {
-            "source": "url_inject",
+            "source": "custom",
             "source_id": source_id,
             "source_url": body.url,
             "title": title,
@@ -633,7 +770,6 @@ async def inject_knowledge_from_url(
             "key_insight": "",
             "indicators": [],
             "pentra_tags": ["url_inject"] + (body.tags or []),
-            "raw_content": raw_text,
         }
 
         orm = await repo.create(record_data)
@@ -702,7 +838,7 @@ async def inject_knowledge_from_file(
     source_id = hashlib.sha256(content_bytes).hexdigest()[:32]
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
 
-    async with KBSession() as kb_db:
+    async with KBSession()() as kb_db:
         repo = KnowledgeRepository(kb_db)
         existing = await repo.get_by_source_id(source_id)
         if existing:
@@ -712,11 +848,11 @@ async def inject_knowledge_from_file(
             )
 
         record_data: dict = {
-            "source": "file_upload",
+            "source": "custom",
             "source_id": source_id,
             "source_url": "",
             "title": title,
-            "vuln_class": vuln_class,
+            "vuln_class": vuln_class if vuln_class and vuln_class != "other" else "other",
             "vuln_subclass": "",
             "severity": "info",
             "program": "manual",
@@ -727,7 +863,6 @@ async def inject_knowledge_from_file(
             "key_insight": "",
             "indicators": [],
             "pentra_tags": ["file_upload"] + tag_list,
-            "raw_content": raw_text,
         }
 
         orm = await repo.create(record_data)
@@ -749,6 +884,7 @@ async def inject_knowledge_from_file(
 )
 async def generate_payloads(
     data: PayloadGenerateAPIRequest,
+    db: AsyncSession = Depends(get_db),
     current_user: UserORM = Depends(get_current_user),
 ) -> PayloadGenerateAPIResponse:
     """Generate context-aware payloads using LLM + RAG knowledge base.
@@ -776,7 +912,8 @@ async def generate_payloads(
     ).strip()
     kb_results = await hybrid_search(
         query=search_query,
-        filters={"vuln_class": data.vuln_class} if data.vuln_class else None,
+        db=db,
+        vuln_class=[data.vuln_class] if data.vuln_class else None,
         top_k=8,
     )
     knowledge_dicts = [r.model_dump() if hasattr(r, "model_dump") else dict(r) for r in kb_results]
@@ -810,6 +947,21 @@ async def generate_payloads(
         knowledge_used=len(knowledge_dicts),
         model_used=model,
     )
+
+
+# ── Event history (REST fallback for page refresh) ───────────────────────────
+
+@router.get("/engagements/{engagement_id}/events")
+async def get_engagement_events(
+    engagement_id: UUID,
+    current_user: UserORM = Depends(get_current_user),
+) -> list[dict]:
+    """Return buffered live-feed events for an engagement.
+
+    Used by the frontend on page load to restore history when the WebSocket
+    buffer has not been populated yet (e.g. after a server restart).
+    """
+    return ws_manager.get_history(str(engagement_id))
 
 
 # ── WebSocket live feed ───────────────────────────────────────────────────────
@@ -958,7 +1110,7 @@ async def _run_agent(eng: EngagementORM) -> None:
                 _eng = await _sess.get(EngagementORM, engagement_id)
                 if _eng:
                     _eng.status = "completed"
-                    _eng.completed_at = datetime.utcnow()
+                    _eng.completed_at = datetime.now(UTC)
                     await _sess.commit()
             await _engine.dispose()
 
@@ -1092,7 +1244,7 @@ async def _resume_agent(engagement_id: str, user_decision: str) -> None:
                 _eng = await _sess.get(EngagementORM, engagement_id)
                 if _eng:
                     _eng.status = "completed"
-                    _eng.completed_at = datetime.utcnow()
+                    _eng.completed_at = datetime.now(UTC)
                     await _sess.commit()
             await _engine.dispose()
 
