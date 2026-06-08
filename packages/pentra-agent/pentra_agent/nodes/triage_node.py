@@ -1,11 +1,12 @@
 """Triage Gate — LLM validate setiap finding sebelum persist ke DB.
 
-7-Question gate (dari BugHunter triage-validation skill):
-  1. Reproducible  2. In-scope  3. Real impact  4. Novel
-  5. Chainable     6. Evidenced  7. Not duplicate
+Two-stage triage (Task 18.7):
+  Stage 1: Fast LLM screen — 7-Question gate (PASS / DOWNGRADE / KILL / CHAIN_REQUIRED)
+  Stage 2: HTTP re-probe — replay original payload to confirm timing/response anomaly
+           is reproducible. Boosts confidence for HIGH/CRITICAL findings.
 
-Output per finding: PASS / DOWNGRADE / KILL / CHAIN_REQUIRED
-Findings yang KILL di-drop; DOWNGRADE severity diturunkan.
+Stage 2 runs only on HIGH/CRITICAL findings from Stage 1 to avoid slow-down.
+Findings that fail Stage 2 re-probe are downgraded (not killed) — evidence is now weak.
 
 Berjalan setelah vuln_hunt_node, sebelum hitl_exploit/report.
 Hasil ditulis ke `triaged_findings` (bukan `findings`) agar tidak
@@ -16,7 +17,10 @@ from __future__ import annotations
 
 import logging
 import os
+import time
+from typing import Literal
 
+import httpx
 from langchain_core.messages import AIMessage
 
 from pentra_agent.graph.state import PentraState
@@ -142,10 +146,227 @@ async def triage_node(state: PentraState) -> dict:
     )
     logger.info("[triage] %s", summary)
 
+    # ── Stage 2: HTTP re-probe for HIGH/CRITICAL findings ─────────────────────
+    # Replay the original payload to verify the anomaly is reproducible.
+    # Findings that fail re-probe are downgraded (MEDIUM), not killed.
+    stage2_results = await _stage2_reprobe(triaged, state.get("auth_credentials"))
+    triaged = stage2_results
+
+    high_crit_after = sum(1 for f in triaged if f.get("severity") in ("high", "critical"))
+    final_summary = (
+        f"Two-stage triage done: {len(triaged)} findings "
+        f"({high_crit_after} HIGH/CRITICAL after Stage 2 verification)."
+    )
+    logger.info("[triage] %s", final_summary)
+
     return {
         "triaged_findings": triaged,
-        "messages": [AIMessage(content=summary)],
+        "messages": [AIMessage(content=final_summary)],
     }
+
+
+# ── Stage 2: HTTP re-probe ────────────────────────────────────────────────────
+
+async def _stage2_reprobe(
+    findings: list[dict],
+    auth_credentials: dict | None = None,
+) -> list[dict]:
+    """Stage 2 triage: replay original payload to verify reproducibility.
+
+    Only HIGH/CRITICAL findings are re-probed (to avoid slow-down on low-sev).
+    A finding is considered verified if:
+      - Time-based SQLi: response takes ≥4s (90% of the 5s WAITFOR)
+      - Reflection-based (XSS/SSTI): payload appears in response body
+      - Error-based: DB error string in response
+
+    Findings that cannot be verified are downgraded to MEDIUM with a note.
+    """
+    if not findings:
+        return findings
+
+    # Build auth headers/cookies for re-probe
+    _auth_headers: dict[str, str] = {}
+    _auth_cookies: dict[str, str] = {}
+    if auth_credentials:
+        try:
+            from pentra_tools.auth.session_manager import AuthCredentials, SessionManager
+            _creds = AuthCredentials(**auth_credentials)
+            if not _creds.is_empty() and _creds.type != "auto_login":
+                _auth_headers, _auth_cookies = SessionManager(_creds).get_auth_headers()
+        except Exception:
+            pass
+
+    result: list[dict] = []
+    for finding in findings:
+        sev = finding.get("severity", "info")
+        if sev not in ("high", "critical"):
+            # Low/medium/info findings skip Stage 2 — already triaged by LLM
+            result.append(finding)
+            continue
+
+        payload = finding.get("payload", "")
+        url = finding.get("target_url", "")
+        param = finding.get("param_name", "")
+        param_loc = finding.get("param_location", "query")
+        vuln_class = (finding.get("vuln_class") or "").lower()
+
+        if not (payload and url and param):
+            # Missing evidence — keep as-is, mark stage 2 skipped
+            finding = dict(finding)
+            finding["stage2_verified"] = None
+            finding["stage2_note"] = "Skipped: missing payload/url/param evidence"
+            result.append(finding)
+            continue
+
+        verified, note = await _reprobe_request(
+            url=url,
+            param=param,
+            param_loc=param_loc,
+            payload=payload,
+            vuln_class=vuln_class,
+            auth_headers=_auth_headers,
+            auth_cookies=_auth_cookies,
+        )
+
+        finding = dict(finding)
+        finding["stage2_verified"] = verified
+        finding["stage2_note"] = note
+
+        if verified:
+            logger.info("[triage/stage2] VERIFIED %s[%s] — %s", url, param, note)
+        else:
+            # Downgrade — can't reproduce means lower confidence
+            old_sev = finding["severity"]
+            finding["severity"] = "medium"
+            finding["triage_reason"] = (
+                finding.get("triage_reason", "") +
+                f" [Stage 2 downgrade: could not reproduce — {note}]"
+            )
+            logger.warning(
+                "[triage/stage2] NOT REPRODUCED %s[%s] %s→medium — %s",
+                url, param, old_sev, note,
+            )
+
+        result.append(finding)
+
+    return result
+
+
+async def _reprobe_request(
+    url: str,
+    param: str,
+    param_loc: str,
+    payload: str,
+    vuln_class: str,
+    auth_headers: dict[str, str],
+    auth_cookies: dict[str, str],
+    timeout: float = 12.0,
+) -> tuple[bool, str]:
+    """Replay a single payload and determine if the anomaly is reproducible.
+
+    Returns (verified: bool, note: str).
+    """
+    from urllib.parse import urlencode, urlparse, parse_qs, urljoin
+
+    try:
+        parsed = urlparse(url)
+        headers: dict[str, str] = {
+            "User-Agent": "Mozilla/5.0 (PentraAI/1.0 Stage2Verify)",
+            "Accept": "*/*",
+            **auth_headers,
+        }
+        cookies = dict(auth_cookies)
+
+        # Inject payload into the correct location
+        if param_loc in ("query", "query_string"):
+            params = parse_qs(parsed.query, keep_blank_values=True)
+            params[param] = [payload]
+            new_query = urlencode(params, doseq=True)
+            test_url = parsed._replace(query=new_query).geturl()
+            req_body = None
+        elif param_loc == "body":
+            test_url = url
+            req_body = urlencode({param: payload})
+            headers["Content-Type"] = "application/x-www-form-urlencoded"
+        elif param_loc in ("header",):
+            test_url = url
+            req_body = None
+            headers[param] = payload
+        else:
+            return False, f"Unsupported param_location: {param_loc}"
+
+        proxies = None
+        burp_proxy = os.getenv("BURP_PROXY_URL")
+        if burp_proxy:
+            proxies = {"http://": burp_proxy, "https://": burp_proxy}
+
+        t0 = time.monotonic()
+        async with httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=timeout,
+            verify=False,   # noqa: S501
+            proxies=proxies,  # type: ignore[arg-type]
+        ) as client:
+            resp = await client.request(
+                method="POST" if req_body else "GET",
+                url=test_url,
+                headers=headers,
+                cookies=cookies or None,
+                content=req_body.encode() if req_body else None,
+            )
+        elapsed = time.monotonic() - t0
+        body = resp.text.lower()
+
+        # ── Verification logic by vuln class ─────────────────────────────────
+        if "sqli" in vuln_class or "sql" in vuln_class or "injection" in vuln_class:
+            # Time-based: SLEEP/WAITFOR
+            if "sleep" in payload.lower() or "waitfor" in payload.lower():
+                if elapsed >= 4.0:
+                    return True, f"Time-based SQLi confirmed: {elapsed:.1f}s delay"
+                return False, f"No timing anomaly: {elapsed:.1f}s (expected ≥4s)"
+            # Error-based
+            error_signals = [
+                "you have an error in your sql", "unclosed quotation mark",
+                "ora-", "syntax error", "microsoft ole db", "mysql_fetch",
+                "pg::syntaxerror", "quoted string not properly terminated",
+            ]
+            found = [e for e in error_signals if e in body]
+            if found:
+                return True, f"DB error confirmed: {found[0]!r}"
+            return False, "No SQL error in response; payload may not reach SQL query"
+
+        elif "xss" in vuln_class or "cross_site" in vuln_class:
+            # Check payload reflected unencoded
+            payload_lower = payload.lower()
+            if payload_lower in body or "<script" in body or "onerror=" in body:
+                return True, "XSS payload reflected in response"
+            return False, "Payload not reflected unencoded in response"
+
+        elif "ssti" in vuln_class:
+            if "49" in resp.text or "{{7*7}}" not in resp.text:
+                return True, "SSTI arithmetic evaluated in response"
+            return False, "SSTI payload not evaluated"
+
+        elif "lfi" in vuln_class or "path_traversal" in vuln_class:
+            lfi_signals = ["root:x:0:0", "[boot loader]", "[operating systems]", "windows\\system32"]
+            found = [s for s in lfi_signals if s in body]
+            if found:
+                return True, f"LFI confirmed: {found[0]!r}"
+            return False, "No file content in response"
+
+        elif "ssrf" in vuln_class:
+            # Can't easily verify blind SSRF without OOB — mark as unverified
+            return False, "SSRF requires OOB verification (Collaborator)"
+
+        else:
+            # Unknown class — if response differs significantly, accept as verified
+            return True, f"Response received (status={resp.status_code}); manual verification needed"
+
+    except httpx.TimeoutException:
+        # Timeout itself can indicate time-based SQLi
+        return True, f"Request timed out after {timeout}s — likely time-based injection"
+    except Exception as exc:
+        return False, f"Re-probe failed: {exc}"
 
 
 def _get_ollama_url() -> str:

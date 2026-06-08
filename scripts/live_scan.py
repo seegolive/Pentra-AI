@@ -78,7 +78,7 @@ def _print_findings(findings: list[dict]) -> None:
         print()
 
 
-def _build_initial_state(domain: str, engagement_id: str, mode: str) -> dict:
+def _build_initial_state(domain: str, engagement_id: str, mode: str, auth_credentials: dict | None = None) -> dict:
     return {
         "engagement_id": engagement_id,
         "target": {"domain": domain},
@@ -106,10 +106,11 @@ def _build_initial_state(domain: str, engagement_id: str, mode: str) -> dict:
             "SSRF, file inclusion, command injection. "
             "Use Burp Collaborator for OOB detection where possible."
         ),
+        "auth_credentials": auth_credentials,
     }
 
 
-async def run_live_scan(domain: str, mode: str = "agentic") -> None:
+async def run_live_scan(domain: str, mode: str = "agentic", auth_credentials: dict | None = None) -> None:
     """Run full recon → vuln_hunt pipeline live against target domain."""
     # Late imports so env vars are already set
     from pentra_agent.nodes.recon_node import recon_node
@@ -124,9 +125,11 @@ async def run_live_scan(domain: str, mode: str = "agentic") -> None:
     print(f"  Burp MCP:     {os.environ['BURP_MCP_URL']}")
     print(f"  Ollama:       {os.environ['OLLAMA_URL']}")
     print(f"  LLM model:    {os.getenv('OLLAMA_MODEL_DEFAULT', 'qwen2.5:32b')}")
+    if auth_credentials:
+        print(f"  Auth:         {auth_credentials['type']}")
     print(f"  Started:      {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
-    state = _build_initial_state(domain, engagement_id, mode)
+    state = _build_initial_state(domain, engagement_id, mode, auth_credentials=auth_credentials)
 
     # ── Phase 1: RECON ────────────────────────────────────────────────────────
     _banner("PHASE 1: RECON  (subfinder → httpx → nmap → Burp sitemap → LLM)")
@@ -234,9 +237,56 @@ def main() -> None:
                         help="Target domain (must be in-scope / intentionally vulnerable)")
     parser.add_argument("--mode", default="agentic", choices=["agentic", "semi_auto"],
                         help="Agent mode")
+
+    # ── Authenticated scan options (Task 18.6) ────────────────────────────────
+    auth_group = parser.add_argument_group("Authenticated scan (optional)")
+    auth_group.add_argument("--auth-cookie",
+                            help='Pre-captured session cookie string. E.g. "session=abc; csrf=xyz"')
+    auth_group.add_argument("--auth-bearer",
+                            help="Bearer token (without 'Bearer ' prefix)")
+    auth_group.add_argument("--auth-header",
+                            help="Custom auth header value (combined with --auth-header-name)")
+    auth_group.add_argument("--auth-header-name", default="Authorization",
+                            help="Custom header name when using --auth-header (default: Authorization)")
+    auth_group.add_argument("--auth-user",
+                            help="Username for auto-login")
+    auth_group.add_argument("--auth-pass",
+                            help="Password for auto-login")
+    auth_group.add_argument("--auth-login-url",
+                            help="Login URL for auto-login (required with --auth-user/--auth-pass)")
+    auth_group.add_argument("--auth-basic",
+                            help='HTTP Basic auth as "user:password"')
+
     args = parser.parse_args()
 
-    asyncio.run(run_live_scan(args.domain, args.mode))
+    # Build auth_credentials dict
+    auth_credentials: dict | None = None
+    if args.auth_cookie:
+        auth_credentials = {"type": "cookie", "value": args.auth_cookie}
+    elif args.auth_bearer:
+        auth_credentials = {"type": "bearer", "value": args.auth_bearer}
+    elif args.auth_basic:
+        auth_credentials = {"type": "basic", "value": args.auth_basic}
+    elif args.auth_header:
+        auth_credentials = {
+            "type": "header",
+            "value": args.auth_header,
+            "header_name": args.auth_header_name,
+        }
+    elif args.auth_user and args.auth_pass:
+        if not args.auth_login_url:
+            parser.error("--auth-login-url is required when using --auth-user/--auth-pass")
+        auth_credentials = {
+            "type": "auto_login",
+            "login_url": args.auth_login_url,
+            "username": args.auth_user,
+            "password": args.auth_pass,
+        }
+
+    if auth_credentials:
+        print(f"\n  Auth mode:    {auth_credentials['type']}")
+
+    asyncio.run(run_live_scan(args.domain, args.mode, auth_credentials=auth_credentials))
 
 
 if __name__ == "__main__":

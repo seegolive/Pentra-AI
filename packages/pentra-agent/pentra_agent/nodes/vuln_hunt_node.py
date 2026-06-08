@@ -142,12 +142,14 @@ async def vuln_hunt_node(state: PentraState) -> dict:
         burp_scan_results,
         burp_proxy_results,
         burp_extended,
+        soap_xxe_results,
     ) = await asyncio.gather(
         _run_nuclei(endpoints, state["scope"], tech_stack=state.get("tech_stack", [])),
         _run_ffuf(endpoints[:5]),
         _run_burp_active_scan(endpoints[:10], state["scope"]),
         _get_burp_proxy_findings(domain, state["scope"]),
         _run_burp_extended_checks(domain, state["scope"], endpoints),
+        _run_soap_xxe_scan(domain, state["scope"], state.get("auth_credentials")),
         return_exceptions=False,
     )
     raw_findings.extend(nuclei_results)
@@ -155,10 +157,11 @@ async def vuln_hunt_node(state: PentraState) -> dict:
     raw_findings.extend(burp_scan_results)
     raw_findings.extend(burp_proxy_results)
     raw_findings.extend(burp_extended)
+    raw_findings.extend(soap_xxe_results)
     log.info(
-        "[vuln_hunt_node] Concurrent scan done: nuclei=%d ffuf=%d burp_scan=%d proxy=%d ext=%d",
+        "[vuln_hunt_node] Concurrent scan done: nuclei=%d ffuf=%d burp_scan=%d proxy=%d ext=%d soap_xxe=%d",
         len(nuclei_results), len(ffuf_results), len(burp_scan_results),
-        len(burp_proxy_results), len(burp_extended),
+        len(burp_proxy_results), len(burp_extended), len(soap_xxe_results),
     )
 
     # ── 5. Collaborator payload (expose in tool_outputs for LLM) ─────────────
@@ -211,6 +214,7 @@ async def vuln_hunt_node(state: PentraState) -> dict:
                 engagement_id=state["engagement_id"],
                 pentest_plan=state.get("pentest_plan", ""),
                 kb_context=_prescan_kb,
+                auth_credentials=state.get("auth_credentials"),
             ),
             _passive_csrf_check(domain, state["scope"]),
         )
@@ -1185,6 +1189,7 @@ async def _run_llm_burp_active_testing(
     engagement_id: str,
     pentest_plan: str = "",
     kb_context: list[dict] | None = None,
+    auth_credentials: dict | None = None,
 ) -> list[dict]:
     """LLM-driven active exploit testing — Burp optional, always runs.
 
@@ -1207,6 +1212,36 @@ async def _run_llm_burp_active_testing(
     in_scope: list[str] = scope.get("in_scope", [])
     out_of_scope: list[str] = scope.get("out_of_scope", [])
     enforcer = ScopeEnforcer(in_scope=in_scope, out_of_scope=out_of_scope)
+
+    # ── Auth setup (Task 18.6) ────────────────────────────────────────────────
+    # Build auth headers/cookies to inject into every scan request.
+    _auth_headers: dict[str, str] = {}
+    _auth_cookies: dict[str, str] = {}
+    if auth_credentials:
+        try:
+            from pentra_tools.auth.session_manager import AuthCredentials, SessionManager
+            _creds_obj = AuthCredentials(**auth_credentials)
+            if not _creds_obj.is_empty():
+                _mgr = SessionManager(_creds_obj)
+                if _creds_obj.type == "auto_login":
+                    _login_result = await _mgr.auto_login()
+                    if _login_result.success:
+                        _auth_headers = _login_result.headers
+                        _auth_cookies = _login_result.cookies
+                        log.info(
+                            "[auth] Auto-login succeeded — %d cookies for authenticated scan",
+                            len(_auth_cookies),
+                        )
+                    else:
+                        log.warning("[auth] Auto-login FAILED: %s — continuing unauthenticated", _login_result.error)
+                else:
+                    _auth_headers, _auth_cookies = _mgr.get_auth_headers()
+                    log.info(
+                        "[auth] Auth injected: type=%s headers=%s cookies=%d",
+                        _creds_obj.type, list(_auth_headers.keys()), len(_auth_cookies),
+                    )
+        except Exception as _auth_exc:
+            log.warning("[auth] Auth setup failed (non-fatal): %s", _auth_exc)
 
     # ── Burp connection check (optional) ─────────────────────────────────────
     # HexStrike FailureRecoverySystem: Burp unavailability must not block the
@@ -1517,10 +1552,15 @@ async def _run_llm_burp_active_testing(
         try:
             _t0 = _time.monotonic()
             if burp_available and client:
-                _, original_response = await client.send_request(cand_url, method=cand_method)
+                _, original_response = await client.send_request(
+                    cand_url, method=cand_method,
+                    extra_headers=_auth_headers or None,
+                    cookies=_auth_cookies or None,
+                )
             else:
                 _, original_response = await _direct_request(
-                    cand_url, method=cand_method  # no proxy when Burp is down
+                    cand_url, method=cand_method,
+                    headers=_auth_headers or None,
                 )
             _baseline_time = _time.monotonic() - _t0
         except Exception as exc:
@@ -1707,15 +1747,15 @@ async def _run_llm_burp_active_testing(
                         test_url,
                         method=test_method,
                         body=test_body,
-                        headers=test_headers,
+                        headers={**(_auth_headers or {}), **(test_headers or {})},
+                        cookies=_auth_cookies or None,
                     )
                 else:
                     test_raw_req, test_response = await _direct_request(
                         test_url,
                         method=test_method,
                         body=test_body,
-                        headers=test_headers,
-                        # no proxy when Burp is down
+                        headers={**(_auth_headers or {}), **(test_headers or {})},
                     )
                 _test_time = _time.monotonic() - _t1
             except ScopeViolationError:
@@ -3006,3 +3046,68 @@ async def _run_burp_extended_checks(
             log.info("[vuln_hunt_node] WebSocket analysis: %d finding(s)", len(ws_findings))
 
         return findings
+
+
+async def _run_soap_xxe_scan(
+    domain: str,
+    scope: dict,
+    auth_credentials: dict | None = None,
+) -> list[dict]:
+    """Task 18.8 — SOAP/WSDL discovery + XXE injection scan.
+
+    Runs silently on non-XML targets. Only emits findings on confirmed WSDL
+    discovery or confirmed XXE injection.
+    """
+    try:
+        from pentra_tools.vuln.soap_xxe import SoapXxeScanner
+    except ImportError:
+        return []
+
+    # Scope check
+    in_scope: list[str] = scope.get("in_scope", [])
+    if not in_scope:
+        return []
+
+    # Build base URL from domain
+    base_url = f"https://{domain}" if not domain.startswith("http") else domain
+    burp_proxy = _get_burp_proxy()
+
+    # Get auth headers/cookies
+    auth_headers: dict[str, str] = {}
+    auth_cookies: dict[str, str] = {}
+    if auth_credentials:
+        try:
+            from pentra_tools.auth.session_manager import AuthCredentials, SessionManager
+            _creds = AuthCredentials(**auth_credentials)
+            if not _creds.is_empty() and _creds.type != "auto_login":
+                auth_headers, auth_cookies = SessionManager(_creds).get_auth_headers()
+        except Exception:
+            pass
+
+    # Get Collaborator URL from Burp (if available)
+    collab_url: str | None = None
+    burp_url, burp_enabled = _get_burp_config()
+    if burp_url and burp_enabled and _BURP_AVAILABLE:
+        try:
+            _bc = BurpMCPClient(base_url=burp_url)
+            if await _bc.health_check():
+                collab = await _bc.generate_collaborator_payload()
+                collab_url = collab.payload_url if collab else None
+        except Exception:
+            pass
+
+    try:
+        scanner = SoapXxeScanner(
+            base_url=base_url,
+            burp_collaborator=collab_url,
+            proxy_url=burp_proxy,
+        )
+        findings = await scanner.scan(auth_headers=auth_headers, auth_cookies=auth_cookies)
+        if findings:
+            log.info("[vuln_hunt_node] SOAP/XXE scan: %d finding(s)", len(findings))
+        else:
+            log.debug("[vuln_hunt_node] SOAP/XXE scan: no findings on %s", domain)
+        return findings
+    except Exception as exc:
+        log.debug("[vuln_hunt_node] SOAP/XXE scan failed (non-fatal): %s", exc)
+        return []

@@ -675,6 +675,8 @@ class BurpMCPClient:
         method: str = "GET",
         headers: dict[str, str] | None = None,
         body: str = "",
+        extra_headers: dict[str, str] | None = None,
+        cookies: dict[str, str] | None = None,
     ) -> tuple[str, str]:
         """High-level helper: build and send HTTP request via Burp, return (raw_request, raw_response).
 
@@ -682,10 +684,12 @@ class BurpMCPClient:
         The request appears in Burp proxy history and triggers passive scanning.
 
         Args:
-            url:     Full URL, e.g. "http://target.com/api?id=1".
-            method:  HTTP method (GET, POST, PUT, DELETE, etc.).
-            headers: Optional extra headers to include (merges with defaults).
-            body:    Optional request body for POST/PUT.
+            url:           Full URL, e.g. "http://target.com/api?id=1".
+            method:        HTTP method (GET, POST, PUT, DELETE, etc.).
+            headers:       Optional headers to include (merges with defaults).
+            body:          Optional request body for POST/PUT.
+            extra_headers: Additional headers (e.g. auth headers) merged last.
+            cookies:       Optional cookie dict injected as Cookie header.
 
         Returns:
             (raw_request, raw_response) — both as strings.
@@ -710,6 +714,14 @@ class BurpMCPClient:
                 default_headers["Content-Type"] = "application/x-www-form-urlencoded"
         if headers:
             default_headers.update(headers)
+        if extra_headers:
+            default_headers.update(extra_headers)
+        if cookies:
+            cookie_header = "; ".join(f"{k}={v}" for k, v in cookies.items())
+            if "Cookie" in default_headers:
+                default_headers["Cookie"] += f"; {cookie_header}"
+            else:
+                default_headers["Cookie"] = cookie_header
 
         raw_request = f"{method.upper()} {path} HTTP/1.1\r\n"
         for k, v in default_headers.items():

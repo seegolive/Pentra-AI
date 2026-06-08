@@ -118,3 +118,9 @@ class PentraState(TypedDict):
     # ── DO NOT STOP routing (Sprint 17) ──────────────────────────────
     # Incremented by vuln_hunt_node each round; capped at MAX_ROUNDS=3 in router.
     hunt_rounds: int
+
+    # ── Authenticated scan (Sprint 18.6) ─────────────────────────────
+    # Optional auth credentials injected into all scan requests.
+    # None = unauthenticated scan (default).
+    # Use AuthCredentials from pentra_tools.auth.session_manager.
+    auth_credentials: dict | None  # serialised AuthCredentials dict

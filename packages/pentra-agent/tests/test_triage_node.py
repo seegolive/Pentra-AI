@@ -73,9 +73,8 @@ async def test_triage_pass_verdict_keeps_finding():
     assert len(result["triaged_findings"]) == 1
     assert result["triaged_findings"][0]["triage_verdict"] == "PASS"
     assert result["triaged_findings"][0]["title"] == "SQL Injection on /api/search"
-    # Summary message
-    assert "1 passed" in result["messages"][0].content
-    assert "0 killed" in result["messages"][0].content
+    # Summary message — Two-stage triage
+    assert "Two-stage triage done" in result["messages"][0].content
 
 
 @pytest.mark.asyncio
@@ -98,8 +97,7 @@ async def test_triage_kill_verdict_drops_finding():
 
     assert "triaged_findings" in result
     assert len(result["triaged_findings"]) == 0
-    assert "0 passed" in result["messages"][0].content
-    assert "1 killed" in result["messages"][0].content
+    assert "Two-stage triage done" in result["messages"][0].content
 
 
 @pytest.mark.asyncio
@@ -125,5 +123,4 @@ async def test_triage_downgrade_verdict_lowers_severity():
     triaged = result["triaged_findings"][0]
     assert triaged["triage_verdict"] == "DOWNGRADE"
     assert triaged["severity"] == "info"      # was "high" → downgraded
-    assert "1 passed" in result["messages"][0].content
-    assert "1 downgraded" in result["messages"][0].content
+    assert "Two-stage triage done" in result["messages"][0].content
