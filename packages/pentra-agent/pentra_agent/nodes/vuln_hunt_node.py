@@ -1491,7 +1491,15 @@ async def _run_llm_burp_active_testing(
     # ── Steps 5–8: For each candidate, craft → send → analyze ────────────────
     confirmed_findings: list[dict] = []
     blind_payload_ids: list[tuple[str, dict]] = []  # (payload_id, candidate)
-    react_history: list[dict] = []  # rolling ReAct history for this engagement
+
+    # ── Task 18.10: Located Memory — no context forgetting ───────────────────
+    # Tracks confirmed findings, exhausted candidates, effective payloads and
+    # failed attempts so LLM never wastes time re-testing what was already done.
+    from pentra_agent.memory.located_memory import LocatedMemory
+    memory = LocatedMemory()
+
+    # Backward-compat alias for react_history (now inside memory)
+    react_history = memory.react_history
 
     # ── Task 18.9 — Concurrent candidate testing (XBOW pattern) ─────────────
     # Run up to CONCURRENT_CANDIDATES candidates in parallel.
@@ -1530,6 +1538,14 @@ async def _run_llm_burp_active_testing(
                 enforcer.validate_or_raise(cand_url)
             except ScopeViolationError:
                 log.warning("[llm_burp] candidate %s out of scope — skip", cand_url)
+                return
+
+            # ── Task 18.10: Memory skip gate ─────────────────────────────────
+            if memory.is_confirmed(cand_url, param_name):
+                log.debug("[memory] Skip %s[%s] — already confirmed", cand_url, param_name)
+                return
+            if memory.is_exhausted(cand_url, param_name):
+                log.debug("[memory] Skip %s[%s] — already exhausted", cand_url, param_name)
                 return
     
             log.info(
@@ -1582,8 +1598,11 @@ async def _run_llm_burp_active_testing(
                 original_response = ""
     
             # ── ReAct step: Reason before acting ─────────────────────────────────
+            # Task 18.10: prepend memory summary so LLM knows what was already found
+            _mem_prefix = memory.observation_prefix(cand_url, param_name)
             observation = (
-                f"URL: {cand_url}\n"
+                (_mem_prefix + "\n" if _mem_prefix else "")
+                + f"URL: {cand_url}\n"
                 f"Parameter: {param_name} ({param_location})\n"
                 f"Test types: {test_types}\n"
                 f"Tech stack: {tech_stack}\n"
@@ -1602,6 +1621,8 @@ async def _run_llm_burp_active_testing(
                     "thought": react_out.thought,
                     "action": react_out.action,
                 })
+                # Task 18.10: also record in LocatedMemory for cross-candidate persistence
+                memory.add_react_step(cand_url, param_name, react_out.thought, react_out.action)
                 log.info(
                     "[vuln_hunt] ReAct Thought: %s | Action: %s",
                     react_out.thought, react_out.action,
@@ -1861,6 +1882,8 @@ async def _run_llm_burp_active_testing(
                         "payload": test_payload,
                     }
                     confirmed_findings.append(finding)
+                    # Task 18.10: record confirmed finding in LocatedMemory
+                    memory.mark_confirmed(cand_url, param_name, finding)
     
                     # Open in Burp Repeater (only when Burp available)
                     if burp_available and client:
@@ -1881,12 +1904,23 @@ async def _run_llm_burp_active_testing(
                             )
     
                     break  # one confirmed finding per candidate is enough
-    
+
                 elif uses_collab and collab_payload_id:
                     blind_payload_ids.append((collab_payload_id, candidate))
+                else:
+                    # No finding, no OOB — record payload as failed
+                    memory.mark_failed_payload(cand_url, param_name, test_payload)
 
-    # ── Task 18.9: Launch all candidate tests concurrently ───────────────────
+            # After all payloads tested: if no confirmed finding, mark exhausted
+            if not memory.is_confirmed(cand_url, param_name):
+                memory.mark_exhausted(cand_url, param_name)
+                log.debug("[memory] Exhausted: %s[%s]", cand_url, param_name)
     await asyncio.gather(*[_test_one(c) for c in candidates[:20]], return_exceptions=True)
+    log.info(
+        "[memory] Stats: confirmed=%d exhausted=%d effective_classes=%s",
+        memory.stats["confirmed"], memory.stats["exhausted"],
+        memory.stats["effective_payload_classes"],
+    )
 
     # ── Step 9: Poll Collaborator for OOB hits (Burp Pro only) ───────────────
     if burp_available and client and blind_payload_ids and collab_payload_id:
