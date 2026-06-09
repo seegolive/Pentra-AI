@@ -204,7 +204,8 @@ async def start_engagement(
 
     # Update status
     eng.status = "active"
-    eng.started_at = datetime.now(timezone.utc)
+    # Fix: DB column is TIMESTAMP WITHOUT TIME ZONE — must use naive UTC datetime
+    eng.started_at = datetime.now(timezone.utc).replace(tzinfo=None)
     await db.commit()
 
     # Audit log
@@ -1142,7 +1143,7 @@ async def _run_agent(eng: EngagementORM) -> None:
                 _eng = await _sess.get(EngagementORM, engagement_id)
                 if _eng:
                     _eng.status = "completed"
-                    _eng.completed_at = datetime.now(UTC)
+                    _eng.completed_at = datetime.now(UTC).replace(tzinfo=None)
                     await _sess.commit()
             await _engine.dispose()
 
@@ -1276,7 +1277,7 @@ async def _resume_agent(engagement_id: str, user_decision: str) -> None:
                 _eng = await _sess.get(EngagementORM, engagement_id)
                 if _eng:
                     _eng.status = "completed"
-                    _eng.completed_at = datetime.now(UTC)
+                    _eng.completed_at = datetime.now(UTC).replace(tzinfo=None)
                     await _sess.commit()
             await _engine.dispose()
 
