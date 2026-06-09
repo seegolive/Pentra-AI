@@ -327,7 +327,7 @@ export default function EngagementDetailPage() {
   const workspace = workspaces?.find((w) => w.id === engagement?.workspace_id);
   const startMutation = useStartEngagement(engagementId!);
   const modeMutation = useUpdateEngagementMode(engagementId!);
-  const { events, pendingApproval, connected, clearApproval } = useEngagementFeed(
+  const { events, pendingApproval, connected, agentStatus, clearApproval } = useEngagementFeed(
     (engagement?.status === "active" || engagement?.status === "awaiting_approval") ? engagementId : undefined
   );
 
@@ -418,6 +418,23 @@ export default function EngagementDetailPage() {
               >
                 {connected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
                 {connected ? "Live" : "Disconnected"}
+              </span>
+            )}
+            {/* Task 20.4: Agent phase status badge */}
+            {agentStatus !== "idle" && (
+              <span
+                className={cn(
+                  "text-xs px-2 py-0.5 rounded-full border font-mono",
+                  agentStatus === "running"
+                    ? "bg-blue-500/10 text-blue-400 border-blue-500/30 animate-pulse"
+                    : agentStatus === "waiting"
+                    ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/30"
+                    : agentStatus === "completed"
+                    ? "bg-green-500/10 text-green-400 border-green-500/30"
+                    : "bg-muted text-muted-foreground border-border"
+                )}
+              >
+                {agentStatus === "running" ? "⚡ running" : agentStatus === "waiting" ? "⏸ awaiting approval" : "✓ completed"}
               </span>
             )}
           </div>

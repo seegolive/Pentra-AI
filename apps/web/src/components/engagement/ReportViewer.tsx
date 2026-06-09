@@ -143,6 +143,13 @@ const DOWNLOAD_FORMATS = [
     icon: ShieldAlert,
     iconColor: "text-green-400",
   },
+  {
+    format: "h1-summary",
+    label: "H1 Executive",
+    ext: "md",
+    icon: ShieldAlert,
+    iconColor: "text-yellow-400",
+  },
 ] as const;
 
 // ── Main component ─────────────────────────────────────────────────────────────
@@ -170,10 +177,13 @@ export function ReportViewer({ engagementId }: ReportViewerProps) {
     setDownloading(format);
     try {
       const token = useAuthStore.getState().accessToken;
-      const res = await fetch(
-        `${API_BASE}/api/v1/engagements/${engagementId}/report?format=${format}`,
-        { headers: token ? { Authorization: `Bearer ${token}` } : {} },
-      );
+      // H1 Executive Summary uses a different endpoint (Task 19.5)
+      const url = format === "h1-summary"
+        ? `${API_BASE}/api/v1/engagements/${engagementId}/report/h1-summary`
+        : `${API_BASE}/api/v1/engagements/${engagementId}/report?format=${format}`;
+      const res = await fetch(url, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
