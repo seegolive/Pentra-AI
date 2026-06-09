@@ -81,6 +81,47 @@ class ConnectionManager:
         if engagement_id in self._buffer:
             self._buffer[engagement_id].clear()
 
+    async def broadcast_and_persist(
+        self,
+        engagement_id: str,
+        message: dict,
+        db=None,  # AsyncSession — optional, skips DB persist if None
+    ) -> None:
+        """Broadcast event AND persist to DB for cross-restart history (Task 19.4).
+
+        DB persistence is best-effort — failure does not block the broadcast.
+        Skips persisting: ping events and LLM_STREAM tokens (too voluminous).
+
+        Args:
+            engagement_id: The engagement UUID string.
+            message:        Event dict (type, node, data, etc.).
+            db:             Optional AsyncSession. If None, only broadcasts.
+        """
+        # Always broadcast to connected clients
+        await self.broadcast(engagement_id, message)
+
+        # Persist to DB (skip noisy event types)
+        _skip_types = {"ping", "LLM_STREAM", "llm_stream"}
+        if db is None or message.get("type") in _skip_types:
+            return
+
+        try:
+            from app.db.models import AgentEventORM
+            from uuid import UUID as _UUID
+
+            eng_uuid = _UUID(engagement_id) if isinstance(engagement_id, str) else engagement_id
+            event = AgentEventORM(
+                engagement_id=eng_uuid,
+                event_type=message.get("type", ""),
+                node=message.get("node"),
+                content=message.get("content") if isinstance(message.get("content"), str) else None,
+                data={k: v for k, v in message.items() if k not in ("type", "node", "content")},
+            )
+            db.add(event)
+            await db.commit()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("[ws] DB persist failed (non-fatal): %s", exc)
+
 
 # Singleton — imported by both the router and agent nodes
 ws_manager = ConnectionManager()

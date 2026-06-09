@@ -108,3 +108,85 @@ async def get_report(
         return JSONResponse(content=json.loads(output))
     else:
         return PlainTextResponse(content=output)
+
+
+@router.get(
+    "/engagements/{engagement_id}/report/h1-summary",
+    summary="Generate H1-ready executive summary report",
+    description="Generate a HackerOne-ready Markdown report with LLM executive summary.",
+)
+async def get_h1_summary_report(
+    engagement_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> PlainTextResponse:
+    """Generate full H1-ready report with LLM executive summary (Task 19.5)."""
+    try:
+        from pentra_report.h1_report import generate_h1_report
+    except ImportError as exc:
+        raise HTTPException(status_code=503, detail="pentra-report not installed") from exc
+
+    # Load engagement
+    result = await db.execute(select(EngagementORM).where(EngagementORM.id == engagement_id))
+    eng = result.scalar_one_or_none()
+    if eng is None:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+
+    # Load findings
+    f_result = await db.execute(
+        select(FindingORM).where(FindingORM.engagement_id == engagement_id)
+    )
+    findings_orm = f_result.scalars().all()
+
+    if not findings_orm:
+        return PlainTextResponse(content="# No findings for this engagement.\n")
+
+    findings = [
+        {
+            "title": f.title,
+            "severity": f.severity,
+            "vuln_class": f.vuln_class,
+            "cvss_score": f.cvss_score,
+            "target_url": f.target_url or "",
+            "description": f.description or "",
+            "impact": f.impact or "",
+            "remediation": f.remediation or "",
+            "request_raw": f.request_raw or "",
+            "response_raw": f.response_raw or "",
+            "payload": getattr(f, "payload", "") or "",
+        }
+        for f in findings_orm
+    ]
+
+    engagement_dict = {
+        "target_domain": eng.in_scope[0] if eng.in_scope else "",
+        "id": str(engagement_id),
+        "duration_minutes": (
+            int((eng.completed_at - eng.started_at).total_seconds() / 60)
+            if eng.completed_at and eng.started_at
+            else 0
+        ),
+    }
+
+    try:
+        from pentra_agent.llm.client import LLMClient
+        from app.core.config import settings
+        llm = LLMClient(
+            base_url=str(settings.OLLAMA_URL) + "/v1",
+            model=eng.llm_model or settings.OLLAMA_MODEL_DEFAULT,
+        )
+        report_md = await generate_h1_report(
+            engagement=engagement_dict,
+            findings=findings,
+            llm=llm,
+        )
+    except Exception as exc:
+        log.error("[h1_summary] Report generation failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Report generation failed: {exc}") from exc
+
+    return PlainTextResponse(
+        content=report_md,
+        headers={
+            "Content-Disposition": f'attachment; filename="h1-report-{engagement_id}.md"',
+        },
+    )
+

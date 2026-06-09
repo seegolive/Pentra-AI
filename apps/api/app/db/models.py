@@ -234,3 +234,27 @@ class MonitoringAlertORM(Base):
     is_read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     notified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(nullable=False, server_default=func.now())
+
+
+class AgentEventORM(Base):
+    """Persisted WebSocket event for engagement live feed — Task 19.4.
+
+    Allows frontend to reload event history after page refresh or server restart.
+    Max retention enforced by cleanup task: 7 days or 1000 events per engagement.
+    LLM_STREAM tokens are excluded (too voluminous) — only structural events.
+    """
+
+    __tablename__ = "agent_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    engagement_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("engagements.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    event_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    node: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        nullable=False, server_default=func.now(), index=True
+    )

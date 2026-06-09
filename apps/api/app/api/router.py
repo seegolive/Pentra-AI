@@ -954,14 +954,46 @@ async def generate_payloads(
 @router.get("/engagements/{engagement_id}/events")
 async def get_engagement_events(
     engagement_id: UUID,
+    limit: int = Query(default=200, le=500),
+    db: AsyncSession = Depends(get_db),
     current_user: UserORM = Depends(get_current_user),
 ) -> list[dict]:
-    """Return buffered live-feed events for an engagement.
+    """Return event history for an engagement.
 
-    Used by the frontend on page load to restore history when the WebSocket
-    buffer has not been populated yet (e.g. after a server restart).
+    Priority: in-memory ring buffer first (fast, no DB hit).
+    Fallback: DB query when buffer is empty (e.g. after server restart).
+    Used by the frontend on page load to restore history.
     """
-    return ws_manager.get_history(str(engagement_id))
+    # Try in-memory buffer first
+    history = ws_manager.get_history(str(engagement_id))
+    if history:
+        return history[-limit:]
+
+    # DB fallback — reads persisted events (Task 19.4)
+    try:
+        from sqlalchemy import select
+        from app.db.models import AgentEventORM
+
+        result = await db.execute(
+            select(AgentEventORM)
+            .where(AgentEventORM.engagement_id == engagement_id)
+            .order_by(AgentEventORM.created_at.desc())
+            .limit(limit)
+        )
+        events = result.scalars().all()
+        return [
+            {
+                "type": e.event_type,
+                "node": e.node,
+                "content": e.content,
+                **(e.data or {}),
+                "timestamp": e.created_at.isoformat(),
+            }
+            for e in reversed(events)  # chronological order
+        ]
+    except Exception as exc:
+        log.warning("[events] DB fallback failed: %s", exc)
+        return []
 
 
 # ── WebSocket live feed ───────────────────────────────────────────────────────

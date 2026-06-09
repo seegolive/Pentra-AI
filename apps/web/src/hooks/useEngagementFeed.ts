@@ -23,6 +23,8 @@ export function useEngagementFeed(engagementId: string | undefined) {
   const [events, setEvents] = useState<FeedEvent[]>([]);
   const [pendingApproval, setPendingApproval] = useState<ApprovalRequest | null>(null);
   const [connected, setConnected] = useState(false);
+  // Task 19.4: agent status restored from history on mount
+  const [agentStatus, setAgentStatus] = useState<"idle" | "running" | "waiting" | "completed">("idle");
   const wsRef = useRef<WebSocket | null>(null);
   // Track which engagement's history we've already loaded to avoid duplicate fetch
   const loadedRef = useRef<string | null>(null);
@@ -53,6 +55,13 @@ export function useEngagementFeed(engagementId: string | undefined) {
         // Restore last pending approval if any
         const last = sorted.find((e) => e.type === "AWAITING_APPROVAL" && e.data);
         if (last) setPendingApproval(last.data as unknown as ApprovalRequest);
+        // Task 19.4: restore agent status from last event
+        const lastEvent = history[history.length - 1];
+        if (lastEvent) {
+          if (lastEvent.type === "ENGAGEMENT_COMPLETED") setAgentStatus("completed");
+          else if (lastEvent.type === "AWAITING_APPROVAL") setAgentStatus("waiting");
+          else if (lastEvent.type === "NODE_START" || lastEvent.type === "NODE_COMPLETE") setAgentStatus("running");
+        }
         loadedRef.current = engagementId;
       })
       .catch(() => { /* non-fatal */ });
@@ -88,5 +97,5 @@ export function useEngagementFeed(engagementId: string | undefined) {
 
   const clearApproval = () => setPendingApproval(null);
 
-  return { events, pendingApproval, connected, clearApproval };
+  return { events, pendingApproval, connected, agentStatus, clearApproval };
 }
