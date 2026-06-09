@@ -28,7 +28,7 @@ from typing import Any
 
 import httpx
 
-from pentra_knowledge.db.base import AsyncSessionLocal
+from pentra_knowledge.db.base import _get_session_factory as _kb_session_factory
 from pentra_knowledge.db.repository import KnowledgeRepository
 from pentra_shared.types import VulnClass
 
@@ -221,7 +221,7 @@ async def _import_async(folder_filter: list[str] | None) -> dict[str, int]:
                 folder_name, vuln_class.value, len(sections),
             )
 
-            async with AsyncSessionLocal() as db:
+            async with _kb_session_factory()() as db:
                 repo = KnowledgeRepository(db)
                 for section in sections:
                     section_id = _stable_id(folder_name, section["heading"])

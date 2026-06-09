@@ -23,7 +23,7 @@ from typing import Any
 
 import httpx
 
-from pentra_knowledge.db.base import AsyncSessionLocal
+from pentra_knowledge.db.base import _get_session_factory as _kb_session_factory
 from pentra_knowledge.db.repository import KnowledgeRepository
 from pentra_shared.types import VulnClass
 
@@ -40,8 +40,8 @@ RSS_FEEDS: list[dict[str, str]] = [
         "default_category": "web",
     },
     {
-        "url": "https://www.hackerone.com/blog.rss",
-        "source": "hackerone_blog",
+        "url": "https://feeds.feedburner.com/HackerNewsYCombinator",
+        "source": "hackernews_security",
         "default_category": "web",
     },
     {
@@ -54,19 +54,24 @@ RSS_FEEDS: list[dict[str, str]] = [
         "source": "assetnote",
         "default_category": "web",
     },
+    {
+        "url": "https://www.exploit-db.com/rss.xml",
+        "source": "exploit_db",
+        "default_category": "web",
+    },
 ]
 
 # ── Vuln class keyword map ────────────────────────────────────────────────────
 
 _VULN_KEYWORDS: list[tuple[list[str], VulnClass]] = [
-    (["xss", "cross-site scripting"], VulnClass.XSS),
+    (["xss", "cross-site scripting", "stored xss", "reflected xss", "dom xss"], VulnClass.XSS_STORED),
     (["sql injection", "sqli"], VulnClass.SQLI),
     (["ssrf", "server-side request forgery"], VulnClass.SSRF),
     (["idor", "insecure direct object"], VulnClass.IDOR),
-    (["rce", "remote code execution", "command injection"], VulnClass.RCE),
+    (["rce", "remote code execution", "command injection", "cmdi"], VulnClass.RCE),
     (["path traversal", "directory traversal", "lfi", "local file inclusion"], VulnClass.PATH_TRAVERSAL),
     (["open redirect"], VulnClass.OPEN_REDIRECT),
-    (["csrf", "cross-site request forgery"], VulnClass.CSRF),
+    (["csrf", "cross-site request forgery"], VulnClass.AUTH_BYPASS),
     (["xxe", "xml external entity"], VulnClass.XXE),
     (["deserialization"], VulnClass.DESERIALIZATION),
 ]
@@ -117,9 +122,15 @@ async def _fetch_feed(url: str, timeout: int = 30) -> list[dict[str, Any]]:
 
 async def _fetch_feed_minimal(url: str, timeout: int = 30) -> list[dict[str, Any]]:
     """Minimal RSS parser that handles basic RSS 2.0 without feedparser."""
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-        resp = await client.get(url)
-        resp.raise_for_status()
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            resp = await client.get(url)
+            if resp.status_code >= 400:
+                log.warning("RSS feed %s returned %d — skipping", url, resp.status_code)
+                return []
+    except Exception as exc:
+        log.warning("RSS feed %s unreachable: %s — skipping", url, exc)
+        return []
 
     content = resp.text
     # Extract <item> blocks
@@ -195,7 +206,7 @@ async def _ingest_feeds_async(feeds: list[str] | None) -> dict[str, int]:
 
     ingested = skipped = errors = 0
 
-    async with AsyncSessionLocal() as db:
+    async with _kb_session_factory()() as db:
         for feed_def in target_feeds:
             items = await _fetch_feed(feed_def["url"])
             log.info("Feed %s returned %d items", feed_def["source"], len(items))

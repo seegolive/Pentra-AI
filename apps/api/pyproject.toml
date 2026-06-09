@@ -28,6 +28,7 @@ dependencies = [
     "email-validator>=2.0.0",
     "redis[asyncio]>=5.0.0",
     "pypdf>=4.0.0",
+    "feedparser>=6.0.12",
 ]
 
 [project.optional-dependencies]

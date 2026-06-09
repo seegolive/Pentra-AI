@@ -13,6 +13,7 @@ dependencies = [
     "miniopy-async>=1.21",
     "pentra-knowledge",
     "pentra-shared",
+    "feedparser>=6.0.12",
 ]
 
 [tool.hatch.build.targets.wheel]
