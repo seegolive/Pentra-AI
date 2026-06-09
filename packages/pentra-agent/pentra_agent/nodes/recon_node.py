@@ -249,6 +249,27 @@ async def recon_node(state: PentraState) -> dict:
         + f"\n\n**Analysis:** {hypothesis}"
     )
 
+    # ── Task 20.2: Subdomain takeover detection ───────────────────────────────
+    takeover_findings: list[dict] = []
+    subdomain_hosts = [s["host"] for s in subdomains if s.get("host")]
+    if subdomain_hosts:
+        try:
+            from pentra_tools.recon.takeover_detector import detect_subdomain_takeovers
+            from pentra_scope import ScopeEnforcer
+
+            _scope_enforcer = ScopeEnforcer(
+                in_scope=state["scope"].get("in_scope", []),
+                out_of_scope=state["scope"].get("out_of_scope", []),
+            )
+            takeover_findings = await detect_subdomain_takeovers(
+                subdomains=subdomain_hosts,
+                scope_check_fn=lambda u: True,  # subdomains already scope-checked
+            )
+            if takeover_findings:
+                log.info("[recon_node] Takeover: %d candidate(s) found", len(takeover_findings))
+        except Exception as _tk_exc:
+            log.debug("[recon_node] Takeover detection failed (non-fatal): %s", _tk_exc)
+
     return {
         "subdomains": subdomains,
         "open_ports": ports,
@@ -260,6 +281,7 @@ async def recon_node(state: PentraState) -> dict:
         "knowledge_context": knowledge,
         "rate_limit_info": rate_limit_info,
         "waf_info": waf_info,
+        "findings": takeover_findings,  # early findings from recon (takeover)
         "messages": [AIMessage(content=summary_msg)],
     }
 

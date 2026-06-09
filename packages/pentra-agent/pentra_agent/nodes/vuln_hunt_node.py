@@ -173,6 +173,7 @@ async def vuln_hunt_node(state: PentraState) -> dict:
         graphql_results,
         race_condition_results,
         cors_results,
+        jwt_results,
     ) = await asyncio.gather(
         _run_nuclei(endpoints, state["scope"], tech_stack=state.get("tech_stack", [])) if _RUN_NUCLEI else _noop_list(),
         _run_ffuf(endpoints[:5]) if _RUN_FFUF else _noop_list(),
@@ -183,6 +184,7 @@ async def vuln_hunt_node(state: PentraState) -> dict:
         _run_graphql_scan(domain, state["scope"], state.get("auth_credentials")),
         _run_race_condition_scan(endpoints, state["scope"], state.get("auth_credentials")),
         _run_cors_scan(endpoints, state["scope"], state.get("auth_credentials")),
+        _run_jwt_scan(domain, state["scope"], state.get("auth_credentials"), state),
         return_exceptions=False,
     )
     raw_findings.extend(nuclei_results)
@@ -194,11 +196,12 @@ async def vuln_hunt_node(state: PentraState) -> dict:
     raw_findings.extend(graphql_results)
     raw_findings.extend(race_condition_results)
     raw_findings.extend(cors_results)
+    raw_findings.extend(jwt_results)
     log.info(
-        "[vuln_hunt_node] Concurrent scan done: nuclei=%d ffuf=%d burp_scan=%d proxy=%d ext=%d soap_xxe=%d graphql=%d race=%d cors=%d",
+        "[vuln_hunt_node] Concurrent scan done: nuclei=%d ffuf=%d burp_scan=%d proxy=%d ext=%d soap_xxe=%d graphql=%d race=%d cors=%d jwt=%d",
         len(nuclei_results), len(ffuf_results), len(burp_scan_results),
         len(burp_proxy_results), len(burp_extended), len(soap_xxe_results),
-        len(graphql_results), len(race_condition_results), len(cors_results),
+        len(graphql_results), len(race_condition_results), len(cors_results), len(jwt_results),
     )
 
     # ── 5. Collaborator payload (expose in tool_outputs for LLM) ─────────────
@@ -3409,3 +3412,55 @@ async def _run_cors_scan(
     if all_findings:
         log.info("[vuln_hunt] CORS: %d finding(s) on %d endpoints", len(all_findings), tested)
     return all_findings
+
+
+async def _run_jwt_scan(
+    domain: str,
+    scope: dict,
+    auth_credentials: dict | None = None,
+    state: dict | None = None,
+) -> list[dict]:
+    """Task 20.1 — JWT vulnerability testing (none algorithm, invalid sig, kid SQLi).
+
+    Probes common API endpoints for JWT tokens, then runs attack scenarios.
+    Silent on targets without JWT authentication.
+    """
+    try:
+        from pentra_tools.vuln.jwt_tester import test_jwt_vulnerabilities, _extract_jwt_from_state
+    except ImportError:
+        return []
+
+    in_scope: list[str] = scope.get("in_scope", [])
+    if not in_scope:
+        return []
+
+    base_url = f"https://{domain}" if not domain.startswith("http") else domain
+
+    # Extract auth headers from credentials
+    auth_headers: dict[str, str] = {}
+    if auth_credentials:
+        try:
+            from pentra_tools.auth.session_manager import AuthCredentials, SessionManager
+            _creds = AuthCredentials(**auth_credentials)
+            if not _creds.is_empty() and _creds.type != "auto_login":
+                auth_headers, _ = SessionManager(_creds).get_auth_headers()
+        except Exception:
+            pass
+
+    # Extract known JWT from state
+    known_jwt: str | None = None
+    if state:
+        known_jwt = _extract_jwt_from_state(state)
+
+    try:
+        findings = await test_jwt_vulnerabilities(
+            base_url=base_url,
+            auth_headers=auth_headers or None,
+            known_jwt=known_jwt,
+        )
+        if findings:
+            log.info("[vuln_hunt] JWT: %d finding(s) on %s", len(findings), domain)
+        return findings
+    except Exception as exc:
+        log.debug("[vuln_hunt_node] JWT scan failed (non-fatal): %s", exc)
+        return []
