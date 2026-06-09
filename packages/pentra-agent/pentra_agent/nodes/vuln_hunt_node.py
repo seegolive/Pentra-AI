@@ -174,6 +174,8 @@ async def vuln_hunt_node(state: PentraState) -> dict:
         race_condition_results,
         cors_results,
         jwt_results,
+        second_order_results,
+        biz_logic_results,
     ) = await asyncio.gather(
         _run_nuclei(endpoints, state["scope"], tech_stack=state.get("tech_stack", [])) if _RUN_NUCLEI else _noop_list(),
         _run_ffuf(endpoints[:5]) if _RUN_FFUF else _noop_list(),
@@ -185,6 +187,8 @@ async def vuln_hunt_node(state: PentraState) -> dict:
         _run_race_condition_scan(endpoints, state["scope"], state.get("auth_credentials")),
         _run_cors_scan(endpoints, state["scope"], state.get("auth_credentials")),
         _run_jwt_scan(domain, state["scope"], state.get("auth_credentials"), state),
+        _run_second_order_sqli_scan(domain, state["scope"], state.get("auth_credentials")),
+        _run_business_logic_scan(domain, state["scope"], state.get("auth_credentials")),
         return_exceptions=False,
     )
     raw_findings.extend(nuclei_results)
@@ -197,11 +201,14 @@ async def vuln_hunt_node(state: PentraState) -> dict:
     raw_findings.extend(race_condition_results)
     raw_findings.extend(cors_results)
     raw_findings.extend(jwt_results)
+    raw_findings.extend(second_order_results)
+    raw_findings.extend(biz_logic_results)
     log.info(
-        "[vuln_hunt_node] Concurrent scan done: nuclei=%d ffuf=%d burp_scan=%d proxy=%d ext=%d soap_xxe=%d graphql=%d race=%d cors=%d jwt=%d",
+        "[vuln_hunt_node] Concurrent scan done: nuclei=%d ffuf=%d burp_scan=%d proxy=%d ext=%d soap_xxe=%d graphql=%d race=%d cors=%d jwt=%d 2nd_sqli=%d biz=%d",
         len(nuclei_results), len(ffuf_results), len(burp_scan_results),
         len(burp_proxy_results), len(burp_extended), len(soap_xxe_results),
         len(graphql_results), len(race_condition_results), len(cors_results), len(jwt_results),
+        len(second_order_results), len(biz_logic_results),
     )
 
     # ── 5. Collaborator payload (expose in tool_outputs for LLM) ─────────────
@@ -3475,4 +3482,84 @@ async def _run_jwt_scan(
         return findings
     except Exception as exc:
         log.debug("[vuln_hunt_node] JWT scan failed (non-fatal): %s", exc)
+        return []
+
+
+async def _run_second_order_sqli_scan(
+    domain: str,
+    scope: dict,
+    auth_credentials: dict | None = None,
+) -> list[dict]:
+    """Sprint 20 P3 — Second-order SQL injection scan."""
+    try:
+        from pentra_tools.vuln.second_order_sqli import run_second_order_sqli_test as _sqli2_fn
+    except ImportError:
+        return []
+
+    in_scope: list[str] = scope.get("in_scope", [])
+    if not in_scope:
+        return []
+
+    base_url = f"https://{domain}" if not domain.startswith("http") else domain
+    auth_headers: dict[str, str] = {}
+    if auth_credentials:
+        try:
+            from pentra_tools.auth.session_manager import AuthCredentials, SessionManager
+            _creds = AuthCredentials(**auth_credentials)
+            if not _creds.is_empty() and _creds.type != "auto_login":
+                auth_headers, _ = SessionManager(_creds).get_auth_headers()
+        except Exception:
+            pass
+
+    try:
+        findings = await _sqli2_fn(
+            base_url=base_url,
+            auth_headers=auth_headers or None,
+            proxy_url=_get_burp_proxy(),
+        )
+        if findings:
+            log.info("[vuln_hunt] Second-order SQLi: %d finding(s)", len(findings))
+        return findings
+    except Exception as exc:
+        log.debug("[vuln_hunt_node] Second-order SQLi scan failed (non-fatal): %s", exc)
+        return []
+
+
+async def _run_business_logic_scan(
+    domain: str,
+    scope: dict,
+    auth_credentials: dict | None = None,
+) -> list[dict]:
+    """Sprint 20 P3 — Business logic vulnerability scan."""
+    try:
+        from pentra_tools.vuln.business_logic import run_business_logic_test as _biz_fn
+    except ImportError:
+        return []
+
+    in_scope: list[str] = scope.get("in_scope", [])
+    if not in_scope:
+        return []
+
+    base_url = f"https://{domain}" if not domain.startswith("http") else domain
+    auth_headers: dict[str, str] = {}
+    if auth_credentials:
+        try:
+            from pentra_tools.auth.session_manager import AuthCredentials, SessionManager
+            _creds = AuthCredentials(**auth_credentials)
+            if not _creds.is_empty() and _creds.type != "auto_login":
+                auth_headers, _ = SessionManager(_creds).get_auth_headers()
+        except Exception:
+            pass
+
+    try:
+        findings = await _biz_fn(
+            base_url=base_url,
+            auth_headers=auth_headers or None,
+            proxy_url=_get_burp_proxy(),
+        )
+        if findings:
+            log.info("[vuln_hunt] Business logic: %d finding(s)", len(findings))
+        return findings
+    except Exception as exc:
+        log.debug("[vuln_hunt_node] Business logic scan failed (non-fatal): %s", exc)
         return []

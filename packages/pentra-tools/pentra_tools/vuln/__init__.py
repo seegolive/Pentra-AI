@@ -14,6 +14,20 @@ from pentra_tools.vuln.race_condition import (
     check_race_condition,
 )
 from pentra_tools.vuln.cors_tester import check_cors, scan_cors_on_endpoints
+from pentra_tools.vuln.jwt_tester import (
+    decode_jwt,
+    forge_none_algorithm,
+    forge_role_escalation,
+    test_jwt_vulnerabilities,
+)
+from pentra_tools.vuln.second_order_sqli import (
+    SecondOrderFinding,
+    run_second_order_sqli_test,
+)
+from pentra_tools.vuln.business_logic import (
+    BizLogicFinding,
+    run_business_logic_test,
+)
 
 __all__ = [
     "SoapXxeScanner", "XxeFinding", "WsdlEndpoint", "scan_soap_xxe",
@@ -21,4 +35,7 @@ __all__ = [
     "extract_schema", "parse_schema",
     "RaceResult", "identify_race_candidates", "check_race_condition",
     "check_cors", "scan_cors_on_endpoints",
+    "decode_jwt", "forge_none_algorithm", "forge_role_escalation", "test_jwt_vulnerabilities",
+    "SecondOrderFinding", "test_second_order_sqli",
+    "BizLogicFinding", "test_business_logic",
 ]
