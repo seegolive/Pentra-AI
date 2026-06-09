@@ -273,7 +273,8 @@ async def _run_reextract_sparse(batch_size: int, max_records: int) -> dict[str, 
 
     stats = {"processed": 0, "updated": 0, "re_embedded": 0, "errors": 0}
     semaphore = asyncio.Semaphore(3)
-    now = datetime.now(timezone.utc)
+    # Fix: TIMESTAMP WITHOUT TIME ZONE requires naive UTC datetime
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
 
     offset = 0
     async with httpx.AsyncClient(base_url=kb.ollama_url) as llm_client:

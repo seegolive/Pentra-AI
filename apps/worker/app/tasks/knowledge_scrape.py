@@ -215,7 +215,8 @@ async def _process_batch_inline(
     from pentra_knowledge.services.search import upsert_to_qdrant
     from pentra_knowledge.services.embedding import embed as kb_embed, build_embedding_text
 
-    now = datetime.now(timezone.utc)
+    # Fix: TIMESTAMP WITHOUT TIME ZONE requires naive UTC datetime
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     inserted = skipped = errors = 0
 
     # Dedup — check source_ids one by one using repo.exists_by_source_id
