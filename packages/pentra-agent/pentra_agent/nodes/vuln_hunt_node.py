@@ -51,7 +51,7 @@ _RUN_BURP_SCAN: bool = os.getenv("PENTRA_RUN_BURP_SCAN", "true").lower() == "tru
 _RUN_SOAP_XXE: bool = os.getenv("PENTRA_RUN_SOAP_XXE", "true").lower() == "true"
 _RUN_CSRF_CHECK: bool = os.getenv("PENTRA_RUN_CSRF_CHECK", "true").lower() == "true"
 _CRAWL_PAGES: int = int(os.getenv("PENTRA_CRAWL_PAGES", "49"))
-_NUCLEI_TIMEOUT_S: int = int(os.getenv("PENTRA_NUCLEI_TIMEOUT", "180"))
+_NUCLEI_TIMEOUT_S: int = int(os.getenv("PENTRA_NUCLEI_TIMEOUT", "300"))  # raised Task 20.3
 
 
 # ── Burp MCP config helpers ───────────────────────────────────────────────────
@@ -526,11 +526,12 @@ async def _run_nuclei(
         _extra_tags += ["mssql"]
 
     # Run HTTP and network scans concurrently — they target different protocols so
-    # there's no CPU/template contention.  Cap HTTP timeout at 180s (was 600s):
-    # 8 targets × 15s per-request × 10 concurrent = wall-clock ~12s per template batch;
-    # a complete scan of high-value tags finishes in <3 min on most targets.
+    # there's no CPU/template contention.
+    # Task 20.3: raised HTTP timeout from 180s → 300s to accommodate:
+    #   30s per-request × 5 concurrent × ~8 targets × ~20 key templates = ~240s worst case
+    # Network scan timeout unchanged at 120s (no time-based templates).
     http_findings, net_findings = await asyncio.gather(
-        _nuclei_scan(nuclei_bin, url_targets, protocol_types=None, timeout=180, extra_tags=_extra_tags),
+        _nuclei_scan(nuclei_bin, url_targets, protocol_types=None, timeout=300, extra_tags=_extra_tags),
         _nuclei_scan(nuclei_bin, network_targets, protocol_types=["tcp", "javascript"], timeout=120),
     )
     findings = http_findings + net_findings
@@ -552,9 +553,13 @@ async def _nuclei_scan(
     import tempfile
 
     _BASE_TAGS = (
-        "cve,vuln,xss,sqli,lfi,rce,exposure,misconfig,default-login,"
-        "traversal,ssrf,redirect,ssti,xxe,auth-bypass,jwt,token,api,"
-        "injection,takeover,disclosure"
+        # Core vulnerability classes — high yield templates only.
+        # Task 20.3 fix: removed tags already covered by our own tools
+        # (jwt→jwt_tester, takeover→takeover_detector, cors→cors_tester,
+        #  xxe→soap_xxe_scanner, redirect→cors_tester, graphql→graphql_analyzer)
+        # to reduce template count (was ~570 → now ~250) and focus on what
+        # nuclei does better than our tools: CVE detection, misconfigs, exposures.
+        "cve,vuln,sqli,xss,lfi,rce,exposure,misconfig,default-login,injection,ssti"
     )
     _all_tags = _BASE_TAGS + ("," + ",".join(extra_tags) if extra_tags else "")
     cmd = [
@@ -568,10 +573,17 @@ async def _nuclei_scan(
         "-jsonl",
         "-silent",
         "-duc",   # disable update check — avoids lock conflicts on concurrent runs
-        "-ni",    # no-interactsh: disable OOB callbacks — prevents OAST timeouts from
-                  # triggering nuclei's "permanently unresponsive" heuristic on the target
-        "-timeout", "15",   # per-request timeout in seconds (raised from 10 for slow targets)
-        "-c", "10",         # reduced concurrency to avoid overwhelming single-threaded servers
+        # Task 20.3 — nuclei 0-findings fix:
+        # Root cause: -ni disabled interactsh AND per-request timeout was too short
+        # for time-based SQLi (WAITFOR DELAY 10s + network overhead).
+        # Fix:
+        #   1. Remove -ni: interactsh is available and needed for blind/OOB detection
+        #   2. Raise -timeout from 15s → 30s: WAITFOR DELAY templates need room to fire
+        #   3. Add -retries 1: one retry for transient slow responses
+        #   4. Lower -c from 10 → 5: reduce concurrency so timing-based templates are reliable
+        "-timeout", "30",   # per-request timeout — must exceed any SLEEP/WAITFOR delay
+        "-retries", "1",    # one retry for transient failures
+        "-c", "5",          # lower concurrency: timing attacks need stable measurements
         # Add common WAF-bypass headers so templates see realistic responses
         "-H", "X-Forwarded-For: 127.0.0.1",
         "-H", "X-Real-IP: 127.0.0.1",
