@@ -1852,6 +1852,7 @@ name = "pentra-tools"
 version = "0.1.0"
 source = { editable = "../../packages/pentra-tools" }
 dependencies = [
+    { name = "dnspython" },
     { name = "httpx" },
     { name = "mcp" },
     { name = "pentra-scope" },
@@ -1861,6 +1862,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "boto3", marker = "extra == 'screenshot'", specifier = ">=1.34.0" },
+    { name = "dnspython", specifier = ">=2.8.0" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "mcp", specifier = ">=1.0.0" },
     { name = "pentra-scope", editable = "../../packages/pentra-scope" },
