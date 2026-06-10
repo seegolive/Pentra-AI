@@ -178,16 +178,11 @@ class SoapXxeScanner:
             "Accept": "text/xml,application/xml,*/*",
             **(auth_headers or {}),
         }
-        proxies = {
-            "http://": self.proxy_url,
-            "https://": self.proxy_url,
-        } if self.proxy_url else None
-
         async with httpx.AsyncClient(
             follow_redirects=True,
             timeout=self.timeout,
             verify=False,   # noqa: S501
-            proxies=proxies,  # type: ignore[arg-type]
+            **(dict(proxy=self.proxy_url) if self.proxy_url else {}),
         ) as client:
             for path in WSDL_PATHS:
                 url = self.base_url + path
@@ -238,16 +233,11 @@ class SoapXxeScanner:
             "SOAPAction": '""',
             **(auth_headers or {}),
         }
-        proxies = {
-            "http://": self.proxy_url,
-            "https://": self.proxy_url,
-        } if self.proxy_url else None
-
         async with httpx.AsyncClient(
             follow_redirects=True,
             timeout=self.timeout,
             verify=False,  # noqa: S501
-            proxies=proxies,  # type: ignore[arg-type]
+            **({"proxy": self.proxy_url} if self.proxy_url else {}),
         ) as client:
 
             # ── Test 1: Linux file read ───────────────────────────────────────

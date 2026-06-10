@@ -55,13 +55,13 @@ async def check_cors(
     """
     findings: list[dict] = []
     base_headers = dict(auth_headers or {})
-    proxies = {"http://": proxy_url, "https://": proxy_url} if proxy_url else None
+    proxy = proxy_url if proxy_url else None
 
     async with httpx.AsyncClient(
         verify=False,  # noqa: S501
         timeout=8.0,
         follow_redirects=True,
-        proxies=proxies,  # type: ignore[arg-type]
+        **({"proxy": proxy} if proxy else {}),
     ) as client:
 
         # Get baseline without Origin header (to compare ACAO)

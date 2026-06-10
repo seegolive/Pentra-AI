@@ -275,13 +275,13 @@ async def detect_subdomain_takeovers(
     if not subdomains:
         return []
 
-    proxies = {"http://": proxy_url, "https://": proxy_url} if proxy_url else None
+    proxy = proxy_url if proxy_url else None
 
     async with httpx.AsyncClient(
         verify=False,  # noqa: S501
         follow_redirects=False,
         timeout=10.0,
-        proxies=proxies,  # type: ignore[arg-type]
+        **({"proxy": proxy} if proxy else {}),
     ) as client:
         tasks = [
             _check_single(sub, client, scope_check_fn)

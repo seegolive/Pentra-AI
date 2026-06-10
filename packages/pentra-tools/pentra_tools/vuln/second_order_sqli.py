@@ -129,7 +129,7 @@ async def run_second_order_sqli_test(
 
     base = base_url.rstrip("/")
     headers = {"Content-Type": "application/x-www-form-urlencoded", **(auth_headers or {})}
-    proxies = {"http://": proxy_url, "https://": proxy_url} if proxy_url else None
+    proxy = proxy_url if proxy_url else None
     findings: list[dict] = []
 
     write_eps = write_endpoints or _DEFAULT_WRITE_PATTERNS
@@ -139,7 +139,7 @@ async def run_second_order_sqli_test(
         verify=False,  # noqa: S501
         follow_redirects=True,
         timeout=20.0,
-        proxies=proxies,  # type: ignore[arg-type]
+        **({"proxy": proxy} if proxy else {}),
     ) as client:
 
         for write_ep in write_eps[:4]:  # cap at 4 write endpoints

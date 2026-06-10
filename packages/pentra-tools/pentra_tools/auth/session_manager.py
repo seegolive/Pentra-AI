@@ -231,14 +231,13 @@ class SessionManager:
         """
         creds = self.credentials
         effective_proxy = proxy_url or creds.proxy_url or None
-        proxies = {"http://": effective_proxy, "https://": effective_proxy} if effective_proxy else None
 
         try:
             async with httpx.AsyncClient(
                 follow_redirects=True,
                 timeout=30.0,
                 verify=False,  # noqa: S501 — internal test targets may have self-signed certs
-                proxies=proxies,  # type: ignore[arg-type]
+                **({"proxy": effective_proxy} if effective_proxy else {}),
             ) as client:
 
                 # Step 1: GET login page

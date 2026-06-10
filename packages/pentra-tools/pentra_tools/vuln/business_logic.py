@@ -91,14 +91,14 @@ async def run_business_logic_test(
         "Accept": "application/json",
         **(auth_headers or {}),
     }
-    proxies = {"http://": proxy_url, "https://": proxy_url} if proxy_url else None
+    proxy = proxy_url if proxy_url else None
     findings: list[dict] = []
 
     async with httpx.AsyncClient(
         verify=False,  # noqa: S501
         follow_redirects=True,
         timeout=10.0,
-        proxies=proxies,  # type: ignore[arg-type]
+        **({"proxy": proxy} if proxy else {}),
     ) as client:
 
         # ── Test 1: Negative quantity ─────────────────────────────────────────

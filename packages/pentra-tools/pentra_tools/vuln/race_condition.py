@@ -151,7 +151,7 @@ async def check_race_condition(
     if headers:
         req_headers.update(headers)
 
-    proxies = {"http://": proxy_url, "https://": proxy_url} if proxy_url else None
+    proxy = proxy_url if proxy_url else None
 
     async def _single_request(client: httpx.AsyncClient) -> dict:
         t0 = time.monotonic()
@@ -175,7 +175,7 @@ async def check_race_condition(
             verify=False,  # noqa: S501
             http2=True,    # HTTP/2 single-packet attack when supported
             follow_redirects=True,
-            proxies=proxies,  # type: ignore[arg-type]
+            **({"proxy": proxy} if proxy else {}),
         ) as client:
             # Launch all concurrent — HTTP/2 allows single-packet attack
             tasks = [_single_request(client) for _ in range(concurrency)]
