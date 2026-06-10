@@ -160,10 +160,15 @@ packages/
 │   │   ├── dedup.py                    ← smart dedup
 │   │   └── waf_profiler.py             ← WAF detection
 │   └── vuln/
+│       ├── ssrf_oob_tester.py       ← SSRF + OOB callback (Sprint 22)
 │       ├── graphql_analyzer.py         ← GraphQL security (Sprint 19)
 │       ├── race_condition.py           ← concurrent burst test (Sprint 19)
 │       ├── cors_tester.py              ← CORS misconfig (Sprint 19)
-│       └── soap_xxe.py                 ← SOAP/WSDL + XXE (Sprint 18)
+│       ├── soap_xxe.py                 ← SOAP/WSDL + XXE (Sprint 18)
+│       ├── jwt_tester.py               ← JWT alg:none + kid SQLi (Sprint 20)
+│       ├── second_order_sqli.py        ← Second-order SQLi (Sprint 20)
+│       ├── business_logic.py           ← Business logic flaws (Sprint 20)
+│       └── takeover_detector.py        ← Subdomain takeover (Sprint 20)
 │
 └── pentra-report/
     ├── generator.py                    ← Markdown/HTML/PDF/H1
@@ -174,10 +179,11 @@ packages/
 
 ## vuln_hunt_node — Tool Pipeline
 
-Agent menjalankan **9 tools secara parallel** via `asyncio.gather`:
+Agent menjalankan **13 tools secara parallel** via `asyncio.gather`:
 
 ```
-nuclei → ffuf → burp_scan → burp_proxy → burp_ext → soap_xxe → graphql → race_condition → cors
+nuclei → ffuf → burp_scan → burp_proxy → burp_ext → soap_xxe → graphql →
+race_condition → cors → jwt → second_order_sqli → business_logic → ssrf_oob
 ```
 
 Kemudian untuk setiap injection candidate (max 20, concurrent 3):
