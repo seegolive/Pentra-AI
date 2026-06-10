@@ -1,13 +1,13 @@
 # Pentra AI — Progress Report
-> Updated: 2026-06-09 | Commit: `d76cc8c` | Branch: `main`
+> Updated: 2026-06-10 | Commit: `8c27c12` | Branch: `main`
 
 ---
 
 ## Ringkasan Eksekutif
 
 Pentra AI adalah self-hosted AI Security Research Platform dengan LLM lokal (Ollama).
-Saat ini platform berjalan penuh dengan 268 unit tests, 2758 records KB, dan
-agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, dan race condition secara otomatis.
+Saat ini platform berjalan penuh dengan 302 unit tests, **8,309 records KB** (naik dari 2,758),
+dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JWT, dan subdomain takeover secara otomatis.
 
 ---
 
@@ -15,11 +15,12 @@ agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, dan race condition sec
 
 | Metrik | Nilai |
 |--------|-------|
-| **Test suite** | 268 passing (141 pentra-tools + 127 pentra-agent), 0 failed |
+| **Test suite** | **302 passing** (156 pentra-tools + 146 pentra-agent), 0 failed |
 | **Test files** | 35 total (20 agent + 15 tools) |
-| **KB records** | 2,758 (2,757 embedded dengan bge-m3) |
-| **Git commit** | `d76cc8c` — `origin/main` |
-| **Sprint aktif** | Sprint 20 (improvements) |
+| **KB records** | **8,309** (100% embedded, 96% punya payload_pattern) |
+| **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
+| **Git commit** | `8c27c12` — `origin/main` |
+| **Sprint aktif** | Sprint 20 COMPLETE → KB scale-up done |
 | **LLM** | qwen2.5:32b (default), qwen2.5:7b (fast), bge-m3 (embedding) |
 
 ---
@@ -92,14 +93,44 @@ agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, dan race condition sec
 
 ---
 
-### Sprint 20 — Improvements (aktif)
+### Sprint 20 ✅ COMPLETE
 
-| Item | Status | Detail |
+| Task | Status | Detail |
 |------|--------|--------|
+| 20.1 — JWT Testing node | ✅ | jwt_issues hunter di vuln_hunt_node |
+| 20.2 — Subdomain Takeover node | ✅ | DNS CNAME dangling detection |
+| 20.3 — Nuclei 0-findings fix | ✅ | Output parsing fix |
+| 20.5 — KB scale-up | ✅ | H1 scrape pages 1-220 → 8,203 records |
+| 20.6 — EngagementLearning helper | ✅ | Auto-learn dari confirmed findings |
+| 20 P3 — Second-order SQLi | ✅ | Async payload → observe pattern |
+| 20 P3 — Business Logic testing | ✅ | Workflow bypass checks |
+| 20 P3 — Integration tests | ✅ | 13 integration tests ditambah |
 | Agent status badge (frontend) | ✅ | ⚡ running / ⏸ awaiting / ✓ completed |
 | H1 Executive report button | ✅ | Download button di Reports tab |
-| DB migration applied | ✅ | `agent_events` table di PostgreSQL |
-| KB scrape scale-up | ⏳ | Trigger saat API up: pages 21-60 → +2000 records |
+| Smoke Tests BLOK 1-8 | ✅ | **43/45 PASS** |
+
+---
+
+### KB Scale-Up ✅ COMPLETE (2026-06-09 → 06-10)
+
+| Task | Hasil |
+|------|-------|
+| vuln_class normalization | 867 records difix ke canonical names |
+| H1 scrape pages 161-220 | `scraped: 1,950 \| inserted: 1,950` |
+| payload_pattern enrichment | 6,359/6,360 records updated (script `fill_payload_pattern.py`) |
+| Bug fixes (timezone, RSS, async session) | 3 file fixed + committed |
+
+**KB Final:**
+
+| Metrik | Nilai |
+|--------|-------|
+| Total records | **8,309** |
+| Embedded (bge-m3) | 8,309 (100%) |
+| payload_pattern | 8,031 (96%) |
+| quality_score ≥ 0.8 | 8,048 (96%) |
+
+**Top Vuln Classes:**
+`xss_reflected(909)` · `auth_bypass(858)` · `information_disclosure(550)` · `xss_stored(476)` · `idor(387)` · `rce(366)` · `dos(313)` · `path_traversal(279)` · `privilege_escalation(278)` · `buffer_overflow(260)`
 
 ---
 
