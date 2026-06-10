@@ -691,6 +691,37 @@ curl -sX POST http://localhost:8001/api/v1/admin/backup/trigger \
 
 ---
 
+### ST-7.8 — SSRF Tester Ran (Sprint 22)
+
+```bash
+# Verifikasi ssrf_oob_tester dijalankan selama scan
+grep -cE "ssrf_oob|SSRF|identify_ssrf" /tmp/pentra.log 2>/dev/null || \
+  echo "0"
+# Expected: >= 1 (log menunjukkan SSRF scan dijalankan)
+
+# Verifikasi identify_ssrf_candidates berfungsi secara unit
+cd packages/pentra-tools
+uv run python3 -c "
+from pentra_tools.vuln.ssrf_oob_tester import identify_ssrf_candidates
+candidates = identify_ssrf_candidates([
+    {'url': 'https://t.com/fetch?url=https://x.com', 'method': 'GET'},
+    {'url': 'https://t.com/about', 'method': 'GET'},
+])
+print(f'candidates: {len(candidates)}')
+assert len(candidates) == 1, f'Expected 1, got {len(candidates)}'
+print('SSRF candidate detection: OK')
+"
+# Expected: candidates: 1, SSRF candidate detection: OK
+
+# Verifikasi 165 tests pentra-tools pass (includes 6 SSRF tests)
+uv run pytest tests/ -q 2>&1 | tail -3
+# Expected: 165 passed, 3 skipped
+```
+
+✅ Pass jika: identify_ssrf_candidates berjalan benar + 165 tests pass
+
+---
+
 ## BLOK 8 — Security & Scope Enforcement
 
 ### ST-8.1 — Scope Violation Test
@@ -995,6 +1026,7 @@ BLOK 7 — Monitoring & Admin
   [x] ST-7.1 Continuous Monitoring
   [x] ST-7.2 Admin Panel
   [x] ST-7.3 Backup Status
+  [x] ST-7.8 SSRF Tester ran (identify_ssrf_candidates + 165 tools tests)
 
 BLOK 8 — Security
   [x] ST-8.1 Scope Violation Test
@@ -1014,7 +1046,7 @@ BLOK 11 — Celery Worker
   [x] ST-11.2 Knowledge Update Task   (bulk-import queued, task_id returned, KB=1 record)
 
 ───────────────────────────────────────
-TOTAL: __/33 tests passing
+TOTAL: __/34 tests passing
 ```
 
 ---
@@ -1024,13 +1056,13 @@ TOTAL: __/33 tests passing
 ```
 LULUS (aman lanjut Sprint 15):
   ✅ Semua BLOK 1-5 pass (infrastruktur + core pipeline)
-  ✅ BLOK 9 pass (143/143 unit tests)
-  ✅ Minimal 28/33 smoke tests pass
+  ✅ BLOK 9 pass (316+ unit tests: 165 pentra-tools + 151 pentra-agent)
+  ✅ Minimal 29/34 smoke tests pass
   ✅ Agent berhasil complete 1 engagement end-to-end dengan findings
 
 PERLU FIX DULU:
   ❌ BLOK 4 gagal (agent pipeline bermasalah)
-  ❌ ST-9.1 gagal (unit tests broken)
+  ❌ ST-9.1 gagal (unit tests broken, expected 316+)
   ❌ ST-4.5 gagal (findings tidak ada atau tidak punya CVSS)
   ❌ ST-5.1 gagal (report tidak bisa di-generate)
 ```
