@@ -176,6 +176,7 @@ async def vuln_hunt_node(state: PentraState) -> dict:
         jwt_results,
         second_order_results,
         biz_logic_results,
+        ssrf_results,
     ) = await asyncio.gather(
         _run_nuclei(endpoints, state["scope"], tech_stack=state.get("tech_stack", [])) if _RUN_NUCLEI else _noop_list(),
         _run_ffuf(endpoints[:5]) if _RUN_FFUF else _noop_list(),
@@ -189,6 +190,7 @@ async def vuln_hunt_node(state: PentraState) -> dict:
         _run_jwt_scan(domain, state["scope"], state.get("auth_credentials"), state),
         _run_second_order_sqli_scan(domain, state["scope"], state.get("auth_credentials")),
         _run_business_logic_scan(domain, state["scope"], state.get("auth_credentials")),
+        _run_ssrf_scan(endpoints, state["scope"], state.get("auth_credentials")),
         return_exceptions=False,
     )
     raw_findings.extend(nuclei_results)
@@ -203,12 +205,13 @@ async def vuln_hunt_node(state: PentraState) -> dict:
     raw_findings.extend(jwt_results)
     raw_findings.extend(second_order_results)
     raw_findings.extend(biz_logic_results)
+    raw_findings.extend(ssrf_results)
     log.info(
-        "[vuln_hunt_node] Concurrent scan done: nuclei=%d ffuf=%d burp_scan=%d proxy=%d ext=%d soap_xxe=%d graphql=%d race=%d cors=%d jwt=%d 2nd_sqli=%d biz=%d",
+        "[vuln_hunt_node] Concurrent scan done: nuclei=%d ffuf=%d burp_scan=%d proxy=%d ext=%d soap_xxe=%d graphql=%d race=%d cors=%d jwt=%d 2nd_sqli=%d biz=%d ssrf=%d",
         len(nuclei_results), len(ffuf_results), len(burp_scan_results),
         len(burp_proxy_results), len(burp_extended), len(soap_xxe_results),
         len(graphql_results), len(race_condition_results), len(cors_results), len(jwt_results),
-        len(second_order_results), len(biz_logic_results),
+        len(second_order_results), len(biz_logic_results), len(ssrf_results),
     )
 
     # ── 5. Collaborator payload (expose in tool_outputs for LLM) ─────────────
@@ -3562,4 +3565,65 @@ async def _run_business_logic_scan(
         return findings
     except Exception as exc:
         log.debug("[vuln_hunt_node] Business logic scan failed (non-fatal): %s", exc)
+        return []
+
+
+async def _run_ssrf_scan(
+    endpoints: list[dict],
+    scope: dict,
+    auth_credentials: dict | None = None,
+) -> list[dict]:
+    """Task 22.1 — SSRF + OOB callback detection on URL-parameter endpoints.
+
+    Identifies endpoints with SSRF-prone parameters (url, src, redirect, fetch…),
+    probes them with internal/cloud metadata payloads, and optionally sends OOB
+    canary URLs for blind SSRF detection.
+    """
+    try:
+        from pentra_tools.vuln.ssrf_oob_tester import scan_ssrf_on_endpoints
+    except ImportError:
+        return []
+
+    in_scope: list[str] = scope.get("in_scope", [])
+    enforcer = ScopeEnforcer(in_scope=in_scope, out_of_scope=scope.get("out_of_scope", []))
+    burp_proxy = _get_burp_proxy()
+
+    auth_headers: dict[str, str] = {}
+    if auth_credentials:
+        try:
+            from pentra_tools.auth.session_manager import AuthCredentials, SessionManager
+            _creds = AuthCredentials(**auth_credentials)
+            if not _creds.is_empty() and _creds.type != "auto_login":
+                auth_headers, _ = SessionManager(_creds).get_auth_headers()
+        except Exception:
+            pass
+
+    # Filter endpoints to in-scope only
+    scoped_endpoints = []
+    for ep in endpoints:
+        url = ep.get("url", "")
+        if not url:
+            continue
+        try:
+            enforcer.validate_or_raise(url)
+            scoped_endpoints.append(ep)
+        except ScopeViolationError:
+            continue
+
+    if not scoped_endpoints:
+        return []
+
+    try:
+        findings = await scan_ssrf_on_endpoints(
+            endpoints=scoped_endpoints,
+            auth_headers=auth_headers or None,
+            oob_canary=None,  # OOB requires Collaborator — skipped unless configured
+            proxy_url=burp_proxy,
+            max_endpoints=10,
+        )
+        if findings:
+            log.info("[vuln_hunt] SSRF: %d finding(s) on %d candidates", len(findings), len(scoped_endpoints))
+        return findings
+    except Exception as exc:
+        log.debug("[vuln_hunt_node] SSRF scan failed (non-fatal): %s", exc)
         return []

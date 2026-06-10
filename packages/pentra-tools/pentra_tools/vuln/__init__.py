@@ -28,6 +28,12 @@ from pentra_tools.vuln.business_logic import (
     BizLogicFinding,
     run_business_logic_test,
 )
+from pentra_tools.vuln.ssrf_oob_tester import (
+    SsrfFinding,
+    identify_ssrf_candidates,
+    check_ssrf,
+    scan_ssrf_on_endpoints,
+)
 
 __all__ = [
     "SoapXxeScanner", "XxeFinding", "WsdlEndpoint", "scan_soap_xxe",
@@ -36,6 +42,7 @@ __all__ = [
     "RaceResult", "identify_race_candidates", "check_race_condition",
     "check_cors", "scan_cors_on_endpoints",
     "decode_jwt", "forge_none_algorithm", "forge_role_escalation", "test_jwt_vulnerabilities",
-    "SecondOrderFinding", "test_second_order_sqli",
-    "BizLogicFinding", "test_business_logic",
+    "SecondOrderFinding", "run_second_order_sqli_test",
+    "BizLogicFinding", "run_business_logic_test",
+    "SsrfFinding", "identify_ssrf_candidates", "check_ssrf", "scan_ssrf_on_endpoints",
 ]
