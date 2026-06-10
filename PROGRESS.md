@@ -1,13 +1,13 @@
 # Pentra AI — Progress Report
-> Updated: 2026-06-10 | Commit: `c432938` | Branch: `main`
+> Updated: 2026-06-10 | Commit: `bae64b2` | Branch: `main`
 
 ---
 
 ## Ringkasan Eksekutif
 
 Pentra AI adalah self-hosted AI Security Research Platform dengan LLM lokal (Ollama).
-Saat ini platform berjalan penuh dengan **316 unit tests**, **8,309+ records KB** (naik dari 2,758),
-dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JWT, SSRF, IDOR, subdomain takeover, dan second-order SQLi secara otomatis.
+Saat ini platform berjalan penuh dengan **316 unit tests + 33 Playwright E2E tests**, **8,309+ records KB** (naik dari 2,758),
+dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JWT alg:none, SSRF, IDOR, subdomain takeover, dan second-order SQLi secara otomatis.
 
 ---
 
@@ -16,11 +16,12 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 | Metrik | Nilai |
 |--------|-------|
 | **Test suite** | **316 passing** (165 pentra-tools + 151 pentra-agent), 0 failed |
-| **Test files** | 38 total (20 agent + 16 tools + 2 Sprint 21) |
-| **KB records** | **8,309+** (scraping 221+, background task running) |
+| **Playwright E2E** | **33 tests** (6 smoke + 7 livefeed + 20 full regression), 0 failed |
+| **Test files** | 38 unit + 5 e2e spec files |
+| **KB records** | **8,309+** (scraping pages 221+, task 03361e0c running) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
-| **Git commit** | `c432938` — `origin/main` |
-| **Sprint aktif** | Sprint 22 IN PROGRESS → SSRF tester + DVWA + Juice Shop |
+| **Git commit** | `bae64b2` — `main` |
+| **Sprint aktif** | Sprint 23 IN PROGRESS → SSRF E2E + Playwright coverage |
 | **LLM** | qwen2.5:32b (default), qwen2.5:7b (fast), bge-m3 (embedding) |
 
 ---
@@ -241,16 +242,26 @@ curl -X POST http://localhost:8001/api/v1/admin/knowledge/bulk-import \
 
 | Package | Tests | Files |
 |---------|-------|-------|
-| pentra-tools | 159 passed, 3 skipped | 15 files |
+| pentra-tools | 165 passed, 3 skipped | 16 files |
 | pentra-agent | 151 passed, 4 skipped | 20 files |
-| **Total** | **310 passing, 0 failed** | 35 files |
+| **Total unit** | **316 passing, 0 failed** | 36 files |
+
+**Playwright E2E:**
+
+| Suite | Tests | Status |
+|-------|-------|--------|
+| smoke.spec.ts (Sprint 21) | 6 | ✅ all pass |
+| livefeed.spec.ts (Sprint 23) | 7 | ✅ all pass |
+| full.spec.ts (Sprint 23) | 20 | ✅ all pass |
+| **Total E2E** | **33** | **0 failed** |
 
 **Pertumbuhan:**
 - Sprint 18 Tier 1-3: +77 tests (178 → 255)
 - Sprint 19: +13 tests (255 → 268)
 - Sprint 20: +34 tests (268 → 302)
-- Sprint 21: +8 unit tests + 6 Playwright E2E (302 → 310 + 6 e2e)
-- Sprint 22: +6 SSRF unit tests (310 → 316)
+- Sprint 21: +8 unit + 6 Playwright (302 → 310 unit + 6 e2e)
+- Sprint 22: +6 SSRF unit (310 → 316 unit)
+- Sprint 23: +27 Playwright E2E (316 unit + 6 → 316 unit + 33 e2e)
 
 ---
 
@@ -311,18 +322,46 @@ curl -X POST http://localhost:8001/api/v1/admin/knowledge/bulk-import \
 - `pentra-agent`: 151 unchanged (no regressions on vuln_hunt_node changes)
 - **Total: 310 → 316 passing**
 
+### Sprint 23 ⚡ IN PROGRESS
+
+| Task | Status | Detail | Commit |
+|------|--------|--------|--------|
+| 23.1 — SSRF E2E Juice Shop | ✅ | identify_ssrf_candidates: 2 endpoints; allowlist blocks direct SSRF | `60d6cad` |
+| 23.2 — CORS E2E Validation | ✅ | ACAO:* on `/api/Users/1` (wildcard, no credentials — low severity) | `60d6cad` |
+| 23.3 — KB scale verify | ✅ | 8309 points; re-triggered task `03361e0c` (pages 221+, max 2500) | `60d6cad` |
+| 23.5 — PROGRESS.md architecture fix | ✅ | 9 tools → 13 tools, all vuln/ files documented | `60d6cad` |
+| 23.6 — Playwright Live Feed tests | ✅ | 7/7 pass: LF-1–LF-7 (tabs, empty state, JS errors) | `bae64b2` |
+| 23.7 — Playwright Full Regression | ✅ | 20/20 pass: Auth, Dashboard, KB, WS, Eng, Admin, Settings, Nav | `bae64b2` |
+| 23.4 — SSRF OOB Burp Collaborator | ⏳ | Prereq: Burp Pro aktif | — |
+| 23.8 — SMOKE-TEST-E2E.md update | ⏳ | Update scorecard 29 → 30 checks | — |
+
+**E2E Validation Scorecard (Sprint 23):**
+```
+SQLi (union+error+time-based)  ✅ DVWA + Juice Shop
+XSS (reflected+stored)         ✅ DVWA
+LFI /etc/passwd                ✅ DVWA
+IDOR (user profiles)           ✅ Juice Shop (users 1-3)
+JWT alg:none                   ✅ Juice Shop CRITICAL (23 users exposed)
+SQLi login bypass              ✅ Juice Shop CRITICAL (admin JWT issued)
+GraphQL introspection          ✅ trevorblades.com (real target)
+Race condition TOCTOU          ✅ Flask mock (20/20)
+SSRF tool                      ⚙️  Implemented + 6 tests; no real SSRF target found
+CORS wildcard                  ℹ️  ACAO:* on Juice Shop (low — no credentials)
+Subdomain takeover             ✅ 7/7 mock fingerprints
+```
+
 ---
 
-## Backlog Sprint 23
+## Backlog Sprint 24
 
 | Item | Prioritas | Estimasi |
 |------|-----------|----------|
-| KB scale complete: verify pages 221-300 inserted | Tinggi | Check via API |
-| Frontend live feed WebSocket integration test | Sedang | 1 jam |
+| KB scale complete: verify pages 221-300 inserted (> 8309) | Tinggi | Check via API |
+| SSRF OOB dengan Burp Collaborator (full integration) | Sedang | 1 jam |
 | Fine-tuning pipeline activation (JSONL → LoRA) | Sedang | 2-3 jam |
-| SSRF OOB with Burp Collaborator integration | Sedang | 1 jam |
-| Playwright full regression suite (e2e/full.spec.ts) | Rendah | 1 jam |
+| SMOKE-TEST-E2E.md update (30 checks, 316+ tests) | Rendah | 30 menit |
+| Frontend WebSocket live feed stress test | Rendah | 1 jam |
 
 ---
 
-*Updated: 2026-06-10 — GitHub Copilot (Claude Sonnet 4.6) — Sprint 22 COMPLETE*
+*Updated: 2026-06-10 — GitHub Copilot (Claude Sonnet 4.6) — Sprint 23 IN PROGRESS (6/8 tasks)*
