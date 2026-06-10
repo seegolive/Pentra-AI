@@ -52,7 +52,7 @@ from pentra_tools.burp.models import (
 
 log = logging.getLogger(__name__)
 
-BURP_MCP_URL = os.getenv("BURP_MCP_URL", "http://127.0.0.1:9876")
+BURP_MCP_URL = os.getenv("BURP_MCP_URL", "http://127.0.0.1:9877")
 
 _PAGE_SIZE = 50
 # Phrases that Burp MCP returns when a feature requires Professional edition
