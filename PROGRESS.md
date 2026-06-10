@@ -34,10 +34,10 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 | `pentra-knowledge` — PostgreSQL schema + Alembic migration | ✅ |
 | `pentra-knowledge` — seed data importer | ✅ |
 | `pentra-knowledge` — LLM extraction pipeline | ✅ |
-| `pentra-knowledge` — bge-m3 embedding via Ollama | ✅ 2,757/2,758 |
+| `pentra-knowledge` — bge-m3 embedding via Ollama | ✅ 8,309/8,309 |
 | `pentra-knowledge` — Qdrant hybrid search | ✅ |
 | `pentra-knowledge` — FastAPI router | ✅ |
-| `apps/worker` — H1 GraphQL scraper (Celery) | ✅ 2,758 records |
+| `apps/worker` — H1 GraphQL scraper (Celery) | ✅ 8,309 records |
 | `apps/worker` — manual knowledge inject API | ✅ |
 | `apps/web` — KB Browser UI | ✅ |
 
@@ -107,7 +107,7 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 | 20 P3 — Integration tests | ✅ | 13 integration tests ditambah |
 | Agent status badge (frontend) | ✅ | ⚡ running / ⏸ awaiting / ✓ completed |
 | H1 Executive report button | ✅ | Download button di Reports tab |
-| Smoke Tests BLOK 1-8 | ✅ | **43/45 PASS** |
+| Smoke Tests BLOK 1-8 | ✅ | **45/45 PASS** (bugs fixed: `a8d29d7`, `cf5cee7`) |
 
 ---
 
