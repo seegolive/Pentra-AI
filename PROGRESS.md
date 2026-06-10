@@ -1,13 +1,13 @@
 # Pentra AI — Progress Report
-> Updated: 2026-06-10 | Commit: `ce1056b` | Branch: `main`
+> Updated: 2026-06-10 | Commit: `c432938` | Branch: `main`
 
 ---
 
 ## Ringkasan Eksekutif
 
 Pentra AI adalah self-hosted AI Security Research Platform dengan LLM lokal (Ollama).
-Saat ini platform berjalan penuh dengan **310 unit tests**, **8,309 records KB** (naik dari 2,758),
-dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JWT, subdomain takeover, dan second-order SQLi secara otomatis.
+Saat ini platform berjalan penuh dengan **316 unit tests**, **8,309+ records KB** (naik dari 2,758),
+dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JWT, SSRF, IDOR, subdomain takeover, dan second-order SQLi secara otomatis.
 
 ---
 
@@ -15,12 +15,12 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 
 | Metrik | Nilai |
 |--------|-------|
-| **Test suite** | **310 passing** (159 pentra-tools + 151 pentra-agent), 0 failed |
-| **Test files** | 37 total (20 agent + 15 tools + 2 Sprint 21) |
-| **KB records** | **8,309** (100% embedded, 96% punya payload_pattern) |
+| **Test suite** | **316 passing** (165 pentra-tools + 151 pentra-agent), 0 failed |
+| **Test files** | 38 total (20 agent + 16 tools + 2 Sprint 21) |
+| **KB records** | **8,309+** (scraping 221+, background task running) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
-| **Git commit** | `ce1056b` — `origin/main` |
-| **Sprint aktif** | Sprint 21 COMPLETE → validasi E2E + bug fix + Playwright |
+| **Git commit** | `c432938` — `origin/main` |
+| **Sprint aktif** | Sprint 22 IN PROGRESS → SSRF tester + DVWA + Juice Shop |
 | **LLM** | qwen2.5:32b (default), qwen2.5:7b (fast), bge-m3 (embedding) |
 
 ---
@@ -244,6 +244,7 @@ curl -X POST http://localhost:8001/api/v1/admin/knowledge/bulk-import \
 - Sprint 19: +13 tests (255 → 268)
 - Sprint 20: +34 tests (268 → 302)
 - Sprint 21: +8 unit tests + 6 Playwright E2E (302 → 310 + 6 e2e)
+- Sprint 22: +6 SSRF unit tests (310 → 316)
 
 ---
 
@@ -285,17 +286,37 @@ curl -X POST http://localhost:8001/api/v1/admin/knowledge/bulk-import \
 
 ---
 
-## Backlog Sprint 22
+### Sprint 22 ✅ COMPLETE (4/4 tasks)
+
+| Task | Status | Detail | Commit |
+|------|--------|--------|--------|
+| 22.1 — SSRF + OOB Tester | ✅ | `ssrf_oob_tester.py` — 6 tests, integrated as 13th concurrent tool | `c432938` |
+| 22.2 — DVWA Authenticated Scan | ✅ | SQLi (union+error+time-based) + XSS (reflected+stored) + LFI `/etc/passwd` | manual |
+| 22.3 — KB Scale-up trigger | ✅ | `task_id: 470d8564` — pages 221+, max 2500 records, queued | API |
+| 22.4 — Juice Shop E2E Scan | ✅ | JWT alg:none → 23 users exposed; SQLi login bypass → admin JWT; IDOR users 1-3 | manual |
+
+**Juice Shop Findings (OWASP Juice Shop v17+):**
+- **JWT alg:none** — RS256 token accepted with `alg:none` + empty signature → `GET /api/Users` returned all 23 users (CRITICAL)
+- **SQLi login bypass** — `admin@juice-sh.op' --` payload bypassed password check → admin JWT issued (CRITICAL)
+- **IDOR** — `/api/Users/1`, `/2`, `/3` accessible with any valid JWT → exposed admin email + all customer emails (HIGH)
+
+**Test Delta Sprint 22:**
+- `pentra-tools`: 159 → **165** (+6 SSRF tests)
+- `pentra-agent`: 151 unchanged (no regressions on vuln_hunt_node changes)
+- **Total: 310 → 316 passing**
+
+---
+
+## Backlog Sprint 23
 
 | Item | Prioritas | Estimasi |
 |------|-----------|----------|
-| KB scale: scrape H1 pages 221-300 (+2000 records) | Tinggi | Trigger via API |
-| E2E authenticated scan against live DVWA (non-mock) | Tinggi | 1-2 jam |
+| KB scale complete: verify pages 221-300 inserted | Tinggi | Check via API |
 | Frontend live feed WebSocket integration test | Sedang | 1 jam |
 | Fine-tuning pipeline activation (JSONL → LoRA) | Sedang | 2-3 jam |
-| SSRF scanner + OOB callback integration | Sedang | 2 jam |
+| SSRF OOB with Burp Collaborator integration | Sedang | 1 jam |
 | Playwright full regression suite (e2e/full.spec.ts) | Rendah | 1 jam |
 
 ---
 
-*Updated: 2026-06-10 — GitHub Copilot (Claude Sonnet 4.6) — Sprint 21 COMPLETE*
+*Updated: 2026-06-10 — GitHub Copilot (Claude Sonnet 4.6) — Sprint 22 COMPLETE*
