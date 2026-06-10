@@ -3,6 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: false, // Sequential — shared DB state between tests
+  workers: 1,           // Single worker prevents API race conditions
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   timeout: 60_000, // 60s per test — API calls may be slow
