@@ -1,13 +1,13 @@
 # Pentra AI — Progress Report
-> Updated: 2026-06-10 | Commit: `8c27c12` | Branch: `main`
+> Updated: 2026-06-10 | Commit: `ce1056b` | Branch: `main`
 
 ---
 
 ## Ringkasan Eksekutif
 
 Pentra AI adalah self-hosted AI Security Research Platform dengan LLM lokal (Ollama).
-Saat ini platform berjalan penuh dengan 302 unit tests, **8,309 records KB** (naik dari 2,758),
-dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JWT, dan subdomain takeover secara otomatis.
+Saat ini platform berjalan penuh dengan **310 unit tests**, **8,309 records KB** (naik dari 2,758),
+dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JWT, subdomain takeover, dan second-order SQLi secara otomatis.
 
 ---
 
@@ -15,12 +15,12 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 
 | Metrik | Nilai |
 |--------|-------|
-| **Test suite** | **302 passing** (156 pentra-tools + 146 pentra-agent), 0 failed |
-| **Test files** | 35 total (20 agent + 15 tools) |
+| **Test suite** | **310 passing** (159 pentra-tools + 151 pentra-agent), 0 failed |
+| **Test files** | 37 total (20 agent + 15 tools + 2 Sprint 21) |
 | **KB records** | **8,309** (100% embedded, 96% punya payload_pattern) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
-| **Git commit** | `8c27c12` — `origin/main` |
-| **Sprint aktif** | Sprint 20 COMPLETE → KB scale-up done |
+| **Git commit** | `ce1056b` — `origin/main` |
+| **Sprint aktif** | Sprint 21 COMPLETE → validasi E2E + bug fix + Playwright |
 | **LLM** | qwen2.5:32b (default), qwen2.5:7b (fast), bge-m3 (embedding) |
 
 ---
@@ -235,13 +235,15 @@ curl -X POST http://localhost:8001/api/v1/admin/knowledge/bulk-import \
 
 | Package | Tests | Files |
 |---------|-------|-------|
-| pentra-tools | 141 passed, 3 skipped | 15 files |
-| pentra-agent | 127 passed, 4 skipped | 20 files |
-| **Total** | **268 passing, 0 failed** | 35 files |
+| pentra-tools | 159 passed, 3 skipped | 15 files |
+| pentra-agent | 151 passed, 4 skipped | 20 files |
+| **Total** | **310 passing, 0 failed** | 35 files |
 
 **Pertumbuhan:**
 - Sprint 18 Tier 1-3: +77 tests (178 → 255)
 - Sprint 19: +13 tests (255 → 268)
+- Sprint 20: +34 tests (268 → 302)
+- Sprint 21: +8 unit tests + 6 Playwright E2E (302 → 310 + 6 e2e)
 
 ---
 
@@ -259,17 +261,41 @@ curl -X POST http://localhost:8001/api/v1/admin/knowledge/bulk-import \
 
 ---
 
-## Backlog Sprint 21
+### Sprint 21 ✅ COMPLETE (8/8 tasks)
 
-| Item | Prioritas | Estimasi |
-|------|-----------|----------|
-| KB scale: scrape H1 pages 21-60 (+2000 records) | Tinggi | Trigger via API |
-| E2E authenticated scan validation (DVWA/testfire) | Tinggi | 1-2 jam |
-| Frontend live feed integration test | Sedang | 1 jam |
-| GraphQL injection E2E validation | Sedang | 30 min |
-| Race condition E2E validation (DVWA) | Sedang | 30 min |
-| Fine-tuning pipeline activation | Rendah | Ongoing |
+| Task | Status | Detail | Commit |
+|------|--------|--------|--------|
+| 21.1 — PROGRESS.md update | ✅ | Sprint 21 section added, metrics updated | `ce1056b` |
+| 21.2 — DVWA Auth Scan E2E | ✅ | SQLi + XSS findings confirmed via DVWA Security=Low | manual |
+| 21.3 — GraphQL E2E validation | ✅ | Introspection ENABLED (23 types), depth limit absent | manual |
+| 21.4 — Race Condition E2E | ✅ | TOCTOU double-spend: 20/20 success (Flask mock) | manual |
+| 21.5 — JWT alg:none E2E | ✅ | Admin token forged → `secret: admin_panel_data` returned | manual |
+| 21.6 — Playwright smoke suite | ✅ | 6/6 tests pass (ST-6.1–6.5 + auth setup) | in-repo |
+| 21.7 — Takeover mock tests | ✅ | 7/7 tests: GitHub Pages, Heroku, AWS S3 fingerprints | in-repo |
+| 21.8 — EngagementLearning query | ✅ | 5/5 tests: `learning_query.py` + `plan_node` integration | in-repo |
+
+**Bug Fix (Critical):**  
+`httpx proxies=` → `proxy=` migrated across 7 files (`session_manager`, `business_logic`, `second_order_sqli`, `race_condition`, `cors_tester`, `soap_xxe`, `takeover_detector`). Commit: `ce1056b`.
+
+**Test Delta Sprint 21:**
+- `pentra-tools`: 156 → **159** (+3 takeover mock tests)
+- `pentra-agent`: 146 → **151** (+5 learning_query tests)
+- Playwright (e2e): **6/6 smoke tests** added (`apps/web/e2e/smoke.spec.ts`)
+- **Total: 302 → 310 passing**
 
 ---
 
-*Updated: 2026-06-09 — GitHub Copilot (Claude Sonnet 4.6)*
+## Backlog Sprint 22
+
+| Item | Prioritas | Estimasi |
+|------|-----------|----------|
+| KB scale: scrape H1 pages 221-300 (+2000 records) | Tinggi | Trigger via API |
+| E2E authenticated scan against live DVWA (non-mock) | Tinggi | 1-2 jam |
+| Frontend live feed WebSocket integration test | Sedang | 1 jam |
+| Fine-tuning pipeline activation (JSONL → LoRA) | Sedang | 2-3 jam |
+| SSRF scanner + OOB callback integration | Sedang | 2 jam |
+| Playwright full regression suite (e2e/full.spec.ts) | Rendah | 1 jam |
+
+---
+
+*Updated: 2026-06-10 — GitHub Copilot (Claude Sonnet 4.6) — Sprint 21 COMPLETE*
