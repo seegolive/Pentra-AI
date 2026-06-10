@@ -694,12 +694,10 @@ curl -sX POST http://localhost:8001/api/v1/admin/backup/trigger \
 ### ST-7.8 — SSRF Tester Ran (Sprint 22)
 
 ```bash
-# Verifikasi ssrf_oob_tester dijalankan selama scan
-grep -cE "ssrf_oob|SSRF|identify_ssrf" /tmp/pentra.log 2>/dev/null || \
-  echo "0"
+grep -c 'ssrf_oob|identify_ssrf' /tmp/pentra.log 2>/dev/null || echo "0"
 # Expected: >= 1 (log menunjukkan SSRF scan dijalankan)
 
-# Verifikasi identify_ssrf_candidates berfungsi secara unit
+# Verifikasi unit test SSRF
 cd packages/pentra-tools
 uv run python3 -c "
 from pentra_tools.vuln.ssrf_oob_tester import identify_ssrf_candidates
@@ -708,17 +706,13 @@ candidates = identify_ssrf_candidates([
     {'url': 'https://t.com/about', 'method': 'GET'},
 ])
 print(f'candidates: {len(candidates)}')
-assert len(candidates) == 1, f'Expected 1, got {len(candidates)}'
+assert len(candidates) == 1
 print('SSRF candidate detection: OK')
 "
 # Expected: candidates: 1, SSRF candidate detection: OK
-
-# Verifikasi 165 tests pentra-tools pass (includes 6 SSRF tests)
-uv run pytest tests/ -q 2>&1 | tail -3
-# Expected: 165 passed, 3 skipped
 ```
 
-✅ Pass jika: identify_ssrf_candidates berjalan benar + 165 tests pass
+✅ Pass jika: grep count >= 1 dan identify_ssrf_candidates berjalan benar
 
 ---
 
@@ -1026,7 +1020,7 @@ BLOK 7 — Monitoring & Admin
   [x] ST-7.1 Continuous Monitoring
   [x] ST-7.2 Admin Panel
   [x] ST-7.3 Backup Status
-  [x] ST-7.8 SSRF Tester ran (identify_ssrf_candidates + 165 tools tests)
+  [x] ST-7.8 SSRF Tester ran (grep ssrf_oob|identify_ssrf /tmp/pentra.log >= 1)
 
 BLOK 8 — Security
   [x] ST-8.1 Scope Violation Test
@@ -1059,6 +1053,7 @@ LULUS (aman lanjut Sprint 15):
   ✅ BLOK 9 pass (316+ unit tests: 165 pentra-tools + 151 pentra-agent)
   ✅ Minimal 29/34 smoke tests pass
   ✅ Agent berhasil complete 1 engagement end-to-end dengan findings
+  ✅ Burp MCP default port 9877 (fixed commit 73b0552)
 
 PERLU FIX DULU:
   ❌ BLOK 4 gagal (agent pipeline bermasalah)
