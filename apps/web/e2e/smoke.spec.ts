@@ -5,28 +5,29 @@
 
 import { test, expect, type Page } from "@playwright/test";
 
-const BASE = process.env.BASE_URL ?? "http://localhost:5173";
+// All smoke tests manage their own login — start unauthenticated
+test.use({ storageState: { cookies: [], origins: [] } });
 
 async function login(page: Page) {
-  await page.goto(`${BASE}/login`);
+  await page.goto("/login");
   await page.getByLabel(/username/i).fill("admin");
   await page.getByLabel(/password/i).fill("Pentra@2026!");
   await page.getByRole("button", { name: /sign in/i }).click();
-  await page.waitForURL(/workspaces|dashboard|\/$/, { timeout: 10_000 });
+  await page.waitForURL(/workspaces|dashboard/, { timeout: 10_000 });
 }
 
 test("ST-6.1 login valid", async ({ page }) => {
   // Navigate to login with fresh unauthenticated state
-  await page.goto(`${BASE}/login`);
+  await page.goto("/login");
   await page.getByLabel(/username/i).fill("admin");
   await page.getByLabel(/password/i).fill("Pentra@2026!");
   await page.getByRole("button", { name: /sign in/i }).click();
-  await page.waitForURL(/workspaces|dashboard|\//, { timeout: 10_000 });
+  await page.waitForURL(/workspaces|dashboard/, { timeout: 10_000 });
   await expect(page).not.toHaveURL(/login/);
 });
 
 test("ST-6.2 login invalid shows error", async ({ page }) => {
-  await page.goto(`${BASE}/login`);
+  await page.goto("/login");
   await page.getByLabel(/username/i).fill("admin");
   await page.getByLabel(/password/i).fill("wrongpassword");
   await page.getByRole("button", { name: /sign in/i }).click();
@@ -36,7 +37,7 @@ test("ST-6.2 login invalid shows error", async ({ page }) => {
 
 test("ST-6.3 protected route redirects to login", async ({ page }) => {
   // Navigate without auth
-  await page.goto(`${BASE}/workspaces`);
+  await page.goto("/workspaces");
   await expect(page).toHaveURL(/login/, { timeout: 5000 });
 });
 
@@ -50,7 +51,7 @@ test("ST-6.4 dashboard has content after login", async ({ page }) => {
 
 test("ST-6.5 KB browser search returns results", async ({ page }) => {
   await login(page);
-  await page.goto(`${BASE}/knowledge`);
+  await page.goto("/knowledge");
   // Find search input by its actual placeholder
   const searchInput = page.getByPlaceholder(/Search by attack type/i);
   await searchInput.fill("SQL injection");
