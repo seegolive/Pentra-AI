@@ -149,7 +149,7 @@ packages/
 │   │   └── dynamic_prompt.py     ← ARTEMIS context prompts
 │   ├── arsenal/exploit_arsenal.py      ← proven payloads
 │   ├── memory/located_memory.py        ← no-forgetting memory
-│   ├── scan_presets.py                 ← 5 named presets
+│   ├── scan_presets.py                 ← 6 named presets (full/fast/stealth/quick/authenticated/pentra-ft)
 │   ├── subscan.py                      ← targeted re-scan
 │   ├── incremental.py                  ← fingerprint cache
 │   └── finetune_export.py              ← JSONL training export
@@ -324,18 +324,18 @@ curl -X POST http://localhost:8001/api/v1/admin/knowledge/bulk-import \
 - `pentra-agent`: 151 unchanged (no regressions on vuln_hunt_node changes)
 - **Total: 310 → 316 passing**
 
-### Sprint 23 ⚡ IN PROGRESS
+### Sprint 23 ✅ COMPLETE (8/8 tasks)
 
 | Task | Status | Detail | Commit |
 |------|--------|--------|--------|
 | 23.1 — SSRF E2E Juice Shop | ✅ | identify_ssrf_candidates: 2 endpoints; allowlist blocks direct SSRF | `60d6cad` |
 | 23.2 — CORS E2E Validation | ✅ | ACAO:* on `/api/Users/1` (wildcard, no credentials — low severity) | `60d6cad` |
 | 23.3 — KB scale verify | ✅ | 8309 points; re-triggered task `03361e0c` (pages 221+, max 2500) | `60d6cad` |
+| 23.4 — SSRF OOB Burp Collaborator | ✅ | Burp connected (port 9877), Collaborator payload fetched (HTTP 200) | `73b0552` |
 | 23.5 — PROGRESS.md architecture fix | ✅ | 9 tools → 13 tools, all vuln/ files documented | `60d6cad` |
 | 23.6 — Playwright Live Feed tests | ✅ | 7/7 pass: LF-1–LF-7 (tabs, empty state, JS errors) | `bae64b2` |
 | 23.7 — Playwright Full Regression | ✅ | 20/20 pass: Auth, Dashboard, KB, WS, Eng, Admin, Settings, Nav | `bae64b2` |
-| 23.4 — SSRF OOB Burp Collaborator | ⏳ | Prereq: Burp Pro aktif | — |
-| 23.8 — SMOKE-TEST-E2E.md update | ⏳ | Update scorecard 29 → 30 checks | — |
+| 23.8 — SMOKE-TEST-E2E.md update | ✅ | ST-7.8 added, scorecard 29→34 checks, 316+ target | `f5f7931` |
 
 **E2E Validation Scorecard (Sprint 23):**
 ```
@@ -352,14 +352,14 @@ CORS wildcard                  ℹ️  ACAO:* on Juice Shop (low — no credenti
 Subdomain takeover             ✅ 7/7 mock fingerprints
 ```
 
-### Sprint 24 ⚡ IN PROGRESS
+### Sprint 24 ✅ COMPLETE (4/4 tasks)
 
 | Task | Status | Detail | Commit |
 |------|--------|--------|--------|
 | 24.1 — KB verify | ✅ | 8309 points — H1 REST API max (pages 1-199 exhausted, all imported) | `f5f7931` |
-| 24.2 — SSRF E2E on vulnerable target | ✅ | Flask mock server-side fetch — 2 CRITICAL findings confirmed | — |
-| 24.3 — LoRA fine-tuning activation | ⚡ | `run_lora_training.py` created, RTX 5090 training in progress | `695c5a8` |
-| 24.4 — PROGRESS.md update | ✅ | Sprint 24 section added | in-progress |
+| 24.2 — SSRF E2E on vulnerable target | ✅ | Flask mock server-side fetch — 2 CRITICAL findings confirmed | `32c41df` |
+| 24.3 — LoRA fine-tuning activation | ✅ | `run_lora_training.py` created, 50-step validation run complete | `c0965aa` |
+| 24.4 — PROGRESS.md update | ✅ | Sprint 24 section added | `32c41df` |
 
 **SSRF E2E (Task 24.2):**
 ```
@@ -381,7 +381,7 @@ Base model: Qwen/Qwen2.5-Coder-7B-Instruct
 Hardware:   RTX 5090 (31.8 GB VRAM)
 LoRA rank:  16 / alpha: 32
 Output:     /tmp/pentra_lora/
-Status:     training in progress (50 steps validation run)
+Status:     ✅ COMPLETE (50-step validation, full 500-step in Sprint 26)
 ```
 
 **Vuln Classes Confirmed E2E (Sprint 24 update):**
