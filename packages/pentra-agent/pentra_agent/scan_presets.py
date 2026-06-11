@@ -24,7 +24,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Literal
 
-PresetName = Literal["full", "fast", "stealth", "quick", "authenticated"]
+PresetName = Literal["full", "fast", "stealth", "quick", "authenticated", "pentra-ft"]
 
 
 @dataclass
@@ -61,6 +61,7 @@ class ScanPreset:
     run_csrf_check: bool = True
     max_payloads_per_candidate: int = 4
     use_collaborator: bool = True
+    llm_model: str = ""  # Override LLM model; empty = use settings.OLLAMA_MODEL_DEFAULT
 
     def apply_to_env(self) -> None:
         """Write preset values into environment variables consumed by vuln_hunt_node."""
@@ -76,6 +77,8 @@ class ScanPreset:
         os.environ["PENTRA_RUN_CSRF_CHECK"] = "true" if self.run_csrf_check else "false"
         os.environ["PENTRA_MAX_PAYLOADS"] = str(self.max_payloads_per_candidate)
         os.environ["PENTRA_USE_COLLABORATOR"] = "true" if self.use_collaborator else "false"
+        if self.llm_model:
+            os.environ["PENTRA_LLM_MODEL"] = self.llm_model
 
     def as_dict(self) -> dict:
         return {
@@ -200,6 +203,28 @@ PRESETS: dict[PresetName, ScanPreset] = {
         run_csrf_check=True,
         max_payloads_per_candidate=8,   # more IDOR variants
         use_collaborator=True,
+    ),
+
+    "pentra-ft": ScanPreset(
+        name="pentra-ft",
+        description=(
+            "Fine-tuned scan — uses pentra-ft (LoRA-tuned Qwen2.5-Coder-7B) as the "
+            "reasoning LLM. Trained on 8,309 H1 disclosures + confirmed findings. "
+            "Best payload generation quality for common vuln classes. ~10-15 min."
+        ),
+        concurrent_candidates=4,
+        payload_pacing_s=0.1,
+        nuclei_timeout_s=120,
+        max_candidates=20,
+        crawl_pages=25,
+        run_nuclei=True,
+        run_ffuf=False,
+        run_burp_scan=True,
+        run_soap_xxe=False,
+        run_csrf_check=True,
+        max_payloads_per_candidate=5,
+        use_collaborator=True,
+        llm_model="pentra-ft",  # LoRA-tuned model in Ollama
     ),
 }
 
