@@ -78,7 +78,13 @@ def _print_findings(findings: list[dict]) -> None:
         print()
 
 
-def _build_initial_state(domain: str, engagement_id: str, mode: str, auth_credentials: dict | None = None) -> dict:
+def _build_initial_state(domain: str, engagement_id: str, mode: str, auth_credentials: dict | None = None, extra_endpoints: list | None = None) -> dict:
+    seeded = []
+    if extra_endpoints:
+        base = f"http://{domain}" if not domain.startswith("http") else domain
+        for url in extra_endpoints:
+            full = url if url.startswith("http") else f"{base.rstrip('/')}/{url.lstrip('/')}"
+            seeded.append({"url": full, "method": "GET", "status": 200, "source": "manual"})
     return {
         "engagement_id": engagement_id,
         "target": {"domain": domain},
@@ -90,7 +96,7 @@ def _build_initial_state(domain: str, engagement_id: str, mode: str, auth_creden
         "current_phase": "init",
         "phase_history": [],
         "subdomains": [],
-        "endpoints": [],
+        "endpoints": seeded,
         "tech_stack": [],
         "findings": [],
         "triaged_findings": [],
@@ -110,7 +116,7 @@ def _build_initial_state(domain: str, engagement_id: str, mode: str, auth_creden
     }
 
 
-async def run_live_scan(domain: str, mode: str = "agentic", auth_credentials: dict | None = None) -> None:
+async def run_live_scan(domain: str, mode: str = "agentic", auth_credentials: dict | None = None, extra_endpoints: list | None = None) -> None:
     """Run full recon → vuln_hunt pipeline live against target domain."""
     # Late imports so env vars are already set
     from pentra_agent.nodes.recon_node import recon_node
@@ -129,7 +135,10 @@ async def run_live_scan(domain: str, mode: str = "agentic", auth_credentials: di
         print(f"  Auth:         {auth_credentials['type']}")
     print(f"  Started:      {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
 
-    state = _build_initial_state(domain, engagement_id, mode, auth_credentials=auth_credentials)
+    state = _build_initial_state(domain, engagement_id, mode, auth_credentials=auth_credentials, extra_endpoints=extra_endpoints)
+    seeded = state.get("endpoints", [])  # save before recon overwrites
+    if extra_endpoints:
+        print(f"  Extra URLs:   {len(extra_endpoints)} seeded into initial state")
 
     # ── Phase 1: RECON ────────────────────────────────────────────────────────
     _banner("PHASE 1: RECON  (subfinder → httpx → nmap → Burp sitemap → LLM)")
@@ -143,6 +152,15 @@ async def run_live_scan(domain: str, mode: str = "agentic", auth_credentials: di
 
     elapsed = asyncio.get_event_loop().time() - t0
     state = {**state, **recon_update}
+
+    # Merge extra_endpoints back (recon_node overwrites endpoints key)
+    if extra_endpoints:
+        existing_urls = {e.get("url") for e in state.get("endpoints", [])}
+        for ep in seeded:
+            if ep["url"] not in existing_urls:
+                state["endpoints"].append(ep)
+                existing_urls.add(ep["url"])
+        log.info("[live_scan] Merged %d seeded endpoints → total %d", len(seeded), len(state["endpoints"]))
 
     subdomains = state.get("subdomains", [])
     endpoints = state.get("endpoints", [])
@@ -242,12 +260,12 @@ def main() -> None:
     parser.add_argument(
         "--preset",
         default=None,
-        choices=["full", "fast", "stealth", "quick", "authenticated"],
+        choices=["full", "fast", "stealth", "quick", "authenticated", "pentra-ft"],
         help=(
             "Scan engine preset — controls which tools run, concurrency, and pacing. "
             "full: max coverage (~40-60 min) | fast: speed over depth (~10-15 min) | "
             "stealth: low-noise passive only (~60-90 min) | quick: smoke test (~5-8 min) | "
-            "authenticated: full with auth support"
+            "authenticated: full with auth support | pentra-ft: LoRA fine-tuned LLM"
         ),
     )
 
@@ -269,6 +287,13 @@ def main() -> None:
                             help="Login URL for auto-login (required with --auth-user/--auth-pass)")
     auth_group.add_argument("--auth-basic",
                             help='HTTP Basic auth as "user:password"')
+
+    parser.add_argument(
+        "--extra-endpoints",
+        nargs="+",
+        metavar="URL",
+        help="Extra URLs to seed into initial state (bypasses recon for known paths)",
+    )
 
     args = parser.parse_args()
 
@@ -311,7 +336,7 @@ def main() -> None:
         except ImportError:
             print(f"  [WARNING] Could not load scan presets — using defaults")
 
-    asyncio.run(run_live_scan(args.domain, args.mode, auth_credentials=auth_credentials))
+    asyncio.run(run_live_scan(args.domain, args.mode, auth_credentials=auth_credentials, extra_endpoints=args.extra_endpoints))
 
 
 if __name__ == "__main__":
