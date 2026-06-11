@@ -1,4 +1,4 @@
-FROM /tmp/pentra_ft_q4km.gguf
+FROM /tmp/pentra_ft_v2_q4km.gguf
 
 PARAMETER temperature 0.3
 PARAMETER top_p 0.9

@@ -105,7 +105,7 @@ def _build_initial_state(domain: str, engagement_id: str, mode: str, auth_creden
         "knowledge_context": [],
         "tool_outputs": [],
         "hunt_rounds": 0,
-        "llm_model": os.getenv("OLLAMA_MODEL_DEFAULT", "qwen2.5:32b"),
+        "llm_model": os.getenv("OLLAMA_MODEL_DEFAULT", "qwen2.5-coder:32b"),
         "pentest_plan": (
             f"Black-box pentest of {domain}. "
             "Focus on: SQL injection, XSS, IDOR, path traversal, auth bypass, "
@@ -130,7 +130,7 @@ async def run_live_scan(domain: str, mode: str = "agentic", auth_credentials: di
     print(f"  Mode:         {mode}")
     print(f"  Burp MCP:     {os.environ['BURP_MCP_URL']}")
     print(f"  Ollama:       {os.environ['OLLAMA_URL']}")
-    print(f"  LLM model:    {os.getenv('OLLAMA_MODEL_DEFAULT', 'qwen2.5:32b')}")
+    print(f"  LLM model:    {os.getenv('OLLAMA_MODEL_DEFAULT', 'qwen2.5-coder:32b')}")
     if auth_credentials:
         print(f"  Auth:         {auth_credentials['type']}")
     print(f"  Started:      {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
