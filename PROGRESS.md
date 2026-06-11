@@ -1,5 +1,5 @@
 # Pentra AI — Progress Report
-> Updated: 2026-06-11 | Commit: `f5f7931` | Branch: `main`
+> Updated: 2026-06-11 | Commit: `1ef1028` | Branch: `main`
 
 ---
 
@@ -20,9 +20,9 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 | **Test files** | 38 unit + 5 e2e spec files |
 | **KB records** | **8,309+** (scraping pages 221+, task 03361e0c running) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
-| **Git commit** | `bae64b2` — `main` |
-| **Sprint aktif** | Sprint 24 IN PROGRESS → SSRF E2E + LoRA fine-tuning |
-| **LLM** | qwen2.5:32b (default), qwen2.5:7b (fast), bge-m3 (embedding) |
+| **Git commit** | `1ef1028` — `main` |
+| **Sprint aktif** | Sprint 26 IN PROGRESS → Full LoRA training + E2E comparison |
+| **LLM** | qwen2.5:32b (default), qwen2.5:7b (fast), bge-m3 (embedding), **pentra-ft** (LoRA) |
 
 ---
 
@@ -235,6 +235,7 @@ curl -X POST http://localhost:8001/api/v1/admin/knowledge/bulk-import \
 | `full` | semua tools | 3 | 0.15s | ~40-60 min |
 | `stealth` | passive only | 1 | 1.0s | ~60-90 min |
 | `authenticated` | semua + IDOR | 3 | 0.20s | ~50-70 min |
+| `pentra-ft` | nuclei + burp, **pentra-ft LLM** | 4 | 0.10s | ~10-15 min |
 
 ---
 
@@ -397,9 +398,34 @@ Subdomain takeover      ✅  7/7 mock fingerprints
 CORS wildcard           ℹ️  ACAO:* Juice Shop (low)
 ```
 
+### Sprint 25 ✅ COMPLETE
+
+| Task | Status | Detail | Commit |
+|------|--------|--------|--------|
+| 25.1 — LoRA → GGUF conversion | ✅ | f16 (15.2GB) → Q4_K_M (4.4GB, -69%) via llama.cpp | `1ef1028` |
+| 25.2 — Ollama model create | ✅ | `pentra-ft:latest` 4.7GB live, Modelfile.pentra | `1ef1028` |
+| 25.3 — Quality comparison | ✅ | pentra-ft: WAITFOR+xp_cmdshell+OOB vs qwen generic | `1ef1028` |
+| 25.4 — scan_presets.py update | ✅ | `pentra-ft` preset added, `llm_model` field | `1ef1028` |
+
+**pentra-ft pipeline:**
+```
+LoRA training:  50 steps / 200 records / 238.4s (RTX 5090)
+Adapter:        /tmp/pentra_lora/adapter_model.safetensors (155MB)
+Merged:         /tmp/pentra_merged/ (15GB)
+GGUF f16:       /tmp/pentra_ft_f16.gguf (15.2GB)
+GGUF Q4_K_M:    /tmp/pentra_ft_q4km.gguf (4.4GB)
+Ollama model:   pentra-ft:latest (4.7GB)
+Modelfile:      scripts/Modelfile.pentra
+```
+
+**Quality verdict (Task 25.3):**
+- pentra-ft: domain-specific (WAITFOR DELAY, xp_cmdshell, OOB via Collaborator)
+- qwen2.5-coder:32b: generic SQL injection explanation
+- pentra-ft shows H1 pattern knowledge from 8,309 training records ✅
+
 ---
 
-## Backlog Sprint 25
+## Backlog Sprint 26
 
 | Item | Prioritas | Estimasi |
 |------|-----------|----------|
@@ -411,4 +437,4 @@ CORS wildcard           ℹ️  ACAO:* Juice Shop (low)
 
 ---
 
-*Updated: 2026-06-11 — GitHub Copilot (Claude Sonnet 4.6) — Sprint 24 IN PROGRESS*
+*Updated: 2026-06-11 — GitHub Copilot (Claude Sonnet 4.6) — Sprint 25 COMPLETE, Sprint 26 IN PROGRESS*
