@@ -164,14 +164,16 @@ def main():
     print(f"\n🚀 Starting training ({MAX_STEPS} steps)...")
     start_time = datetime.now()
 
+    # SFTTrainer v1.5+ — use formatting_func instead of dataset_text_field/packing
+    def formatting_func(example):
+        return example["text"]
+
     trainer = SFTTrainer(
         model=model,
         args=training_args,
         train_dataset=dataset,
         processing_class=tokenizer,
-        dataset_text_field="text",
-        max_seq_length=MAX_SEQ_LEN,
-        packing=False,
+        formatting_func=formatting_func,
     )
     trainer.train()
     elapsed = (datetime.now() - start_time).total_seconds()
