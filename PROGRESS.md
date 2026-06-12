@@ -1,5 +1,5 @@
 # Pentra AI — Progress Report
-> Updated: 2026-06-11 | Commit: `ecb685c` | Branch: `main`
+> Updated: 2026-06-12 | Commit: `e093f74` | Branch: `main`
 
 ---
 
@@ -20,8 +20,8 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 | **Test files** | 38 unit + 5 e2e spec files |
 | **KB records** | **8,309+** (scraping pages 221+, task 03361e0c running) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
-| **Git commit** | `207f4c4` — `main` |
-| **Sprint aktif** | Sprint 27 COMPLETE → Sprint 28 |
+| **Git commit** | `e093f74` — `main` |
+| **Sprint aktif** | Sprint 28 (1/3 — test hang fixed) |
 | **LLM** | qwen2.5-coder:32b (default), qwen3:8b (fast), bge-m3 (embedding), **pentra-ft** (Qwen2.5-Coder-7B fine-tuned, 4.4GB Q4_K_M) |
 
 ---
@@ -471,6 +471,12 @@ Kesimpulan:
 
 ---
 
+### Sprint 28 (in progress — 1/3 tasks)
+
+| Task | Status | Detail | Commit |
+|------|--------|--------|--------|
+| 28.1 — Fix `test_e2e_pipeline.py` network hang | ✅ | Mocked `probe_rate_limit`, `profile_waf`, `detect_subdomain_takeovers` + 9 vuln_hunt scanners (extended checks, SOAP/XXE, GraphQL, race condition, CORS, JWT, second-order SQLi, business logic, SSRF) — full pentra-agent suite now runs without `--ignore` in offline sandbox: 151 passed, 4 skipped in ~24s | `e093f74` |
+
 ## Backlog Sprint 28
 
 | Item | Prioritas | Estimasi |
@@ -480,4 +486,4 @@ Kesimpulan:
 
 ---
 
-*Updated: 2026-06-12 — GitHub Copilot — Sprint 27 COMPLETE (fair baseline + stale label fixes)*
+*Updated: 2026-06-12 — GitHub Copilot — Sprint 28: fixed test_e2e_pipeline.py network hang (151 passed, 4 skipped, no --ignore needed)*
