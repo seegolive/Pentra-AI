@@ -20,7 +20,7 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 | **Test files** | 38 unit + 5 e2e spec files |
 | **KB records** | **8,309+** (scraping pages 221+, task 03361e0c running) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
-| **Git commit** | `ecb685c` — `main` |
+| **Git commit** | `207f4c4` — `main` |
 | **Sprint aktif** | Sprint 26 COMPLETE → Sprint 27 |
 | **LLM** | qwen2.5-coder:32b (default), qwen3:8b (fast), bge-m3 (embedding), **pentra-ft** (Qwen2.5-Coder-7B fine-tuned, 4.4GB Q4_K_M) |
 
@@ -291,8 +291,8 @@ curl -X POST http://localhost:8001/api/v1/admin/knowledge/bulk-import \
 | 21.4 — Race Condition E2E | ✅ | TOCTOU double-spend: 20/20 success (Flask mock) | manual |
 | 21.5 — JWT alg:none E2E | ✅ | Admin token forged → `secret: admin_panel_data` returned | manual |
 | 21.6 — Playwright smoke suite | ✅ | 6/6 tests pass (ST-6.1–6.5 + auth setup) | in-repo |
-| 21.7 — Takeover mock tests | ✅ | 7/7 tests: GitHub Pages, Heroku, AWS S3 fingerprints | in-repo |
-| 21.8 — EngagementLearning query | ✅ | 5/5 tests: `learning_query.py` + `plan_node` integration | in-repo |
+| 21.7 — Takeover mock tests | ✅ | 7/7 tests: GitHub Pages, Heroku, AWS S3 fingerprints | `207f4c4` |
+| 21.8 — EngagementLearning query | ✅ | 5/5 tests: `learning_query.py` + `plan_node` integration | `207f4c4` |
 
 **Bug Fix (Critical):**  
 `httpx proxies=` → `proxy=` migrated across 7 files (`session_manager`, `business_logic`, `second_order_sqli`, `race_condition`, `cors_tester`, `soap_xxe`, `takeover_detector`). Commit: `ce1056b`.
