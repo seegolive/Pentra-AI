@@ -135,7 +135,6 @@ async def test_embed_and_upsert_success():
     mock_repo.mark_embedded = AsyncMock()
 
     with (
-        patch("app.tasks.knowledge_update._embed_and_upsert.__wrapped__", None),
         patch("pentra_knowledge.services.embedding.embed", AsyncMock(return_value=mock_embed_result)),
         patch("pentra_knowledge.services.embedding.build_embedding_text", return_value="test text"),
         patch("pentra_knowledge.services.search.upsert_to_qdrant", AsyncMock()),

@@ -21,7 +21,7 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 | **KB records** | **8,309+** (scraping pages 221+, task 03361e0c running) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
 | **Git commit** | `e093f74` — `main` |
-| **Sprint aktif** | Sprint 28 COMPLETE → Sprint 29 |
+| **Sprint aktif** | Sprint 29 (1/1 — worker suite 18/18 passing) |
 | **LLM** | qwen2.5-coder:32b (default), qwen3:8b (fast), bge-m3 (embedding), **pentra-ft** (Qwen2.5-Coder-7B fine-tuned, 4.4GB Q4_K_M) |
 
 ---
@@ -479,12 +479,17 @@ Kesimpulan:
 | 28.2 — KB alternative source: Bugcrowd scraper test coverage | ✅ | `apps/worker/app/tasks/bugcrowd_scraper.py` existed since Sprint 12 but had 0 tests and 0 records ingested. Added `apps/worker/tests/test_bugcrowd_scraper.py` — 13 tests covering `_guess_vuln_class`, `_SEVERITY_MAP`, and `_scrape_all` pagination/max_records/empty-page/HTTP-error handling (mocked httpx, no network). Worker suite now 17/18 passing (1 pre-existing unrelated failure, see backlog). Actually running the scrape against bugcrowd.com requires network access not available in this sandbox. | `0338d61` |
 | 28.3 — Frontend WebSocket live feed stress test | ✅ | `app/ws/manager.ConnectionManager` (the production live-feed broadcaster used by every agent node via `broadcast_and_persist`) had 0 tests. Added `apps/api/tests/test_ws_connection_manager.py` — 12 tests: history replay on connect, ping events not buffered, 50-client fan-out, 300+ event high-volume broadcast vs `BUFFER_SIZE` cap (500), concurrent broadcast ordering, dead-connection pruning under load, per-engagement isolation, `broadcast_and_persist` DB skip rules. apps/api suite now 63/63 passing. | _pending commit_ |
 
+### Sprint 29 (in progress — 1/1 known tasks)
+
+| Task | Status | Detail | Commit |
+|------|--------|--------|--------|
+| 29.1 — Fix `test_embed_and_upsert_success` `__wrapped__` bug | ✅ | `_embed_and_upsert` is a plain async function (no decorator), so `patch("...__wrapped__", None)` raised `AttributeError`. Removed the bogus patch. apps/worker suite now 18/18 passing. | _pending commit_ |
+
 ## Backlog Sprint 29
 
 | Item | Prioritas | Estimasi |
 |------|-----------|----------|
 | Run Bugcrowd scrape against live API (needs internet) to populate KB | Sedang | - |
-| Fix pre-existing `test_embed_and_upsert_success` `__wrapped__` patch bug (apps/worker) | Rendah | 15 menit |
 
 ---
 
