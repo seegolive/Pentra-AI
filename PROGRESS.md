@@ -21,7 +21,7 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 | **KB records** | **8,309+** (scraping pages 221+, task 03361e0c running) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
 | **Git commit** | `e093f74` — `main` |
-| **Sprint aktif** | Sprint 29 (1/1 — worker suite 18/18 passing) |
+| **Sprint aktif** | Sprint 29 (1/2 — worker suite 18/18; Bugcrowd live scrape blocked, API deprecated) |
 | **LLM** | qwen2.5-coder:32b (default), qwen3:8b (fast), bge-m3 (embedding), **pentra-ft** (Qwen2.5-Coder-7B fine-tuned, 4.4GB Q4_K_M) |
 
 ---
@@ -479,18 +479,19 @@ Kesimpulan:
 | 28.2 — KB alternative source: Bugcrowd scraper test coverage | ✅ | `apps/worker/app/tasks/bugcrowd_scraper.py` existed since Sprint 12 but had 0 tests and 0 records ingested. Added `apps/worker/tests/test_bugcrowd_scraper.py` — 13 tests covering `_guess_vuln_class`, `_SEVERITY_MAP`, and `_scrape_all` pagination/max_records/empty-page/HTTP-error handling (mocked httpx, no network). Worker suite now 17/18 passing (1 pre-existing unrelated failure, see backlog). Actually running the scrape against bugcrowd.com requires network access not available in this sandbox. | `0338d61` |
 | 28.3 — Frontend WebSocket live feed stress test | ✅ | `app/ws/manager.ConnectionManager` (the production live-feed broadcaster used by every agent node via `broadcast_and_persist`) had 0 tests. Added `apps/api/tests/test_ws_connection_manager.py` — 12 tests: history replay on connect, ping events not buffered, 50-client fan-out, 300+ event high-volume broadcast vs `BUFFER_SIZE` cap (500), concurrent broadcast ordering, dead-connection pruning under load, per-engagement isolation, `broadcast_and_persist` DB skip rules. apps/api suite now 63/63 passing. | _pending commit_ |
 
-### Sprint 29 (in progress — 1/1 known tasks)
+### Sprint 29 (in progress — 1/2 known tasks)
 
 | Task | Status | Detail | Commit |
 |------|--------|--------|--------|
-| 29.1 — Fix `test_embed_and_upsert_success` `__wrapped__` bug | ✅ | `_embed_and_upsert` is a plain async function (no decorator), so `patch("...__wrapped__", None)` raised `AttributeError`. Removed the bogus patch. apps/worker suite now 18/18 passing. | _pending commit_ |
+| 29.1 — Fix `test_embed_and_upsert_success` `__wrapped__` bug | ✅ | `_embed_and_upsert` is a plain async function (no decorator), so `patch("...__wrapped__", None)` raised `AttributeError`. Removed the bogus patch. apps/worker suite now 18/18 passing. | `07a91ff` |
+| 30.1 — Run Bugcrowd live scrape | ⚠️ BLOCKED | Internet is now available (`curl https://bugcrowd.com/disclosures.json` → **404**, no longer ⚠️ a sandbox issue). Bugcrowd has **deprecated/removed the public `disclosures.json` API** that `bugcrowd_scraper.py` was built against. Investigated replacement `https://bugcrowd.com/crowdstream.json` (200 OK, `pagination_meta: {total_pages: 47, totalCount: 937}`) but it's a **live activity feed** (cutoff: last 7 days), not a disclosure archive — every entry has `disclosed: null`, no `title`/`description`/`vulnerability_type`/`severity` fields the scraper expects, only `priority` (1-4) + `submission_state_text` ("Submission accepted on target: X"). Per-submission detail JSON (`/engagements/<code>/submissions/<id>.json`) returns **301 → login required** (not accessible without authenticated researcher session). **Conclusion: `bugcrowd_scraper.py` targets a defunct API and needs a rewrite (or a different alternative source entirely) before it can ingest anything — out of scope for a quick fix.** | — |
 
-## Backlog Sprint 29
+## Backlog Sprint 30
 
 | Item | Prioritas | Estimasi |
 |------|-----------|----------|
-| Run Bugcrowd scrape against live API (needs internet) to populate KB | Sedang | - |
+| Rewrite/replace Bugcrowd scraper for new API shape (crowdstream activity feed has no descriptions; needs either authenticated submission-detail scraping or a different source like PortSwigger Research / Exploit-DB RSS) | Sedang | Needs scoping — likely 4h+, not 2h |
 
 ---
 
-*Updated: 2026-06-12 — GitHub Copilot — Sprint 28: fixed test_e2e_pipeline.py network hang (151 passed, 4 skipped, no --ignore needed)*
+*Updated: 2026-06-12 — GitHub Copilot — Sprint 29: fixed __wrapped__ test bug (18/18 worker); investigated Bugcrowd live scrape — blocked by deprecated API, needs rewrite*
