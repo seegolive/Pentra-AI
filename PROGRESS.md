@@ -7,7 +7,7 @@
 
 Pentra AI adalah self-hosted AI Security Research Platform dengan LLM lokal (Ollama).
 Saat ini platform berjalan penuh dengan **316 unit tests + 33 Playwright E2E tests**, **8,309+ records KB** (naik dari 2,758),
-dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JWT alg:none, SSRF, IDOR, subdomain takeover, second-order SQLi secara otomatis, **plus fine-tuned LLM (pentra-ft) yang dilatih pada 8,309 H1 disclosures dan terbukti 8× lebih efektif dari baseline pada MSSQL/ASP.NET target**.
+dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JWT alg:none, SSRF, IDOR, subdomain takeover, second-order SQLi secara otomatis, **plus fine-tuned LLM (pentra-ft) yang dilatih pada 8,309 H1 disclosures dan tervalidasi tetap unggul pada target MSSQL/ASP.NET (8 confirmed vs baseline fair 6 confirmed)**.
 
 ---
 
@@ -20,7 +20,7 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 | **Test files** | 38 unit + 5 e2e spec files |
 | **KB records** | **8,309+** (scraping pages 221+, task 03361e0c running) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
-| **Git commit** | `10d0ecc` — `main` |
+| **Git commit** | `ecb685c` — `main` |
 | **Sprint aktif** | Sprint 26 COMPLETE → Sprint 27 |
 | **LLM** | qwen2.5-coder:32b (default), qwen3:8b (fast), bge-m3 (embedding), **pentra-ft** (Qwen2.5-Coder-7B fine-tuned, 4.4GB Q4_K_M) |
 
@@ -432,10 +432,10 @@ Modelfile:           scripts/Modelfile.pentra
 |------|--------|--------|--------|
 | 26.1 — PROGRESS.md update | ✅ | Sprint 25 section, Backlog Sprint 26 | `eee81b8` |
 | 26.2 — Full LoRA training (500 steps) | ✅ | loss=0.433, acc=89.1%, 35m52s RTX 5090 | `10d0ecc` |
-| 26.3 — E2E pentra-ft vs baseline | ✅ | **pentra-ft: 8 confirmed (6C+2M) vs fast: 0** dalam 10 menit | `10d0ecc` |
+| 26.3 — E2E pentra-ft vs baseline | ✅ | **pentra-ft: 8 confirmed (6C+2M) vs fast baseline fair: 6 confirmed (6C)** | `10d0ecc` |
 | 26.4 — Commit results | ✅ | Sprint 26 finalized | `ecb685c` |
 
-**E2E Comparison Result (Task 26.3) — testaspnet.vulnweb.com:**
+**E2E Comparison Result (Task 26.3, updated Task 27.2 fair baseline) — testaspnet.vulnweb.com:**
 ```
 pentra-ft preset (10 menit):
   CONFIRMED [CRITICAL] SQL Injection param='cat'      WAITFOR DELAY '0:0:5'
@@ -445,13 +445,19 @@ pentra-ft preset (10 menit):
   CONFIRMED [MEDIUM]   IDOR              param='id'   payload='2' (2×)
   Total: 8 confirmed (6 CRITICAL + 2 MEDIUM)
 
-fast preset / qwen2.5-coder:32b (baseline, 10 menit):
-  Total: 0 confirmed
+fast preset / qwen2.5-coder:32b (baseline fair, timeout 1800):
+  CONFIRMED [CRITICAL] SQL Injection param='username' payload="' OR '1'='1"
+  CONFIRMED [CRITICAL] SQL Injection param='username' payload="' OR (SELECT 1 FROM information_schema.tables WHER"
+  CONFIRMED [CRITICAL] SQL Injection param='body'     payload="' OR (SELECT 1 FROM information_schema.tables WHER"
+  CONFIRMED [CRITICAL] SQL Injection param='tfSearch' payload="' OR WAITFOR DELAY '0:0:5'--"
+  CONFIRMED [CRITICAL] SQL Injection param='id'       payload="1'; WAITFOR DELAY '0:0:5'--"
+  CONFIRMED [CRITICAL] SQL Injection param='id'       payload="1; WAITFOR DELAY '0:0:5'--"
+  Total: 6 confirmed (6 CRITICAL)
 
 Kesimpulan:
-  pentra-ft 8× lebih efektif dari baseline
-  Domain-specific training (MSSQL WAITFOR DELAY) langsung digunakan
-  pentra-ft mendeteksi IDOR yang baseline tidak temukan
+  pentra-ft tetap unggul pada total findings (8 vs 6, +33%)
+  Domain-specific training (MSSQL WAITFOR DELAY) digunakan oleh keduanya
+  pentra-ft mendeteksi IDOR (2 MEDIUM) yang baseline fair tidak konfirmasi
 ```
 
 ---
@@ -460,11 +466,10 @@ Kesimpulan:
 
 | Item | Prioritas | Estimasi |
 |------|-----------|----------|
-| E2E fast baseline rerun (nuclei/burp full crawl selesai) | Tinggi | 15 menit |
 | pentra-ft formal benchmark vs qwen2.5-coder:32b | Sedang | 1 jam |
 | KB alternative source (Bugcrowd / H1 GraphQL filter) | Sedang | 2 jam |
 | Frontend WebSocket live feed stress test | Rendah | 1 jam |
 
 ---
 
-*Updated: 2026-06-11 — GitHub Copilot (Claude Sonnet 4.6) — Sprint 26 COMPLETE — pentra-ft 8× more effective than baseline*
+*Updated: 2026-06-11 — GitHub Copilot — Sprint 27 fair baseline validated (pentra-ft 8 vs fast 6)*
