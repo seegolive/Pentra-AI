@@ -21,7 +21,7 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 | **KB records** | **8,309+** (scraping pages 221+, task 03361e0c running) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
 | **Git commit** | `207f4c4` — `main` |
-| **Sprint aktif** | Sprint 26 COMPLETE → Sprint 27 |
+| **Sprint aktif** | Sprint 27 COMPLETE → Sprint 28 |
 | **LLM** | qwen2.5-coder:32b (default), qwen3:8b (fast), bge-m3 (embedding), **pentra-ft** (Qwen2.5-Coder-7B fine-tuned, 4.4GB Q4_K_M) |
 
 ---
@@ -141,7 +141,7 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 packages/
 ├── pentra-agent/
 │   ├── nodes/
-│   │   ├── vuln_hunt_node.py     ← 3,280+ lines, 9 tools parallel
+│   │   ├── vuln_hunt_node.py     ← 3,280+ lines, 13 tools parallel
 │   │   ├── triage_node.py        ← two-stage triage
 │   │   └── recon_node.py         ← WAF + dedup + GF
 │   ├── llm/
@@ -462,14 +462,22 @@ Kesimpulan:
 
 ---
 
-## Backlog Sprint 27
+### Sprint 27 ✅ COMPLETE (2/2 tasks)
+
+| Task | Status | Detail | Commit |
+|------|--------|--------|--------|
+| 27.1 — PROGRESS.md stale label fixes | ✅ | Sprint 23/24 labels, presets count, tool count corrected | `725c216`, `28caf03` |
+| 27.2 — pentra-ft fair baseline benchmark | ✅ | pentra-ft 8 confirmed vs fast baseline (fair, timeout 1800) 6 confirmed | `725c216` |
+
+---
+
+## Backlog Sprint 28
 
 | Item | Prioritas | Estimasi |
 |------|-----------|----------|
-| pentra-ft formal benchmark vs qwen2.5-coder:32b | Sedang | 1 jam |
 | KB alternative source (Bugcrowd / H1 GraphQL filter) | Sedang | 2 jam |
 | Frontend WebSocket live feed stress test | Rendah | 1 jam |
 
 ---
 
-*Updated: 2026-06-11 — GitHub Copilot — Sprint 27 fair baseline validated (pentra-ft 8 vs fast 6)*
+*Updated: 2026-06-12 — GitHub Copilot — Sprint 27 COMPLETE (fair baseline + stale label fixes)*
