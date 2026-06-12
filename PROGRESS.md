@@ -21,7 +21,7 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 | **KB records** | **8,309+** (scraping pages 221+, task 03361e0c running) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
 | **Git commit** | `e093f74` — `main` |
-| **Sprint aktif** | Sprint 28 (1/3 — test hang fixed) |
+| **Sprint aktif** | Sprint 28 (2/3 — test hang fixed, Bugcrowd scraper tests added) |
 | **LLM** | qwen2.5-coder:32b (default), qwen3:8b (fast), bge-m3 (embedding), **pentra-ft** (Qwen2.5-Coder-7B fine-tuned, 4.4GB Q4_K_M) |
 
 ---
@@ -471,18 +471,20 @@ Kesimpulan:
 
 ---
 
-### Sprint 28 (in progress — 1/3 tasks)
+### Sprint 28 (in progress — 2/3 tasks)
 
 | Task | Status | Detail | Commit |
 |------|--------|--------|--------|
 | 28.1 — Fix `test_e2e_pipeline.py` network hang | ✅ | Mocked `probe_rate_limit`, `profile_waf`, `detect_subdomain_takeovers` + 9 vuln_hunt scanners (extended checks, SOAP/XXE, GraphQL, race condition, CORS, JWT, second-order SQLi, business logic, SSRF) — full pentra-agent suite now runs without `--ignore` in offline sandbox: 151 passed, 4 skipped in ~24s | `e093f74` |
+| 28.2 — KB alternative source: Bugcrowd scraper test coverage | ✅ | `apps/worker/app/tasks/bugcrowd_scraper.py` existed since Sprint 12 but had 0 tests and 0 records ingested. Added `apps/worker/tests/test_bugcrowd_scraper.py` — 13 tests covering `_guess_vuln_class`, `_SEVERITY_MAP`, and `_scrape_all` pagination/max_records/empty-page/HTTP-error handling (mocked httpx, no network). Worker suite now 17/18 passing (1 pre-existing unrelated failure in `test_knowledge_update.py::test_embed_and_upsert_success` — `__wrapped__` patch target, not introduced by this change). Actually running the scrape against bugcrowd.com requires network access not available in this sandbox. | _pending commit_ |
 
 ## Backlog Sprint 28
 
 | Item | Prioritas | Estimasi |
 |------|-----------|----------|
-| KB alternative source (Bugcrowd / H1 GraphQL filter) | Sedang | 2 jam |
-| Frontend WebSocket live feed stress test | Rendah | 1 jam |
+| 28.3 — Frontend WebSocket live feed stress test | Rendah | 1 jam |
+| Run Bugcrowd scrape against live API (needs internet) to populate KB | Sedang | - |
+| Fix pre-existing `test_embed_and_upsert_success` `__wrapped__` patch bug | Rendah | 15 menit |
 
 ---
 
