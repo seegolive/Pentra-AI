@@ -168,6 +168,17 @@ class TestReconNodeE2E:
                 {"host": TARGET_DOMAIN, "port": 1433, "protocol": "tcp",
                  "service": "ms-sql-s", "version": "MSSQL 2012", "state": "open"},
             ])),
+            # Mock rate-limit + WAF probes — these hit the real target over the
+            # network and must not run during mocked tests
+            patch("pentra_agent.nodes.recon_node.probe_rate_limit", new=AsyncMock(
+                side_effect=ConnectionError("no network in test")
+            )),
+            patch("pentra_tools.recon.waf_profiler.profile_waf", new=AsyncMock(
+                side_effect=ConnectionError("no network in test")
+            )),
+            patch("pentra_tools.recon.takeover_detector.detect_subdomain_takeovers", new=AsyncMock(
+                return_value=[]
+            )),
             # Mock Burp (fallback no-op if not live)
             patch("pentra_agent.nodes.recon_node._fetch_burp_endpoints", new=AsyncMock(
                 return_value=([], [])
@@ -237,6 +248,15 @@ class TestReconNodeE2E:
             ])),
             patch("pentra_agent.nodes.recon_node._run_httpx_probe", new=AsyncMock(side_effect=lambda s: s)),
             patch("pentra_agent.nodes.recon_node._run_nmap", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.recon_node.probe_rate_limit", new=AsyncMock(
+                side_effect=ConnectionError("no network in test")
+            )),
+            patch("pentra_tools.recon.waf_profiler.profile_waf", new=AsyncMock(
+                side_effect=ConnectionError("no network in test")
+            )),
+            patch("pentra_tools.recon.takeover_detector.detect_subdomain_takeovers", new=AsyncMock(
+                return_value=[]
+            )),
             patch("pentra_agent.nodes.recon_node._fetch_burp_endpoints", new=AsyncMock(return_value=([], []))),
             patch("pentra_agent.nodes.recon_node.hybrid_search", new=AsyncMock(return_value=[]), create=True),
             patch("pentra_agent.nodes.recon_node._get_session_factory", create=True),
@@ -297,6 +317,17 @@ class TestVulnHuntNodeE2E:
             patch("pentra_agent.nodes.vuln_hunt_node._run_llm_burp_active_testing", new=AsyncMock(return_value=[])),
             patch("pentra_agent.nodes.vuln_hunt_node.hybrid_search", new=AsyncMock(return_value=[]), create=True),
             patch("pentra_agent.nodes.vuln_hunt_node._get_session_factory", create=True),
+            # Mock additional vuln-hunt scanners — these hit the real target
+            # over the network and must not run during mocked tests
+            patch("pentra_agent.nodes.vuln_hunt_node._run_burp_extended_checks", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_soap_xxe_scan", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_graphql_scan", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_race_condition_scan", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_cors_scan", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_jwt_scan", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_second_order_sqli_scan", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_business_logic_scan", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_ssrf_scan", new=AsyncMock(return_value=[])),
         ):
             result = await vuln_hunt_node(state)
 
@@ -332,6 +363,17 @@ class TestVulnHuntNodeE2E:
             patch("pentra_agent.nodes.vuln_hunt_node._run_llm_burp_active_testing", new=AsyncMock(return_value=[])),
             patch("pentra_agent.nodes.vuln_hunt_node.hybrid_search", new=AsyncMock(return_value=[]), create=True),
             patch("pentra_agent.nodes.vuln_hunt_node._get_session_factory", create=True),
+            # Mock additional vuln-hunt scanners — these hit the real target
+            # over the network and must not run during mocked tests
+            patch("pentra_agent.nodes.vuln_hunt_node._run_burp_extended_checks", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_soap_xxe_scan", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_graphql_scan", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_race_condition_scan", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_cors_scan", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_jwt_scan", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_second_order_sqli_scan", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_business_logic_scan", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_ssrf_scan", new=AsyncMock(return_value=[])),
         ):
             result = await vuln_hunt_node(state)
 
@@ -400,6 +442,15 @@ class TestFullPipelineE2E:
                 {"host": TARGET_DOMAIN, "port": 80, "protocol": "tcp",
                  "service": "http", "version": "IIS 8.5", "state": "open"},
             ])),
+            patch("pentra_agent.nodes.recon_node.probe_rate_limit", new=AsyncMock(
+                side_effect=ConnectionError("no network in test")
+            )),
+            patch("pentra_tools.recon.waf_profiler.profile_waf", new=AsyncMock(
+                side_effect=ConnectionError("no network in test")
+            )),
+            patch("pentra_tools.recon.takeover_detector.detect_subdomain_takeovers", new=AsyncMock(
+                return_value=[]
+            )),
             patch("pentra_agent.nodes.recon_node._fetch_burp_endpoints", new=AsyncMock(return_value=([
                 {"url": f"http://{TARGET_DOMAIN}/login.aspx", "method": "POST",
                  "params": ["username", "password"], "source": "burp_proxy"},
@@ -453,6 +504,17 @@ class TestFullPipelineE2E:
             patch("pentra_agent.nodes.vuln_hunt_node._run_llm_burp_active_testing", new=AsyncMock(return_value=[])),
             patch("pentra_agent.nodes.vuln_hunt_node.hybrid_search", new=AsyncMock(return_value=[]), create=True),
             patch("pentra_agent.nodes.vuln_hunt_node._get_session_factory", create=True),
+            # Mock additional vuln-hunt scanners — these hit the real target
+            # over the network and must not run during mocked tests
+            patch("pentra_agent.nodes.vuln_hunt_node._run_burp_extended_checks", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_soap_xxe_scan", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_graphql_scan", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_race_condition_scan", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_cors_scan", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_jwt_scan", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_second_order_sqli_scan", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_business_logic_scan", new=AsyncMock(return_value=[])),
+            patch("pentra_agent.nodes.vuln_hunt_node._run_ssrf_scan", new=AsyncMock(return_value=[])),
         ):
             vuln_result = await vuln_hunt_node(state_after_recon)
 
