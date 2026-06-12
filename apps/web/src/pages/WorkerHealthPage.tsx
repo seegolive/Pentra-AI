@@ -207,8 +207,8 @@ export default function WorkerHealthPage() {
     });
 
   return (
-    <div className="flex-1 p-8">
-      <div className="max-w-5xl mx-auto">
+    <div className="flex-1 w-full p-8">
+      <div className="w-full">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -297,7 +297,7 @@ export default function WorkerHealthPage() {
                   No workers connected. Start a Celery worker to see status here.
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-4">
                   {data.workers.map((w) => (
                     <WorkerCard key={w.hostname} worker={w} />
                   ))}

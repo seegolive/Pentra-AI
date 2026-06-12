@@ -204,7 +204,7 @@ export function DashboardPage() {
   const totalEngagements = stats?.total_engagements ?? (engagements?.length ?? 0);
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
+    <div className="flex-1 w-full p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

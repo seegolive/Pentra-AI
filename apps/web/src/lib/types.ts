@@ -177,6 +177,7 @@ export type FeedEventType =
   | "NODE_COMPLETE"
   | "AWAITING_APPROVAL"
   | "FINDINGS_UPDATED"
+  | "ENGAGEMENT_COMPLETED"
   | "LLM_STREAM";
 
 export interface FeedEvent {

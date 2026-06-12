@@ -24,8 +24,8 @@ export default function WorkspacesPage() {
   };
 
   return (
-    <div className="flex-1 p-8">
-      <div className="max-w-4xl mx-auto">
+    <div className="flex-1 w-full p-8">
+      <div className="w-full">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -96,7 +96,7 @@ export default function WorkspacesPage() {
             <p className="text-xs mt-1 opacity-60">Create one to get started</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
             {workspaces?.map((ws: Workspace) => (
               <button
                 key={ws.id}
