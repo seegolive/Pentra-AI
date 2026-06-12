@@ -1,12 +1,21 @@
 # Pentra AI — Progress Report
-> Updated: 2026-06-12 | Commit: `e093f74` | Branch: `main`
+> Updated: 2026-06-12 | Tag: `v1.0.0` | Branch: `main`
+
+---
+
+## 🎉 v1.0.0 MILESTONE
+
+Pentra AI mencapai **v1.0.0** — platform stabil dengan 397 unit tests (0 failed)
+di 4 package/app, 33 Playwright E2E tests, KB 8,309+ records dari HackerOne,
+dan fine-tuned LLM (pentra-ft) yang tervalidasi unggul pada target real
+(8 confirmed vs baseline 6 confirmed). Semua sprint backlog (18-29) selesai.
 
 ---
 
 ## Ringkasan Eksekutif
 
 Pentra AI adalah self-hosted AI Security Research Platform dengan LLM lokal (Ollama).
-Saat ini platform berjalan penuh dengan **316 unit tests + 33 Playwright E2E tests**, **8,309+ records KB** (naik dari 2,758),
+Saat ini platform berjalan penuh dengan **397 unit tests + 33 Playwright E2E tests**, **8,309+ records KB** (naik dari 2,758),
 dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JWT alg:none, SSRF, IDOR, subdomain takeover, second-order SQLi secara otomatis, **plus fine-tuned LLM (pentra-ft) yang dilatih pada 8,309 H1 disclosures dan tervalidasi tetap unggul pada target MSSQL/ASP.NET (8 confirmed vs baseline fair 6 confirmed)**.
 
 ---
@@ -15,13 +24,13 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 
 | Metrik | Nilai |
 |--------|-------|
-| **Test suite** | **316 passing** (165 pentra-tools + 151 pentra-agent), 0 failed |
+| **Test suite** | **397 passing** (165 pentra-tools + 151 pentra-agent + 18 apps/worker + 63 apps/api), 0 failed |
 | **Playwright E2E** | **33 tests** (6 smoke + 7 livefeed + 20 full regression), 0 failed |
-| **Test files** | 38 unit + 5 e2e spec files |
-| **KB records** | **8,309+** (scraping pages 221+, task 03361e0c running) |
+| **Test files** | 44 unit + 5 e2e spec files |
+| **KB records** | **8,309+** (HackerOne — sumber tunggal, lihat keputusan Sprint 29) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
-| **Git commit** | `e093f74` — `main` |
-| **Sprint aktif** | Sprint 29 COMPLETE — KB sumber tetap HackerOne saja |
+| **Git tag** | `v1.0.0` — `main` |
+| **Sprint aktif** | v1.0.0 RELEASED — semua sprint 18-29 COMPLETE |
 | **LLM** | qwen2.5-coder:32b (default), qwen3:8b (fast), bge-m3 (embedding), **pentra-ft** (Qwen2.5-Coder-7B fine-tuned, 4.4GB Q4_K_M) |
 
 ---
@@ -245,7 +254,9 @@ curl -X POST http://localhost:8001/api/v1/admin/knowledge/bulk-import \
 |---------|-------|-------|
 | pentra-tools | 165 passed, 3 skipped | 16 files |
 | pentra-agent | 151 passed, 4 skipped | 20 files |
-| **Total unit** | **316 passing, 0 failed** | 36 files |
+| apps/worker | 18 passed | 2 files |
+| apps/api | 63 passed | 6 files |
+| **Total unit** | **397 passing, 0 failed** | 44 files |
 
 **Playwright E2E:**
 
@@ -263,6 +274,7 @@ curl -X POST http://localhost:8001/api/v1/admin/knowledge/bulk-import \
 - Sprint 21: +8 unit + 6 Playwright (302 → 310 unit + 6 e2e)
 - Sprint 22: +6 SSRF unit (310 → 316 unit)
 - Sprint 23: +27 Playwright E2E (316 unit + 6 → 316 unit + 33 e2e)
+- Sprint 28-29: apps/worker (18) + apps/api (63) brought into the unit suite total, incl. +13 Bugcrowd scraper tests, +12 WS live feed tests, +1 fixed (316 → 397 unit)
 
 ---
 
@@ -477,7 +489,7 @@ Kesimpulan:
 |------|--------|--------|--------|
 | 28.1 — Fix `test_e2e_pipeline.py` network hang | ✅ | Mocked `probe_rate_limit`, `profile_waf`, `detect_subdomain_takeovers` + 9 vuln_hunt scanners (extended checks, SOAP/XXE, GraphQL, race condition, CORS, JWT, second-order SQLi, business logic, SSRF) — full pentra-agent suite now runs without `--ignore` in offline sandbox: 151 passed, 4 skipped in ~24s | `e093f74` |
 | 28.2 — KB alternative source: Bugcrowd scraper test coverage | ✅ | `apps/worker/app/tasks/bugcrowd_scraper.py` existed since Sprint 12 but had 0 tests and 0 records ingested. Added `apps/worker/tests/test_bugcrowd_scraper.py` — 13 tests covering `_guess_vuln_class`, `_SEVERITY_MAP`, and `_scrape_all` pagination/max_records/empty-page/HTTP-error handling (mocked httpx, no network). Worker suite now 17/18 passing (1 pre-existing unrelated failure, see backlog). Actually running the scrape against bugcrowd.com requires network access not available in this sandbox. | `0338d61` |
-| 28.3 — Frontend WebSocket live feed stress test | ✅ | `app/ws/manager.ConnectionManager` (the production live-feed broadcaster used by every agent node via `broadcast_and_persist`) had 0 tests. Added `apps/api/tests/test_ws_connection_manager.py` — 12 tests: history replay on connect, ping events not buffered, 50-client fan-out, 300+ event high-volume broadcast vs `BUFFER_SIZE` cap (500), concurrent broadcast ordering, dead-connection pruning under load, per-engagement isolation, `broadcast_and_persist` DB skip rules. apps/api suite now 63/63 passing. | _pending commit_ |
+| 28.3 — Frontend WebSocket live feed stress test | ✅ | `app/ws/manager.ConnectionManager` (the production live-feed broadcaster used by every agent node via `broadcast_and_persist`) had 0 tests. Added `apps/api/tests/test_ws_connection_manager.py` — 12 tests: history replay on connect, ping events not buffered, 50-client fan-out, 300+ event high-volume broadcast vs `BUFFER_SIZE` cap (500), concurrent broadcast ordering, dead-connection pruning under load, per-engagement isolation, `broadcast_and_persist` DB skip rules. apps/api suite now 63/63 passing. | `34a026c` |
 
 ### Sprint 29 ✅ COMPLETE (1/1 known tasks)
 
@@ -485,8 +497,8 @@ Kesimpulan:
 |------|--------|--------|--------|
 | 29.1 — Fix `test_embed_and_upsert_success` `__wrapped__` bug | ✅ | `_embed_and_upsert` is a plain async function (no decorator), so `patch("...__wrapped__", None)` raised `AttributeError`. Removed the bogus patch. apps/worker suite now 18/18 passing. | `07a91ff` |
 
-**Catatan KB sumber (keputusan):** Bugcrowd ditinjau (Sprint 30.1) — API publik `disclosures.json` sudah dihapus oleh Bugcrowd (404), penggantinya (`crowdstream.json`) hanya live activity feed 7 hari tanpa deskripsi/severity, dan detail submission butuh login. **Diputuskan: KB tetap hanya dari HackerOne** (8,309+ records, sumber yang sudah berjalan baik). `bugcrowd_scraper.py` + testnya dibiarkan sebagai dead code/tidak dijadwalkan untuk dijalankan — tidak ada pekerjaan lanjutan untuk Bugcrowd.
+**Catatan KB sumber (keputusan v1.0):** Bugcrowd ditinjau sebagai alternatif sumber KB — API publik `disclosures.json` sudah dihapus oleh Bugcrowd (404), penggantinya (`crowdstream.json`) hanya live activity feed 7 hari tanpa deskripsi/severity, dan detail submission butuh login. **Diputuskan: KB tetap hanya dari HackerOne** (8,309+ records, sumber yang sudah berjalan baik). `bugcrowd_scraper.py` + testnya dibiarkan sebagai dead code/tidak dijadwalkan untuk dijalankan — tidak ada pekerjaan lanjutan untuk Bugcrowd.
 
 ---
 
-*Updated: 2026-06-12 — GitHub Copilot — Sprint 29 COMPLETE: fixed __wrapped__ test bug (18/18 worker); KB sumber diputuskan tetap HackerOne saja (Bugcrowd API deprecated, tidak dilanjutkan)*
+*Updated: 2026-06-12 — v1.0.0 RELEASED: 397 unit tests passing (165 tools + 151 agent + 18 worker + 63 api), 33 Playwright E2E tests, Sprint 18-29 complete.*
