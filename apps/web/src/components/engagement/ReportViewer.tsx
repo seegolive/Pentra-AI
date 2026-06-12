@@ -178,20 +178,20 @@ export function ReportViewer({ engagementId }: ReportViewerProps) {
     try {
       const token = useAuthStore.getState().accessToken;
       // H1 Executive Summary uses a different endpoint (Task 19.5)
-      const url = format === "h1-summary"
+      const reportUrl = format === "h1-summary"
         ? `${API_BASE}/api/v1/engagements/${engagementId}/report/h1-summary`
         : `${API_BASE}/api/v1/engagements/${engagementId}/report?format=${format}`;
-      const res = await fetch(url, {
+      const res = await fetch(reportUrl, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
+      const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
+      a.href = blobUrl;
       a.download = `pentra-report-${engagementId.slice(0, 8)}.${ext}`;
       a.click();
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(blobUrl);
     } catch {
       // silently fail — user sees no download
     } finally {
