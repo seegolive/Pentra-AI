@@ -87,3 +87,79 @@ def test_takeover_finding_to_dict_schema():
     assert "GitHub Pages" in d["title"]
     assert "remediation" in d
     assert "dangling CNAME" in d["description"]
+
+
+# ── Sprint 21.7 — Mock tests for all 3 services ───────────────────────────────
+
+@pytest.mark.asyncio
+async def test_check_fingerprint_heroku_detected():
+    """Heroku 'No such app' fingerprint should be detected."""
+    mock_resp = MagicMock()
+    mock_resp.text = "<html><p>No such app</p></html>"
+    mock_resp.status_code = 404
+
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=mock_resp)
+
+    result = await check_takeover_fingerprint(
+        "app.target.com",
+        "target.herokuapp.com",
+        mock_client,
+    )
+
+    assert result is not None, "Heroku takeover should be detected"
+    assert result.service == "Heroku"
+    assert result.confidence == "certain"
+    assert result.severity == "high"
+
+
+@pytest.mark.asyncio
+async def test_check_fingerprint_aws_s3_detected():
+    """AWS S3 'NoSuchBucket' fingerprint should be detected."""
+    mock_resp = MagicMock()
+    mock_resp.text = "<Error><Code>NoSuchBucket</Code></Error>"
+    mock_resp.status_code = 404
+
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=mock_resp)
+
+    result = await check_takeover_fingerprint(
+        "media.target.com",
+        "target.s3.amazonaws.com",
+        mock_client,
+    )
+
+    assert result is not None, "AWS S3 takeover should be detected"
+    assert result.service == "AWS S3"
+    assert result.confidence == "certain"
+    assert result.severity == "high"
+
+
+@pytest.mark.asyncio
+async def test_sprint21_all_three_takeover_services():
+    """Sprint 21.7: All 3 required services (GitHub, Heroku, S3) detected."""
+    tests = [
+        ("old-blog.target.com", "target-org.github.io",
+         "There isn't a GitHub Pages site here", "GitHub Pages"),
+        ("app.target.com", "target.herokuapp.com",
+         "No such app", "Heroku"),
+        ("media.target.com", "target.s3.amazonaws.com",
+         "NoSuchBucket", "AWS S3"),
+    ]
+
+    passed = 0
+    for subdomain, cname, body, expected_service in tests:
+        mock_resp = MagicMock()
+        mock_resp.text = f"<html><p>{body}</p></html>"
+        mock_resp.status_code = 404
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_resp)
+
+        result = await check_takeover_fingerprint(subdomain, cname, mock_client)
+        assert result is not None, f"{expected_service}: expected finding, got None"
+        assert result.service == expected_service, f"Expected {expected_service}, got {result.service}"
+        passed += 1
+
+    assert passed == 3, f"Expected 3/3 passed, got {passed}/3"
+
