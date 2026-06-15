@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { apiLogin } from "./helpers";
 
 /**
  * HITL (Human-in-the-Loop) Approval Flow E2E tests — Task 4.1
@@ -24,6 +25,7 @@ async function login(page: Page) {
 }
 
 async function getAuthToken(page: Page): Promise<string> {
+  await page.goto("/");
   return page.evaluate(() => {
     const raw = localStorage.getItem("pentra-auth");
     if (!raw) return "";
@@ -41,52 +43,44 @@ test.describe("HITL Approval Flow", () => {
     page,
     request,
   }) => {
-    // Get token from browser storage
-    const token = await getAuthToken(page);
+    const token = await apiLogin(request);
 
-    // List workspaces via API to find one we can use
-    const wsRes = await request.get(`${API}/api/v1/workspaces`, {
-      headers: { Authorization: `Bearer ${token}` },
+    const wsRes = await request.post(`${API}/api/v1/workspaces/`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      data: {
+        name: `HITL Detail WS ${Date.now()}`,
+        description: "Auto-created by E2E",
+      },
     });
+    expect(wsRes.ok()).toBeTruthy();
+    const ws = await wsRes.json();
 
-    if (!wsRes.ok()) {
-      test.skip(); // No workspaces → skip this test
-      return;
-    }
-
-    const workspaces = await wsRes.json();
-    if (!workspaces?.length) {
-      test.skip();
-      return;
-    }
-
-    const ws = workspaces[0];
-
-    // List engagements for first workspace
-    const engRes = await request.get(
-      `${API}/api/v1/workspaces/${ws.id}/engagements`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-
-    if (!engRes.ok()) {
-      test.skip();
-      return;
-    }
-
-    const engagements = await engRes.json();
-    if (!engagements?.length) {
-      test.skip();
-      return;
-    }
-
-    const eng = engagements[0];
+    const engRes = await request.post(`${API}/api/v1/engagements/`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      data: {
+        workspace_id: ws.id,
+        name: `HITL Detail Engagement ${Date.now()}`,
+        mode: "semi_auto",
+        in_scope: ["testphp.vulnweb.com"],
+        out_of_scope: [],
+        llm_model: "qwen2.5-coder:7b",
+      },
+    });
+    expect(engRes.ok()).toBeTruthy();
+    const eng = await engRes.json();
 
     // Navigate to engagement detail
     await page.goto(`/engagements/${eng.id}`);
 
     // Page should load without errors — header with engagement name visible
     await expect(
-      page.getByText(eng.name, { exact: false })
+      page.getByRole("heading", { name: eng.name })
     ).toBeVisible({ timeout: 10_000 });
   });
 
@@ -94,10 +88,10 @@ test.describe("HITL Approval Flow", () => {
     request,
     page,
   }) => {
-    const token = await getAuthToken(page);
+    const token = await apiLogin(request);
 
     // Create a dummy workspace + engagement via API for the approve test
-    const wsRes = await request.post(`${API}/api/v1/workspaces`, {
+    const wsRes = await request.post(`${API}/api/v1/workspaces/`, {
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
@@ -108,13 +102,14 @@ test.describe("HITL Approval Flow", () => {
     const ws = await wsRes.json();
 
     const engRes = await request.post(
-      `${API}/api/v1/workspaces/${ws.id}/engagements`,
+      `${API}/api/v1/engagements/`,
       {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         data: {
+          workspace_id: ws.id,
           name: "HITL E2E Engagement",
           mode: "semi_auto",
           in_scope: ["testphp.vulnweb.com"],
@@ -145,8 +140,10 @@ test.describe("HITL Approval Flow", () => {
 
   test("WebSocket feed /ws/engagements/:id/feed reachable dan terima ping", async ({
     page,
+    request,
   }) => {
-    const token = await getAuthToken(page);
+    const token = await apiLogin(request);
+    await page.goto("/");
 
     // Use page.evaluate to test WebSocket from the browser context
     const result = await page.evaluate(

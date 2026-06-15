@@ -139,10 +139,10 @@ function CreateEngagementForm({ workspaceId, onClose }: CreateEngagementFormProp
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-lg bg-card border border-border rounded-xl shadow-2xl p-6 space-y-4"
+        className="w-full max-w-lg max-h-[calc(100vh-2rem)] overflow-y-auto bg-card border border-border rounded-xl shadow-2xl p-6 space-y-4"
       >
         <h2 className="text-lg font-semibold text-foreground">New Engagement</h2>
 

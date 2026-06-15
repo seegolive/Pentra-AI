@@ -11,6 +11,10 @@ import { test, expect, type Page } from "@playwright/test";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
+const RUN_ID = Date.now();
+const WORKSPACE_NAME = `E2E Test Workspace ${RUN_ID}`;
+const ENGAGEMENT_NAME = `E2E Test Engagement ${RUN_ID}`;
+
 async function login(page: Page) {
   await page.goto("/login");
   await page.getByLabel("Username").fill("admin");
@@ -31,13 +35,13 @@ test.describe("Workspace & Engagement Flow", () => {
     await page.getByRole("button", { name: /new workspace/i }).click();
 
     // Fill workspace name
-    await page.getByPlaceholder("Workspace name").fill("E2E Test Workspace");
+    await page.getByPlaceholder("Workspace name").fill(WORKSPACE_NAME);
 
     // Submit
     await page.getByRole("button", { name: /^create$/i }).click();
 
     // New workspace card should appear in the list
-    await expect(page.getByText("E2E Test Workspace")).toBeVisible({
+    await expect(page.getByRole("button", { name: new RegExp(WORKSPACE_NAME) })).toBeVisible({
       timeout: 10_000,
     });
   });
@@ -46,7 +50,9 @@ test.describe("Workspace & Engagement Flow", () => {
     await page.goto("/workspaces");
 
     // Click the test workspace created above (or any workspace)
-    const workspaceCard = page.getByText("E2E Test Workspace");
+    const workspaceCard = page
+      .getByRole("button", { name: new RegExp(WORKSPACE_NAME) })
+      .first();
     await workspaceCard.click();
 
     // Should navigate to engagements page for that workspace
@@ -58,16 +64,18 @@ test.describe("Workspace & Engagement Flow", () => {
     await page.getByRole("button", { name: /new engagement/i }).click();
 
     // Fill engagement name
-    await page.getByPlaceholder("e.g. HackerOne – Acme Corp Q2").fill("E2E Test Engagement");
+    await page.getByPlaceholder("e.g. HackerOne – Acme Corp Q2").fill(ENGAGEMENT_NAME);
 
     // Fill in-scope targets
-    await page.getByPlaceholder(/target\.com/).fill("testphp.vulnweb.com");
+    await page
+      .getByPlaceholder("target.com\n*.api.target.com\n192.168.1.0/24")
+      .fill("testphp.vulnweb.com");
 
     // Submit
-    await page.getByRole("button", { name: /^create$/i }).click();
+    await page.getByRole("button", { name: /^create engagement$/i }).click();
 
     // Engagement card should appear
-    await expect(page.getByText("E2E Test Engagement")).toBeVisible({
+    await expect(page.getByText(ENGAGEMENT_NAME)).toBeVisible({
       timeout: 10_000,
     });
   });
@@ -83,13 +91,12 @@ test.describe("Workspace & Engagement Flow", () => {
 
     // Should show at least one result (seed data must have IDOR records)
     // Wait for loading to finish and results to appear
-    await expect(page.locator(".grid > div").first()).toBeVisible({
-      timeout: 15_000,
-    });
-
-    // The results header should say N result(s)
     await expect(
       page.getByText(/result(s)? for "IDOR"/i)
+    ).toBeVisible({ timeout: 15_000 });
+
+    await expect(
+      page.locator("main button").filter({ hasText: /IDOR/i }).first()
     ).toBeVisible({ timeout: 10_000 });
   });
 });
