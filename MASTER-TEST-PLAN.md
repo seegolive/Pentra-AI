@@ -91,7 +91,7 @@ export ENG_ID=$(curl -sX POST http://localhost:8001/api/v1/engagements \
     \"mode\": \"semi_auto\",
     \"in_scope\": [\"testaspnet.vulnweb.com\"],
     \"out_of_scope\": [],
-    \"llm_model\": \"qwen2.5:32b\"
+    \"llm_model\": \"qwen2.5-coder:32b\"
   }" | jq -r .id)
 echo "ENG_ID: $ENG_ID"
 # Expected: UUID
@@ -135,7 +135,7 @@ curl -s http://localhost:8001/openapi.json | jq '.info.title'
 ```bash
 curl -s http://localhost:11434/api/tags | jq '[.models[].name]'
 ```
-- Expected: list berisi minimal `bge-m3` dan `qwen2.5:32b` (atau model lain)
+- Expected: list berisi minimal `bge-m3` dan `qwen2.5-coder:32b` (atau model lain)
 - [ ] Pass / [ ] Fail
 
 ### T-1.6 Qdrant Running
@@ -262,33 +262,33 @@ echo "DELETE audit: $CODE (expect 404 or 405)"
 
 ### T-3.1 KB Search Basic
 ```bash
-curl -s "http://localhost:8001/api/v1/knowledge/search?q=SQL+injection&top_k=3" \
-  -H "Authorization: Bearer $TOKEN" | jq 'length'
+curl -s "http://localhost:8001/knowledge/search?q=SQL+injection&top_k=3" \
+  -H "Authorization: Bearer $TOKEN" | jq '.results | length'
 ```
 - Expected: `3` (atau > 0)
 - [ ] Pass / [ ] Fail
 
 ### T-3.2 KB Quality Score > 0
 ```bash
-curl -s "http://localhost:8001/api/v1/knowledge/search?q=XSS&top_k=5" \
+curl -s "http://localhost:8001/knowledge/search?q=XSS&top_k=5" \
   -H "Authorization: Bearer $TOKEN" | \
-  jq '[.[] | select(.quality_score > 0)] | length'
+  jq '[.results[] | select(.quality_score > 0)] | length'
 ```
 - Expected: `5` (semua punya quality_score)
 - [ ] Pass / [ ] Fail
 
 ### T-3.3 KB Search dengan Filter VulnClass
 ```bash
-curl -s "http://localhost:8001/api/v1/knowledge/search?q=IDOR&vuln_class=IDOR&top_k=3" \
-  -H "Authorization: Bearer $TOKEN" | jq '.[0].vuln_class'
+curl -s "http://localhost:8001/knowledge/search?q=IDOR&vuln_class=IDOR&top_k=3" \
+  -H "Authorization: Bearer $TOKEN" | jq '.results[0].vuln_class'
 ```
 - Expected: `"IDOR"`
 - [ ] Pass / [ ] Fail
 
 ### T-3.4 KB Total Records
 ```bash
-curl -s "http://localhost:8001/api/v1/knowledge/list?limit=1" \
-  -H "Authorization: Bearer $TOKEN" | jq .total
+curl -s "http://localhost:8001/api/v1/admin/stats" \
+  -H "Authorization: Bearer $TOKEN" | jq .total_records
 ```
 - Expected: `> 100` (ada seed data)
 - [ ] Pass / [ ] Fail
@@ -559,7 +559,7 @@ echo "Total: $TOTAL_H1, With valid vector: $WITH_VEC"
 ### T-6.2 Engagement Create + Live Feed
 ```
 [ ] Buat workspace baru dari UI
-[ ] Buat engagement: target testaspnet.vulnweb.com, Semi-Auto, qwen2.5:32b
+[ ] Buat engagement: target testaspnet.vulnweb.com, Semi-Auto, qwen2.5-coder:32b
 [ ] Tombol "Start Agent" tampil dan bisa diklik
 [ ] Klik Start → Live Feed menampilkan events (biru=NODE_START)
 [ ] HITL dialog muncul saat agent meminta approval
@@ -1062,7 +1062,7 @@ E2E_ID=$(curl -sX POST http://localhost:8001/api/v1/engagements \
     \"mode\": \"semi_auto\",
     \"in_scope\": [\"testaspnet.vulnweb.com\"],
     \"out_of_scope\": [],
-    \"llm_model\": \"qwen2.5:32b\"
+    \"llm_model\": \"qwen2.5-coder:32b\"
   }" | jq -r .id)
 echo "E2E_ID: $E2E_ID"
 

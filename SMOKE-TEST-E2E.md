@@ -21,7 +21,7 @@ nohup uv run uvicorn app.main:app \
 
 # 3. Pastikan Ollama running dan model tersedia
 ollama list | grep -E "qwen|deepseek|bge"
-# Minimal harus ada: bge-m3, qwen2.5:32b atau qwen2.5-coder:32b
+# Minimal harus ada: bge-m3 dan qwen2.5-coder:32b
 
 # 4. Pastikan Burp Pro running dan MCP enabled
 curl -s http://localhost:9877 | head -5
@@ -172,7 +172,7 @@ ENG_ID=$(curl -sX POST http://localhost:8001/api/v1/engagements \
     \"mode\": \"semi_auto\",
     \"in_scope\": [\"testaspnet.vulnweb.com\"],
     \"out_of_scope\": [],
-    \"llm_model\": \"qwen2.5:32b\",
+    \"llm_model\": \"qwen2.5-coder:32b\",
     \"opsec_mode\": false,
     \"request_jitter_ms\": 0
   }" | jq -r .id)
@@ -210,18 +210,18 @@ curl -s http://localhost:8001/api/v1/h1/programs/hackerone/scope \
 
 ```bash
 # Search basic
-curl -s "http://localhost:8001/api/v1/knowledge/search?q=SQL+injection&top_k=3" \
-  -H "Authorization: Bearer $TOKEN" | jq '[.[] | {title, vuln_class, quality_score}]'
+curl -s "http://localhost:8001/knowledge/search?q=SQL+injection&top_k=3" \
+  -H "Authorization: Bearer $TOKEN" | jq '[.results[] | {title, vuln_class, quality_score}]'
 # Expected: 3 results, setiap result punya vuln_class dan quality_score
 
 # Search dengan filter
-curl -s "http://localhost:8001/api/v1/knowledge/search?q=IDOR&vuln_class=IDOR&top_k=3" \
-  -H "Authorization: Bearer $TOKEN" | jq length
+curl -s "http://localhost:8001/knowledge/search?q=IDOR&vuln_class=IDOR&top_k=3" \
+  -H "Authorization: Bearer $TOKEN" | jq '.results | length'
 # Expected: > 0
 
-# KB record count (harus ada data dari seeding)
-curl -s "http://localhost:8001/api/v1/knowledge/list?limit=1" \
-  -H "Authorization: Bearer $TOKEN" | jq .total
+# KB record count via admin stats (harus ada data dari seeding)
+curl -s "http://localhost:8001/api/v1/admin/stats" \
+  -H "Authorization: Bearer $TOKEN" | jq .total_records
 # Expected: > 100 (dari seed data)
 ```
 
@@ -255,7 +255,7 @@ curl -s "http://localhost:8001/api/v1/knowledge/inject/jobs/$INJECT_JOB" \
 
 ```bash
 # Pastikan semua records punya quality_score > 0 (backfill sudah berjalan)
-curl -s "http://localhost:8001/api/v1/knowledge/search?q=XSS&top_k=5" \
+curl -s "http://localhost:8001/knowledge/search?q=XSS&top_k=5" \
   -H "Authorization: Bearer $TOKEN" | \
   jq '[.[] | select(.quality_score > 0)] | length'
 # Expected: 5 (semua records punya quality_score)
@@ -529,7 +529,7 @@ Manual browser check
        - Name: "UI Smoke Test"
        - Scope: testaspnet.vulnweb.com
        - Mode: Semi-Auto
-       - LLM: qwen2.5:32b
+       - LLM: qwen2.5-coder:32b
 
 2. [ ] Tombol "Start Agent" muncul dan bisa diklik
 3. [ ] Live Feed tab menampilkan events real-time setelah Start
@@ -963,13 +963,13 @@ curl -sX POST http://localhost:8001/api/v1/admin/knowledge/bulk-import \
   -d '{"source": "h1_graphql", "max_records": 50}' | jq .
 # Expected: {"status": "triggered"} atau job response
 
-# Monitor Qdrant record count sebelum/sesudah
-BEFORE=$(curl -s http://localhost:8001/api/v1/knowledge/list?limit=1 \
-  -H "Authorization: Bearer $TOKEN" | jq .total)
+# Monitor KB record count sebelum/sesudah
+BEFORE=$(curl -s http://localhost:8001/api/v1/admin/stats \
+  -H "Authorization: Bearer $TOKEN" | jq .total_records)
 echo "KB records before: $BEFORE"
 sleep 60  # tunggu task selesai sebagian
-AFTER=$(curl -s http://localhost:8001/api/v1/knowledge/list?limit=1 \
-  -H "Authorization: Bearer $TOKEN" | jq .total)
+AFTER=$(curl -s http://localhost:8001/api/v1/admin/stats \
+  -H "Authorization: Bearer $TOKEN" | jq .total_records)
 echo "KB records after: $AFTER"
 # Expected: AFTER >= BEFORE (bisa sama jika records sudah exist)
 ```

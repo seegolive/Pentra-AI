@@ -6,7 +6,7 @@
 ## 🎉 v1.0.0 MILESTONE
 
 Pentra AI mencapai **v1.0.0** — platform stabil dengan 397 unit tests (0 failed)
-di 4 package/app, 33 Playwright E2E tests, KB 8,309+ records dari HackerOne,
+di 4 package/app, 33 Playwright E2E tests, KB 8,341 records dari HackerOne,
 dan fine-tuned LLM (pentra-ft) yang tervalidasi unggul pada target real
 (8 confirmed vs baseline 6 confirmed). Semua sprint backlog (18-29) selesai.
 
@@ -15,7 +15,7 @@ dan fine-tuned LLM (pentra-ft) yang tervalidasi unggul pada target real
 ## Ringkasan Eksekutif
 
 Pentra AI adalah self-hosted AI Security Research Platform dengan LLM lokal (Ollama).
-Saat ini platform berjalan penuh dengan **397 unit tests + 33 Playwright E2E tests**, **8,309+ records KB** (naik dari 2,758),
+Saat ini platform berjalan penuh dengan **397 unit tests + 33 Playwright E2E tests**, **8,341 records KB** (naik dari 2,758),
 dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JWT alg:none, SSRF, IDOR, subdomain takeover, second-order SQLi secara otomatis, **plus fine-tuned LLM (pentra-ft) yang dilatih pada 8,309 H1 disclosures dan tervalidasi tetap unggul pada target MSSQL/ASP.NET (8 confirmed vs baseline fair 6 confirmed)**.
 
 ---
@@ -27,11 +27,13 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 | **Test suite** | **397 passing** (165 pentra-tools + 151 pentra-agent + 18 apps/worker + 63 apps/api), 0 failed |
 | **Playwright E2E** | **33 tests** (6 smoke + 7 livefeed + 20 full regression), 0 failed |
 | **Test files** | 44 unit + 5 e2e spec files |
-| **KB records** | **8,309+** (HackerOne — sumber tunggal, lihat keputusan Sprint 29) |
+| **KB records** | **8,341** (Live API as of 2026-06-15; HackerOne — sumber tunggal, lihat keputusan Sprint 29) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
 | **Git tag** | `v1.0.0` — `main` |
 | **Sprint aktif** | v1.0.0 RELEASED — semua sprint 18-29 COMPLETE |
 | **LLM** | qwen2.5-coder:32b (default), qwen3:8b (fast), bge-m3 (embedding), **pentra-ft** (Qwen2.5-Coder-7B fine-tuned, 4.4GB Q4_K_M) |
+
+Live API: 8,341 records as of 2026-06-15.
 
 ---
 
@@ -44,10 +46,10 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 | `pentra-knowledge` — PostgreSQL schema + Alembic migration | ✅ |
 | `pentra-knowledge` — seed data importer | ✅ |
 | `pentra-knowledge` — LLM extraction pipeline | ✅ |
-| `pentra-knowledge` — bge-m3 embedding via Ollama | ✅ 8,309/8,309 |
+| `pentra-knowledge` — bge-m3 embedding via Ollama | ✅ 8,341 records live |
 | `pentra-knowledge` — Qdrant hybrid search | ✅ |
 | `pentra-knowledge` — FastAPI router | ✅ |
-| `apps/worker` — H1 GraphQL scraper (Celery) | ✅ 8,309 records |
+| `apps/worker` — H1 GraphQL scraper (Celery) | ✅ 8,341 records live |
 | `apps/worker` — manual knowledge inject API | ✅ |
 | `apps/web` — KB Browser UI | ✅ |
 
@@ -134,8 +136,8 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 
 | Metrik | Nilai |
 |--------|-------|
-| Total records | **8,309** |
-| Embedded (bge-m3) | 8,309 (100%) |
+| Total records | **8,341** live API (2026-06-15) |
+| Embedded (bge-m3) | 8,309 release baseline (100%) |
 | payload_pattern | 8,031 (96%) |
 | quality_score ≥ 0.8 | 8,048 (96%) |
 
@@ -497,7 +499,7 @@ Kesimpulan:
 |------|--------|--------|--------|
 | 29.1 — Fix `test_embed_and_upsert_success` `__wrapped__` bug | ✅ | `_embed_and_upsert` is a plain async function (no decorator), so `patch("...__wrapped__", None)` raised `AttributeError`. Removed the bogus patch. apps/worker suite now 18/18 passing. | `07a91ff` |
 
-**Catatan KB sumber (keputusan v1.0):** Bugcrowd ditinjau sebagai alternatif sumber KB — API publik `disclosures.json` sudah dihapus oleh Bugcrowd (404), penggantinya (`crowdstream.json`) hanya live activity feed 7 hari tanpa deskripsi/severity, dan detail submission butuh login. **Diputuskan: KB tetap hanya dari HackerOne** (8,309+ records, sumber yang sudah berjalan baik). `bugcrowd_scraper.py` + testnya dibiarkan sebagai dead code/tidak dijadwalkan untuk dijalankan — tidak ada pekerjaan lanjutan untuk Bugcrowd.
+**Catatan KB sumber (keputusan v1.0):** Bugcrowd ditinjau sebagai alternatif sumber KB — API publik `disclosures.json` sudah dihapus oleh Bugcrowd (404), penggantinya (`crowdstream.json`) hanya live activity feed 7 hari tanpa deskripsi/severity, dan detail submission butuh login. **Diputuskan: KB tetap hanya dari HackerOne** (8,341 records live API, sumber yang sudah berjalan baik). `bugcrowd_scraper.py` + testnya dibiarkan sebagai dead code/tidak dijadwalkan untuk dijalankan — tidak ada pekerjaan lanjutan untuk Bugcrowd.
 
 ---
 

@@ -59,3 +59,4 @@ logs/
 # ── Backup files ──────────────────────────────────────────────────────────────
 /tmp/pentra_backup_*
 
+apps/worker/celerybeat-schedule
