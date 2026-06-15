@@ -5,7 +5,7 @@
 
 ## 🎉 v1.0.0 MILESTONE
 
-Pentra AI mencapai **v1.0.0** — platform stabil dengan 397 unit tests (0 failed)
+Pentra AI mencapai **v1.0.0** — platform stabil dengan 422 unit tests (0 failed)
 di 4 package/app, 33 Playwright E2E tests, KB 8,341 records dari HackerOne,
 dan fine-tuned LLM (pentra-ft) yang tervalidasi unggul pada target real
 (8 confirmed vs baseline 6 confirmed). Semua sprint backlog (18-29) selesai.
@@ -15,7 +15,7 @@ dan fine-tuned LLM (pentra-ft) yang tervalidasi unggul pada target real
 ## Ringkasan Eksekutif
 
 Pentra AI adalah self-hosted AI Security Research Platform dengan LLM lokal (Ollama).
-Saat ini platform berjalan penuh dengan **397 unit tests + 33 Playwright E2E tests**, **8,341 records KB** (naik dari 2,758),
+Saat ini platform berjalan penuh dengan **422 unit tests + 33 Playwright E2E tests**, **8,341 records KB** (naik dari 2,758),
 dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JWT alg:none, SSRF, IDOR, subdomain takeover, second-order SQLi secara otomatis, **plus fine-tuned LLM (pentra-ft) yang dilatih pada 8,309 H1 disclosures dan tervalidasi tetap unggul pada target MSSQL/ASP.NET (8 confirmed vs baseline fair 6 confirmed)**.
 
 ---
@@ -24,9 +24,9 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 
 | Metrik | Nilai |
 |--------|-------|
-| **Test suite** | **397 passing** (165 pentra-tools + 151 pentra-agent + 18 apps/worker + 63 apps/api), 0 failed |
+| **Test suite** | **422 passing** (165 pentra-tools + 151 pentra-agent + 25 pentra-knowledge + 18 apps/worker + 63 apps/api), 0 failed |
 | **Playwright E2E** | **33 tests** (6 smoke + 7 livefeed + 20 full regression), 0 failed |
-| **Test files** | 44 unit + 5 e2e spec files |
+| **Test files** | 47 unit + 5 e2e spec files |
 | **KB records** | **8,341** (Live API as of 2026-06-15; HackerOne — sumber tunggal, lihat keputusan Sprint 29) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
 | **Git tag** | `v1.0.0` — `main` |
@@ -256,9 +256,12 @@ curl -X POST http://localhost:8001/api/v1/admin/knowledge/bulk-import \
 |---------|-------|-------|
 | pentra-tools | 165 passed, 3 skipped | 16 files |
 | pentra-agent | 151 passed, 4 skipped | 20 files |
+| pentra-knowledge | 25 passed | 3 files |
 | apps/worker | 18 passed | 2 files |
 | apps/api | 63 passed | 6 files |
-| **Total unit** | **397 passing, 0 failed** | 44 files |
+| **Total unit** | **422 passing, 0 failed** | 47 files |
+
+Note: +25 `pentra-knowledge` tests are now included in the v1.0 total.
 
 **Playwright E2E:**
 
@@ -277,6 +280,7 @@ curl -X POST http://localhost:8001/api/v1/admin/knowledge/bulk-import \
 - Sprint 22: +6 SSRF unit (310 → 316 unit)
 - Sprint 23: +27 Playwright E2E (316 unit + 6 → 316 unit + 33 e2e)
 - Sprint 28-29: apps/worker (18) + apps/api (63) brought into the unit suite total, incl. +13 Bugcrowd scraper tests, +12 WS live feed tests, +1 fixed (316 → 397 unit)
+- Final cleanup: +25 pentra-knowledge tests included in the published total (397 → 422 unit)
 
 ---
 
@@ -503,4 +507,4 @@ Kesimpulan:
 
 ---
 
-*Updated: 2026-06-12 — v1.0.0 RELEASED: 397 unit tests passing (165 tools + 151 agent + 18 worker + 63 api), 33 Playwright E2E tests, Sprint 18-29 complete.*
+*Updated: 2026-06-15 — v1.0.0 RELEASED: 422 unit tests passing (165 tools + 151 agent + 25 pentra-knowledge + 18 worker + 63 api), 33 Playwright E2E tests, Sprint 18-29 complete.*
