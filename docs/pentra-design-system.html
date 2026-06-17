@@ -1,0 +1,1807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pentra AI — Design System v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ── DESIGN TOKENS ─────────────────────────────────────────────── */
+:root {
+  /* Backgrounds — layered dark */
+  --bg-void:    #080b10;
+  --bg-base:    #0c1018;
+  --bg-panel:   #111722;
+  --bg-card:    #162030;
+  --bg-hover:   #1a2840;
+  --bg-active:  #1e3050;
+  --bg-input:   #0f1a28;
+
+  /* Borders */
+  --border:       #1e2e45;
+  --border-light: #243650;
+  --border-focus: #2d6ee0;
+
+  /* Text */
+  --text-primary:   #e4ecf7;
+  --text-secondary: #7a95b8;
+  --text-muted:     #3d5470;
+  --text-code:      #a5d6ff;
+
+  /* Severity — security context */
+  --critical: #ff3b5c;
+  --high:     #ff7b2f;
+  --medium:   #f5c542;
+  --low:      #4caf94;
+  --info:     #4d9fff;
+
+  /* Accent — cyber blue */
+  --accent:       #2d6ee0;
+  --accent-glow:  rgba(45,110,224,0.18);
+  --accent-light: #5b94f5;
+  --accent-dim:   #1a3d80;
+
+  /* Status */
+  --status-running:   #2d6ee0;
+  --status-waiting:   #f5c542;
+  --status-complete:  #2ecf8e;
+  --status-failed:    #ff3b5c;
+  --status-idle:      #3d5470;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Typography */
+  --font-ui:   'Outfit', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Radius */
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+
+  /* Sidebar width */
+  --sidebar-w: 220px;
+  --nav-w: 52px;
+}
+
+/* ── RESET ─────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: var(--font-ui);
+  background: var(--bg-void);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── APP SHELL ─────────────────────────────────────────────────── */
+.app {
+  display: grid;
+  grid-template-columns: var(--nav-w) var(--sidebar-w) 1fr;
+  grid-template-rows: 44px 1fr;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── TOPBAR ────────────────────────────────────────────────────── */
+.topbar {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-4);
+  gap: var(--space-4);
+  z-index: 100;
+}
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: calc(var(--nav-w) - var(--space-4));
+  flex-shrink: 0;
+}
+.brand-icon {
+  width: 28px;
+  height: 28px;
+  background: var(--accent);
+  border-radius: var(--r-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: white;
+  letter-spacing: -0.5px;
+}
+.brand-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+}
+.brand-name span {
+  color: var(--accent-light);
+}
+.topbar-breadcrumb {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.topbar-breadcrumb .sep { color: var(--text-muted); }
+.topbar-breadcrumb .current {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-left: auto;
+}
+.status-pill {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 3px 10px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+.status-pill.running {
+  background: rgba(45,110,224,0.15);
+  color: var(--status-running);
+  border: 1px solid rgba(45,110,224,0.3);
+}
+.status-pill.running::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-running);
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+.status-pill.complete {
+  background: rgba(46,207,142,0.12);
+  color: var(--status-complete);
+  border: 1px solid rgba(46,207,142,0.25);
+}
+.status-pill.complete::before {
+  content: '✓';
+  font-size: 10px;
+}
+.status-pill.idle {
+  background: rgba(61,84,112,0.2);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+.status-pill.idle::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+.avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent-dim);
+  border: 1.5px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-light);
+  cursor: pointer;
+}
+
+/* ── ICON NAV ──────────────────────────────────────────────────── */
+.nav-icons {
+  grid-column: 1;
+  grid-row: 2;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: var(--space-3) 0;
+  gap: var(--space-1);
+}
+.nav-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  color: var(--text-muted);
+  transition: all 0.15s;
+  position: relative;
+}
+.nav-icon:hover { background: var(--bg-hover); color: var(--text-secondary); }
+.nav-icon.active {
+  background: var(--accent-glow);
+  color: var(--accent-light);
+}
+.nav-icon .tooltip {
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  padding: 4px 10px;
+  border-radius: var(--r-sm);
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 999;
+  color: var(--text-primary);
+}
+.nav-icon:hover .tooltip { opacity: 1; }
+.nav-spacer { flex: 1; }
+
+/* ── SIDEBAR ───────────────────────────────────────────────────── */
+.sidebar {
+  grid-column: 2;
+  grid-row: 2;
+  background: var(--bg-base);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.sidebar-header {
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sidebar-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.btn-new {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-sm);
+  background: var(--accent);
+  border: none;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.15s;
+}
+.btn-new:hover { opacity: 0.85; }
+.sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-2);
+}
+.sidebar-list::-webkit-scrollbar { width: 3px; }
+.sidebar-list::-webkit-scrollbar-track { background: transparent; }
+.sidebar-list::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 2px; }
+.sidebar-item {
+  padding: var(--space-3) var(--space-3);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: background 0.12s;
+  margin-bottom: 2px;
+}
+.sidebar-item:hover { background: var(--bg-card); }
+.sidebar-item.active { background: var(--bg-active); }
+.sidebar-item-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar-item-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.sidebar-item-meta .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-running { background: var(--status-running); }
+.dot-complete { background: var(--status-complete); }
+.dot-waiting { background: var(--status-waiting); }
+.dot-failed { background: var(--status-failed); }
+.dot-idle { background: var(--text-muted); }
+.sidebar-item-meta .meta-text {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar-section {
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-top: var(--space-2);
+}
+
+/* ── MAIN CONTENT ──────────────────────────────────────────────── */
+.main {
+  grid-column: 3;
+  grid-row: 2;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-base);
+  min-width: 0;
+}
+
+/* ── TABS ──────────────────────────────────────────────────────── */
+.tabs {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  padding: 0 var(--space-6);
+  background: var(--bg-panel);
+  flex-shrink: 0;
+}
+.tab {
+  padding: 12px var(--space-4);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.tab:hover { color: var(--text-secondary); }
+.tab.active {
+  color: var(--accent-light);
+  border-bottom-color: var(--accent);
+}
+.tab-badge {
+  background: var(--accent-dim);
+  color: var(--accent-light);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 100px;
+}
+.tab-badge.critical {
+  background: rgba(255,59,92,0.15);
+  color: var(--critical);
+}
+
+/* ── CONTENT AREA ──────────────────────────────────────────────── */
+.content {
+  flex: 1;
+  overflow: hidden;
+  display: none;
+}
+.content.active { display: flex; flex-direction: column; overflow-y: auto; }
+.content::-webkit-scrollbar { width: 4px; }
+.content::-webkit-scrollbar-track { background: transparent; }
+.content::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ── LIVE FEED ─────────────────────────────────────────────────── */
+.feed-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  height: 100%;
+  min-width: 0;
+}
+.feed-main { overflow-y: auto; padding: var(--space-5) var(--space-6); min-width: 0; }
+.feed-main::-webkit-scrollbar { width: 4px; }
+.feed-main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.feed-sidebar {
+  border-left: 1px solid var(--border);
+  background: var(--bg-panel);
+  overflow-y: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  flex-shrink: 0;
+}
+
+/* Phase progress */
+.phase-track {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+.phase-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.phase-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.phase-dot.done { background: var(--status-complete); }
+.phase-dot.active {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px rgba(45,110,224,0.2);
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+.phase-dot.pending { background: var(--text-muted); }
+.phase-label { font-size: 12px; color: var(--text-secondary); }
+.phase-label.active { color: var(--text-primary); font-weight: 500; }
+.phase-label.done { color: var(--text-muted); text-decoration: line-through; }
+
+/* Event stream */
+.event-stream { display: flex; flex-direction: column; gap: 2px; }
+.event {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--r-md);
+  font-size: 12px;
+  animation: fadeSlideIn 0.2s ease both;
+}
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.event:hover { background: var(--bg-card); }
+.event-time {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+.event-icon {
+  font-size: 13px;
+  width: 16px;
+  text-align: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.event-body { flex: 1; min-width: 0; }
+.event-node {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+.event-text { color: var(--text-secondary); line-height: 1.4; word-break: break-all; }
+.event-text strong { color: var(--text-primary); font-weight: 500; }
+.event.node-start .event-icon { color: var(--accent-light); }
+.event.node-complete .event-icon { color: var(--status-complete); }
+.event.llm-stream .event-text { font-family: var(--font-mono); font-size: 11px; color: var(--text-code); }
+.event.finding .event-icon { color: var(--critical); }
+.event.finding .event-text { color: var(--text-primary); }
+.event.hitl { background: rgba(245,197,66,0.06); border: 1px solid rgba(245,197,66,0.2); }
+.event.hitl .event-icon { color: var(--status-waiting); }
+
+/* HITL approval card */
+.hitl-card {
+  background: var(--bg-card);
+  border: 1px solid rgba(245,197,66,0.3);
+  border-radius: var(--r-lg);
+  padding: var(--space-4);
+  margin: var(--space-3) 0;
+}
+.hitl-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.hitl-card-title { font-size: 13px; font-weight: 600; color: var(--status-waiting); }
+.hitl-card-body { font-size: 12px; color: var(--text-secondary); margin-bottom: var(--space-4); line-height: 1.5; }
+.hitl-actions { display: flex; gap: var(--space-2); }
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 7px 14px;
+  border-radius: var(--r-md);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: none;
+  white-space: nowrap;
+}
+.btn-primary {
+  background: var(--accent);
+  color: white;
+}
+.btn-primary:hover { background: var(--accent-light); }
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-light);
+}
+.btn-ghost:hover { background: var(--bg-hover); color: var(--text-primary); }
+.btn-danger {
+  background: rgba(255,59,92,0.15);
+  color: var(--critical);
+  border: 1px solid rgba(255,59,92,0.3);
+}
+.btn-danger:hover { background: rgba(255,59,92,0.25); }
+.btn-sm { padding: 5px 10px; font-size: 11px; }
+
+/* Feed sidebar widgets */
+.widget-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: var(--space-3);
+}
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--space-3);
+}
+.stat-val { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+.stat-val.critical { color: var(--critical); }
+.stat-val.high { color: var(--high); }
+.stat-val.medium { color: var(--medium); }
+.stat-val.ok { color: var(--low); }
+.stat-label { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+
+.tool-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.tool-item { display: flex; align-items: center; gap: var(--space-2); }
+.tool-name { font-size: 11px; color: var(--text-secondary); flex: 1; }
+.tool-status { font-size: 10px; font-weight: 600; }
+.tool-status.done { color: var(--status-complete); }
+.tool-status.running { color: var(--accent-light); }
+.tool-status.pending { color: var(--text-muted); }
+.tool-bar {
+  height: 2px;
+  border-radius: 1px;
+  background: var(--border);
+  overflow: hidden;
+  flex: 1;
+}
+.tool-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 1px;
+  transition: width 0.5s ease;
+}
+.tool-fill.done { background: var(--status-complete); }
+
+/* ── FINDINGS TABLE ────────────────────────────────────────────── */
+.findings-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  flex-shrink: 0;
+}
+.filter-chips { display: flex; gap: var(--space-2); }
+.chip {
+  padding: 4px 10px;
+  border-radius: 100px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  transition: all 0.12s;
+}
+.chip:hover { border-color: var(--border-light); color: var(--text-secondary); }
+.chip.active { border-color: currentColor; }
+.chip.all.active { color: var(--text-primary); border-color: var(--border-light); background: var(--bg-hover); }
+.chip.critical-chip.active { color: var(--critical); background: rgba(255,59,92,0.08); border-color: rgba(255,59,92,0.3); }
+.chip.high-chip.active { color: var(--high); background: rgba(255,123,47,0.08); border-color: rgba(255,123,47,0.3); }
+.chip.medium-chip.active { color: var(--medium); background: rgba(245,197,66,0.08); border-color: rgba(245,197,66,0.3); }
+.chip.low-chip.active { color: var(--low); background: rgba(76,175,148,0.08); border-color: rgba(76,175,148,0.3); }
+.search-input {
+  margin-left: auto;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 6px 12px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--text-primary);
+  width: 200px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.search-input:focus { border-color: var(--border-focus); }
+.search-input::placeholder { color: var(--text-muted); }
+
+.findings-table { flex: 1; overflow-y: auto; }
+.findings-table::-webkit-scrollbar { width: 4px; }
+.findings-table::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.finding-row {
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+  cursor: pointer;
+}
+.finding-row:hover { background: var(--bg-card); }
+.finding-row.expanded { background: var(--bg-card); }
+.finding-header {
+  display: grid;
+  grid-template-columns: 100px 1fr 140px 80px 100px;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-6);
+}
+.severity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--r-sm);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.severity-badge.critical { background: rgba(255,59,92,0.12); color: var(--critical); border: 1px solid rgba(255,59,92,0.25); }
+.severity-badge.high { background: rgba(255,123,47,0.12); color: var(--high); border: 1px solid rgba(255,123,47,0.25); }
+.severity-badge.medium { background: rgba(245,197,66,0.12); color: var(--medium); border: 1px solid rgba(245,197,66,0.25); }
+.severity-badge.low { background: rgba(76,175,148,0.12); color: var(--low); border: 1px solid rgba(76,175,148,0.25); }
+.severity-badge::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.finding-title { font-size: 13px; font-weight: 500; color: var(--text-primary); }
+.finding-endpoint {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-code);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cvss-score {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+}
+.cvss-score.high { color: var(--critical); }
+.cvss-score.medium { color: var(--high); }
+.finding-status-badge {
+  padding: 2px 8px;
+  border-radius: 100px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.finding-status-badge.confirmed { background: rgba(46,207,142,0.1); color: var(--status-complete); }
+.finding-status-badge.triage { background: rgba(245,197,66,0.1); color: var(--status-waiting); }
+
+.finding-detail {
+  padding: 0 var(--space-6) var(--space-5);
+  border-top: 1px solid var(--border);
+  display: none;
+  animation: fadeSlideIn 0.15s ease both;
+}
+.finding-row.expanded .finding-detail { display: block; }
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin: var(--space-4) 0; }
+.detail-block {}
+.detail-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted); margin-bottom: var(--space-2); }
+.detail-value { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+.code-block {
+  background: var(--bg-void);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--space-3) var(--space-4);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-code);
+  overflow-x: auto;
+  white-space: pre;
+  line-height: 1.6;
+  margin-top: var(--space-2);
+}
+.detail-actions { display: flex; gap: var(--space-2); margin-top: var(--space-4); }
+
+/* ── DASHBOARD ─────────────────────────────────────────────────── */
+.dashboard-content { padding: var(--space-6); display: flex; flex-direction: column; gap: var(--space-5); min-width: 0; }
+.dash-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); min-width: 0; }
+.dash-grid-2 { display: grid; grid-template-columns: 2fr 1fr; gap: var(--space-4); min-width: 0; }
+.card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--space-5);
+  min-width: 0;
+}
+.card-title { font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-muted); margin-bottom: var(--space-4); }
+.kpi-value { font-size: 32px; font-weight: 700; letter-spacing: -1px; color: var(--text-primary); }
+.kpi-sub { font-size: 12px; color: var(--text-muted); margin-top: var(--space-1); }
+.kpi-delta { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 600; margin-top: var(--space-2); }
+.kpi-delta.up { color: var(--status-complete); }
+.kpi-delta.neutral { color: var(--text-muted); }
+.vuln-bars { display: flex; flex-direction: column; gap: var(--space-3); }
+.vuln-bar-row { display: flex; align-items: center; gap: var(--space-3); }
+.vuln-bar-label { font-size: 11px; color: var(--text-secondary); width: 80px; flex-shrink: 0; }
+.vuln-bar-track { flex: 1; height: 6px; background: var(--bg-hover); border-radius: 3px; overflow: hidden; }
+.vuln-bar-fill { height: 100%; border-radius: 3px; }
+.vuln-bar-count { font-size: 11px; font-weight: 600; width: 24px; text-align: right; flex-shrink: 0; }
+.activity-list { display: flex; flex-direction: column; gap: var(--space-3); }
+.activity-item { display: flex; gap: var(--space-3); align-items: flex-start; }
+.activity-icon { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
+.activity-icon.scan { background: rgba(45,110,224,0.15); }
+.activity-icon.finding { background: rgba(255,59,92,0.12); }
+.activity-icon.report { background: rgba(46,207,142,0.1); }
+.activity-body { flex: 1; min-width: 0; }
+.activity-text { font-size: 12px; color: var(--text-secondary); line-height: 1.4; }
+.activity-text strong { color: var(--text-primary); }
+.activity-time { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+.kb-stats { display: flex; flex-direction: column; gap: var(--space-3); }
+.kb-stat-row { display: flex; justify-content: space-between; align-items: center; }
+.kb-stat-label { font-size: 12px; color: var(--text-secondary); }
+.kb-stat-val { font-size: 12px; font-weight: 600; font-family: var(--font-mono); color: var(--accent-light); }
+
+/* ── KB BROWSER ────────────────────────────────────────────────── */
+.kb-layout {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  height: 100%;
+  min-width: 0;
+}
+.kb-list { overflow-y: auto; border-right: 1px solid var(--border); min-width: 0; }
+.kb-list::-webkit-scrollbar { width: 4px; }
+.kb-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.kb-toolbar {
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.kb-search {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 8px 12px 8px 34px;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  color: var(--text-primary);
+  width: 100%;
+  outline: none;
+  transition: border-color 0.15s;
+  position: relative;
+}
+.kb-search:focus { border-color: var(--border-focus); }
+.kb-search::placeholder { color: var(--text-muted); }
+.kb-search-wrap { position: relative; }
+.kb-search-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 14px; pointer-events: none; }
+.kb-filter-row { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+.kb-item {
+  padding: var(--space-3) var(--space-5);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.kb-item:hover { background: var(--bg-card); }
+.kb-item.active { background: var(--bg-active); }
+.kb-item-header { display: flex; align-items: flex-start; gap: var(--space-3); margin-bottom: var(--space-2); }
+.kb-item-title { font-size: 13px; font-weight: 500; color: var(--text-primary); flex: 1; line-height: 1.4; }
+.kb-item-meta { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.tag {
+  padding: 2px 7px;
+  border-radius: var(--r-sm);
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.tag.vuln { background: rgba(45,110,224,0.1); color: var(--accent-light); border-color: rgba(45,110,224,0.2); }
+.tag.score { background: rgba(46,207,142,0.08); color: var(--low); border-color: rgba(46,207,142,0.2); }
+.kb-detail {
+  overflow-y: auto;
+  padding: var(--space-5);
+  background: var(--bg-base);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.kb-detail::-webkit-scrollbar { width: 4px; }
+.kb-detail::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.kb-detail-title { font-size: 16px; font-weight: 600; color: var(--text-primary); line-height: 1.4; }
+.kb-detail-section { font-size: 11px; font-weight: 600; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-muted); margin-bottom: var(--space-2); }
+.kb-detail-text { font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
+
+/* ── REPORT VIEWER ─────────────────────────────────────────────── */
+.report-layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  height: 100%;
+  min-width: 0;
+}
+.report-toc {
+  border-right: 1px solid var(--border);
+  background: var(--bg-panel);
+  overflow-y: auto;
+  padding: var(--space-4);
+}
+.report-toc::-webkit-scrollbar { width: 3px; }
+.report-toc::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.toc-title { font-size: 10px; font-weight: 600; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text-muted); margin-bottom: var(--space-3); }
+.toc-item {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: all 0.12s;
+  margin-bottom: 1px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.toc-item:hover { background: var(--bg-card); color: var(--text-secondary); }
+.toc-item.active { background: var(--bg-active); color: var(--accent-light); }
+.toc-item .toc-sev { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.report-body { overflow-y: auto; padding: var(--space-8) 60px; min-width: 0; }
+.report-body::-webkit-scrollbar { width: 4px; }
+.report-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.report-h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; color: var(--text-primary); margin-bottom: var(--space-2); }
+.report-subtitle { font-size: 13px; color: var(--text-muted); margin-bottom: var(--space-6); }
+.report-summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-3); margin-bottom: var(--space-8); }
+.report-kpi { background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--r-lg); padding: var(--space-4); text-align: center; }
+.report-kpi-val { font-size: 28px; font-weight: 700; letter-spacing: -1px; }
+.report-kpi-val.c { color: var(--critical); }
+.report-kpi-val.h { color: var(--high); }
+.report-kpi-val.m { color: var(--medium); }
+.report-kpi-val.l { color: var(--low); }
+.report-kpi-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-top: var(--space-1); }
+.report-h2 { font-size: 16px; font-weight: 600; color: var(--text-primary); margin: var(--space-6) 0 var(--space-3); border-bottom: 1px solid var(--border); padding-bottom: var(--space-3); }
+.report-p { font-size: 13px; color: var(--text-secondary); line-height: 1.7; margin-bottom: var(--space-3); }
+.finding-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  margin-bottom: var(--space-4);
+}
+.finding-card-header {
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.finding-card-num {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  width: 28px;
+  flex-shrink: 0;
+}
+.finding-card-title { font-size: 14px; font-weight: 600; color: var(--text-primary); flex: 1; }
+.finding-card-cvss { font-family: var(--font-mono); font-size: 13px; font-weight: 700; }
+.finding-card-body { padding: var(--space-4) var(--space-5); display: flex; flex-direction: column; gap: var(--space-3); }
+.report-dl { display: grid; grid-template-columns: 120px 1fr; gap: var(--space-2) var(--space-4); font-size: 12px; }
+.report-dt { color: var(--text-muted); font-weight: 500; }
+.report-dd { color: var(--text-secondary); font-family: var(--font-mono); font-size: 11px; }
+.report-actions {
+  position: sticky;
+  bottom: 0;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
+  padding: var(--space-3) 60px;
+  display: flex;
+  gap: var(--space-3);
+  align-items: center;
+}
+
+/* ── SCROLLBAR GLOBAL ──────────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── PAGE VISIBILITY ───────────────────────────────────────────── */
+.page { display: none; flex-direction: column; height: 100%; min-width: 0; overflow: hidden; }
+.page.active { display: flex; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <div class="topbar-brand">
+      <div class="brand-icon">P</div>
+      <div class="brand-name">Pentra<span>AI</span></div>
+    </div>
+    <div class="topbar-breadcrumb">
+      <span>Workspaces</span>
+      <span class="sep">/</span>
+      <span>BNI AASE Q2-2026</span>
+      <span class="sep">/</span>
+      <span class="current" id="breadcrumb-page">Engagement</span>
+    </div>
+    <div class="topbar-actions">
+      <div class="status-pill running" id="global-status">Running</div>
+      <div class="avatar">AS</div>
+    </div>
+  </header>
+
+  <!-- ICON NAV -->
+  <nav class="nav-icons">
+    <div class="nav-icon active" onclick="switchPage('engagement')" title="">
+      🎯
+      <span class="tooltip">Engagements</span>
+    </div>
+    <div class="nav-icon" onclick="switchPage('kb')" title="">
+      📚
+      <span class="tooltip">Knowledge Base</span>
+    </div>
+    <div class="nav-icon" onclick="switchPage('dashboard')" title="">
+      📊
+      <span class="tooltip">Dashboard</span>
+    </div>
+    <div class="nav-spacer"></div>
+    <div class="nav-icon" title="">
+      ⚙️
+      <span class="tooltip">Settings</span>
+    </div>
+  </nav>
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <span class="sidebar-title">Engagements</span>
+      <button class="btn-new">+</button>
+    </div>
+    <div class="sidebar-list">
+      <div class="sidebar-section">Active</div>
+      <div class="sidebar-item active" onclick="setEngagement('wondr', 'running')">
+        <div class="sidebar-item-name">wondr.id — AASE Recon</div>
+        <div class="sidebar-item-meta">
+          <span class="dot dot-running"></span>
+          <span class="meta-text">vuln_hunt · 14 min ago</span>
+        </div>
+      </div>
+      <div class="sidebar-section">Recent</div>
+      <div class="sidebar-item" onclick="setEngagement('testaspnet', 'complete')">
+        <div class="sidebar-item-name">testaspnet.vulnweb.com</div>
+        <div class="sidebar-item-meta">
+          <span class="dot dot-complete"></span>
+          <span class="meta-text">8 confirmed · 2h ago</span>
+        </div>
+      </div>
+      <div class="sidebar-item" onclick="setEngagement('juiceshop', 'complete')">
+        <div class="sidebar-item-name">Juice Shop — E2E</div>
+        <div class="sidebar-item-meta">
+          <span class="dot dot-complete"></span>
+          <span class="meta-text">3 critical · yesterday</span>
+        </div>
+      </div>
+      <div class="sidebar-item" onclick="setEngagement('dvwa', 'complete')">
+        <div class="sidebar-item-name">DVWA Auth Scan</div>
+        <div class="sidebar-item-meta">
+          <span class="dot dot-complete"></span>
+          <span class="meta-text">5 findings · 3d ago</span>
+        </div>
+      </div>
+      <div class="sidebar-item" onclick="setEngagement('draft', 'idle')">
+        <div class="sidebar-item-name">bni.co.id — Draft</div>
+        <div class="sidebar-item-meta">
+          <span class="dot dot-idle"></span>
+          <span class="meta-text">Not started</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN AREA -->
+  <main class="main">
+
+    <!-- PAGE: ENGAGEMENT -->
+    <div class="page active" id="page-engagement">
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab('feed', this)">Live Feed</div>
+        <div class="tab" onclick="switchTab('findings', this)">
+          Findings <span class="tab-badge critical">8</span>
+        </div>
+        <div class="tab" onclick="switchTab('report', this)">Report</div>
+        <div class="tab" onclick="switchTab('config', this)">Config</div>
+      </div>
+
+      <!-- TAB: LIVE FEED -->
+      <div class="content active" id="tab-feed">
+        <div class="feed-layout">
+          <div class="feed-main">
+            <!-- Phase track -->
+            <div class="phase-track">
+              <div class="phase-item">
+                <div class="phase-dot done"></div>
+                <span class="phase-label done">OSINT — passive recon</span>
+              </div>
+              <div class="phase-item">
+                <div class="phase-dot done"></div>
+                <span class="phase-label done">Plan — attack strategy</span>
+              </div>
+              <div class="phase-item">
+                <div class="phase-dot done"></div>
+                <span class="phase-label done">Recon — subdomain & fingerprint</span>
+              </div>
+              <div class="phase-item">
+                <div class="phase-dot active"></div>
+                <span class="phase-label active">Vuln Hunt — active testing</span>
+              </div>
+              <div class="phase-item">
+                <div class="phase-dot pending"></div>
+                <span class="phase-label">Triage</span>
+              </div>
+              <div class="phase-item">
+                <div class="phase-dot pending"></div>
+                <span class="phase-label">Report</span>
+              </div>
+            </div>
+
+            <!-- HITL card -->
+            <div class="hitl-card">
+              <div class="hitl-card-header">
+                <span>⏸</span>
+                <span class="hitl-card-title">Awaiting Approval — Recon Results</span>
+              </div>
+              <div class="hitl-card-body">
+                Found <strong>47 live subdomains</strong> on wondr.id. WAF detected: <strong>Cloudflare</strong> (non-blocking). 3 subdomain takeover candidates identified. Proceed to active vulnerability testing?
+              </div>
+              <div class="hitl-actions">
+                <button class="btn btn-primary">✓ Approve & Continue</button>
+                <button class="btn btn-ghost">Skip Phase</button>
+                <button class="btn btn-danger btn-sm">✕ Stop</button>
+              </div>
+            </div>
+
+            <!-- Event stream -->
+            <div class="event-stream" id="event-stream">
+              <div class="event node-start" style="animation-delay:0s">
+                <span class="event-time">09:14:22</span>
+                <span class="event-icon">▶</span>
+                <div class="event-body">
+                  <div class="event-node">osint</div>
+                  <div class="event-text">Starting passive OSINT for <strong>wondr.id</strong></div>
+                </div>
+              </div>
+              <div class="event node-complete" style="animation-delay:.05s">
+                <span class="event-time">09:14:38</span>
+                <span class="event-icon">✓</span>
+                <div class="event-body">
+                  <div class="event-node">osint</div>
+                  <div class="event-text">crt.sh: <strong>31 subdomains</strong> via certificate transparency</div>
+                </div>
+              </div>
+              <div class="event node-complete" style="animation-delay:.1s">
+                <span class="event-time">09:15:02</span>
+                <span class="event-icon">✓</span>
+                <div class="event-body">
+                  <div class="event-node">recon</div>
+                  <div class="event-text">subfinder: <strong>47 live hosts</strong> — httpx probe complete</div>
+                </div>
+              </div>
+              <div class="event node-complete" style="animation-delay:.15s">
+                <span class="event-time">09:15:08</span>
+                <span class="event-icon">🛡</span>
+                <div class="event-body">
+                  <div class="event-node">waf_profiler</div>
+                  <div class="event-text">WAF detected: <strong>Cloudflare</strong> (blocking=False) — bypass: unicode, case_variation</div>
+                </div>
+              </div>
+              <div class="event node-complete" style="animation-delay:.2s">
+                <span class="event-time">09:15:11</span>
+                <span class="event-icon">🔗</span>
+                <div class="event-body">
+                  <div class="event-node">takeover_detector</div>
+                  <div class="event-text">Checking 47 subdomains for dangling CNAME…</div>
+                </div>
+              </div>
+              <div class="event hitl" style="animation-delay:.25s">
+                <span class="event-time">09:15:14</span>
+                <span class="event-icon">⏸</span>
+                <div class="event-body">
+                  <div class="event-node">hitl_recon</div>
+                  <div class="event-text"><strong>Awaiting approval</strong> — 47 subdomains, 3 takeover candidates, WAF: Cloudflare</div>
+                </div>
+              </div>
+              <div class="event finding" style="animation-delay:.3s">
+                <span class="event-time">09:28:44</span>
+                <span class="event-icon">🔴</span>
+                <div class="event-body">
+                  <div class="event-node">vuln_hunt</div>
+                  <div class="event-text"><strong>[CRITICAL]</strong> SQL Injection confirmed — <code style="font-family:var(--font-mono);font-size:10px;color:var(--text-code)">/api/v2/products?id=1</code> · WAITFOR DELAY '0:0:5'</div>
+                </div>
+              </div>
+              <div class="event llm-stream" style="animation-delay:.35s">
+                <span class="event-time">09:29:01</span>
+                <span class="event-icon">🤖</span>
+                <div class="event-body">
+                  <div class="event-node">pentra-ft · ReAct</div>
+                  <div class="event-text">Thought: The time delay of 5.2s confirms MSSQL time-based injection. Testing IDOR on adjacent id parameters next...</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Feed sidebar -->
+          <div class="feed-sidebar">
+            <div>
+              <div class="widget-title">Findings So Far</div>
+              <div class="stat-grid">
+                <div class="stat-card"><div class="stat-val critical">1</div><div class="stat-label">Critical</div></div>
+                <div class="stat-card"><div class="stat-val high">0</div><div class="stat-label">High</div></div>
+                <div class="stat-card"><div class="stat-val medium">0</div><div class="stat-label">Medium</div></div>
+                <div class="stat-card"><div class="stat-val ok">47</div><div class="stat-label">Subdomains</div></div>
+              </div>
+            </div>
+            <div>
+              <div class="widget-title">Tool Pipeline</div>
+              <div class="tool-list">
+                <div class="tool-item">
+                  <span class="tool-name">nuclei</span>
+                  <div class="tool-bar"><div class="tool-fill done" style="width:100%"></div></div>
+                  <span class="tool-status done">✓</span>
+                </div>
+                <div class="tool-item">
+                  <span class="tool-name">ffuf</span>
+                  <div class="tool-bar"><div class="tool-fill done" style="width:100%"></div></div>
+                  <span class="tool-status done">✓</span>
+                </div>
+                <div class="tool-item">
+                  <span class="tool-name">burp_scan</span>
+                  <div class="tool-bar"><div class="tool-fill" style="width:72%"></div></div>
+                  <span class="tool-status running">72%</span>
+                </div>
+                <div class="tool-item">
+                  <span class="tool-name">graphql</span>
+                  <div class="tool-bar"><div class="tool-fill" style="width:0%"></div></div>
+                  <span class="tool-status pending">—</span>
+                </div>
+                <div class="tool-item">
+                  <span class="tool-name">jwt_tester</span>
+                  <div class="tool-bar"><div class="tool-fill" style="width:0%"></div></div>
+                  <span class="tool-status pending">—</span>
+                </div>
+                <div class="tool-item">
+                  <span class="tool-name">ssrf_oob</span>
+                  <div class="tool-bar"><div class="tool-fill" style="width:0%"></div></div>
+                  <span class="tool-status pending">—</span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <div class="widget-title">Scan Info</div>
+              <div style="display:flex;flex-direction:column;gap:8px;font-size:12px">
+                <div style="display:flex;justify-content:space-between">
+                  <span style="color:var(--text-muted)">Preset</span>
+                  <code style="font-family:var(--font-mono);font-size:11px;color:var(--accent-light)">pentra-ft</code>
+                </div>
+                <div style="display:flex;justify-content:space-between">
+                  <span style="color:var(--text-muted)">Model</span>
+                  <code style="font-family:var(--font-mono);font-size:11px;color:var(--text-code)">pentra-ft:latest</code>
+                </div>
+                <div style="display:flex;justify-content:space-between">
+                  <span style="color:var(--text-muted)">Duration</span>
+                  <span style="color:var(--text-secondary)">14m 38s</span>
+                </div>
+                <div style="display:flex;justify-content:space-between">
+                  <span style="color:var(--text-muted)">Endpoints</span>
+                  <span style="color:var(--text-secondary)">127 tested</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: FINDINGS -->
+      <div class="content" id="tab-findings">
+        <div class="findings-toolbar">
+          <div class="filter-chips">
+            <div class="chip all active" onclick="filterFindings('all', this)">All (8)</div>
+            <div class="chip critical-chip active" onclick="filterFindings('critical', this)">Critical (6)</div>
+            <div class="chip high-chip" onclick="filterFindings('high', this)">High (0)</div>
+            <div class="chip medium-chip" onclick="filterFindings('medium', this)">Medium (2)</div>
+            <div class="chip low-chip" onclick="filterFindings('low', this)">Low (0)</div>
+          </div>
+          <input class="search-input" placeholder="Search findings…" type="text">
+          <button class="btn btn-ghost btn-sm">↓ Export</button>
+        </div>
+        <div class="findings-table">
+          <!-- Finding 1 -->
+          <div class="finding-row expanded" onclick="toggleFinding(this)">
+            <div class="finding-header">
+              <span class="severity-badge critical">Critical</span>
+              <span class="finding-title">SQL Injection — Time-based Blind (MSSQL)</span>
+              <span class="finding-endpoint">/api/v2/products?id=1</span>
+              <span class="cvss-score high">9.8</span>
+              <span class="finding-status-badge confirmed">Confirmed</span>
+            </div>
+            <div class="finding-detail">
+              <div class="detail-grid">
+                <div class="detail-block">
+                  <div class="detail-label">Vulnerability Class</div>
+                  <div class="detail-value">SQL_INJECTION · CWE-89</div>
+                </div>
+                <div class="detail-block">
+                  <div class="detail-label">CVSS Vector</div>
+                  <div class="detail-value" style="font-family:var(--font-mono);font-size:11px">CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H</div>
+                </div>
+                <div class="detail-block">
+                  <div class="detail-label">Payload</div>
+                  <div class="code-block">id=1'; WAITFOR DELAY '0:0:5'--</div>
+                </div>
+                <div class="detail-block">
+                  <div class="detail-label">Evidence</div>
+                  <div class="detail-value" style="color:var(--status-complete)">⏱ Response time: 5.21s (baseline: 0.18s)</div>
+                </div>
+              </div>
+              <div class="detail-label">HTTP Request</div>
+              <div class="code-block">GET /api/v2/products?id=1%27%3B+WAITFOR+DELAY+%270%3A0%3A5%27-- HTTP/1.1
+Host: api.wondr.id
+User-Agent: Mozilla/5.0
+Accept: application/json</div>
+              <div class="detail-actions">
+                <button class="btn btn-primary btn-sm">✓ Confirm</button>
+                <button class="btn btn-ghost btn-sm">Add to Report</button>
+                <button class="btn btn-ghost btn-sm">Copy H1 Format</button>
+                <button class="btn btn-danger btn-sm">✕ False Positive</button>
+              </div>
+            </div>
+          </div>
+          <!-- Finding 2 -->
+          <div class="finding-row" onclick="toggleFinding(this)">
+            <div class="finding-header">
+              <span class="severity-badge critical">Critical</span>
+              <span class="finding-title">JWT Algorithm Confusion (alg: none)</span>
+              <span class="finding-endpoint">/api/v1/auth/verify</span>
+              <span class="cvss-score high">9.1</span>
+              <span class="finding-status-badge confirmed">Confirmed</span>
+            </div>
+            <div class="finding-detail">
+              <div class="detail-grid">
+                <div class="detail-block">
+                  <div class="detail-label">Vulnerability Class</div>
+                  <div class="detail-value">JWT_VULNERABILITY · CWE-347</div>
+                </div>
+                <div class="detail-block">
+                  <div class="detail-label">Impact</div>
+                  <div class="detail-value">Authentication bypass — admin access without credentials</div>
+                </div>
+              </div>
+              <div class="detail-label">Forged Token Header</div>
+              <div class="code-block">{"alg":"none","typ":"JWT"}  →  {"sub":"admin","role":"admin"}.  (empty signature accepted)</div>
+              <div class="detail-actions">
+                <button class="btn btn-primary btn-sm">✓ Confirm</button>
+                <button class="btn btn-ghost btn-sm">Add to Report</button>
+                <button class="btn btn-danger btn-sm">✕ False Positive</button>
+              </div>
+            </div>
+          </div>
+          <!-- Finding 3 -->
+          <div class="finding-row" onclick="toggleFinding(this)">
+            <div class="finding-header">
+              <span class="severity-badge medium">Medium</span>
+              <span class="finding-title">IDOR — User Profile Enumeration</span>
+              <span class="finding-endpoint">/api/v1/users/{id}</span>
+              <span class="cvss-score medium">6.5</span>
+              <span class="finding-status-badge confirmed">Confirmed</span>
+            </div>
+            <div class="finding-detail">
+              <div class="code-block">GET /api/v1/users/2 HTTP/1.1  →  200 OK  {"email":"another@user.com","balance":"Rp 5.230.000"}</div>
+              <div class="detail-actions">
+                <button class="btn btn-primary btn-sm">✓ Confirm</button>
+                <button class="btn btn-ghost btn-sm">Add to Report</button>
+              </div>
+            </div>
+          </div>
+          <!-- Finding 4 -->
+          <div class="finding-row" onclick="toggleFinding(this)">
+            <div class="finding-header">
+              <span class="severity-badge medium">Medium</span>
+              <span class="finding-title">CORS Wildcard — Credentials Allowed</span>
+              <span class="finding-endpoint">/api/v1/*</span>
+              <span class="cvss-score medium">5.4</span>
+              <span class="finding-status-badge triage">Triage</span>
+            </div>
+            <div class="finding-detail">
+              <div class="detail-label">Evidence</div>
+              <div class="code-block">Origin: https://evil.com → Access-Control-Allow-Origin: *
+Access-Control-Allow-Credentials: true</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: REPORT -->
+      <div class="content" id="tab-report">
+        <div class="report-layout">
+          <div class="report-toc">
+            <div class="toc-title">Contents</div>
+            <div class="toc-item active">Executive Summary</div>
+            <div class="toc-item">Attack Methodology</div>
+            <div class="toc-item" style="padding-left:24px">
+              <div class="toc-sev" style="background:var(--critical)"></div>
+              F-01 SQL Injection
+            </div>
+            <div class="toc-item" style="padding-left:24px">
+              <div class="toc-sev" style="background:var(--critical)"></div>
+              F-02 JWT Auth Bypass
+            </div>
+            <div class="toc-item" style="padding-left:24px">
+              <div class="toc-sev" style="background:var(--medium)"></div>
+              F-03 IDOR
+            </div>
+            <div class="toc-item" style="padding-left:24px">
+              <div class="toc-sev" style="background:var(--medium)"></div>
+              F-04 CORS Wildcard
+            </div>
+            <div class="toc-item">Recommendations</div>
+          </div>
+          <div class="report-body">
+            <div class="report-h1">Security Assessment Report</div>
+            <div class="report-subtitle">wondr.id · AASE Red Team · 15 Jun 2026</div>
+            <div class="report-summary-grid">
+              <div class="report-kpi"><div class="report-kpi-val c">2</div><div class="report-kpi-label">Critical</div></div>
+              <div class="report-kpi"><div class="report-kpi-val h">0</div><div class="report-kpi-label">High</div></div>
+              <div class="report-kpi"><div class="report-kpi-val m">2</div><div class="report-kpi-label">Medium</div></div>
+              <div class="report-kpi"><div class="report-kpi-val l">4</div><div class="report-kpi-label">Confirmed</div></div>
+            </div>
+            <div class="report-h2">Executive Summary</div>
+            <div class="report-p">Pentra AI conducted an adversarial simulation of the wondr.id public attack surface on 15 June 2026 under authorized Rules of Engagement. The assessment identified four confirmed vulnerabilities across the API layer, with two critical findings requiring immediate remediation.</div>
+            <div class="report-p">The most severe finding — a time-based blind SQL injection on the product catalog API — allows unauthenticated database extraction from the MSSQL backend. Combined with a JWT algorithm confusion vulnerability that enables authentication bypass without credentials, an attacker could achieve full application compromise in a single session.</div>
+            <div class="report-h2">Findings</div>
+            <div class="finding-card">
+              <div class="finding-card-header">
+                <span class="finding-card-num">F-01</span>
+                <span class="finding-card-title">SQL Injection — Time-based Blind (MSSQL)</span>
+                <span class="severity-badge critical">Critical</span>
+                <span class="finding-card-cvss" style="color:var(--critical)">9.8</span>
+              </div>
+              <div class="finding-card-body">
+                <dl class="report-dl">
+                  <dt class="report-dt">Endpoint</dt><dd class="report-dd">GET /api/v2/products?id=</dd>
+                  <dt class="report-dt">Parameter</dt><dd class="report-dd">id (integer)</dd>
+                  <dt class="report-dt">Payload</dt><dd class="report-dd">1'; WAITFOR DELAY '0:0:5'--</dd>
+                  <dt class="report-dt">Evidence</dt><dd class="report-dd">Response time 5.21s vs baseline 0.18s</dd>
+                  <dt class="report-dt">Impact</dt><dd class="report-dd">Database read/write, potential RCE via xp_cmdshell</dd>
+                </dl>
+              </div>
+            </div>
+            <div class="finding-card">
+              <div class="finding-card-header">
+                <span class="finding-card-num">F-02</span>
+                <span class="finding-card-title">JWT Algorithm Confusion (alg: none)</span>
+                <span class="severity-badge critical">Critical</span>
+                <span class="finding-card-cvss" style="color:var(--critical)">9.1</span>
+              </div>
+              <div class="finding-card-body">
+                <dl class="report-dl">
+                  <dt class="report-dt">Endpoint</dt><dd class="report-dd">GET /api/v1/auth/verify</dd>
+                  <dt class="report-dt">Attack</dt><dd class="report-dd">Forged JWT with alg:none, empty signature</dd>
+                  <dt class="report-dt">Result</dt><dd class="report-dd">200 OK — admin role granted</dd>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="report-actions">
+          <button class="btn btn-primary">↓ Download PDF</button>
+          <button class="btn btn-ghost">↓ Markdown</button>
+          <button class="btn btn-ghost">H1 Format</button>
+        </div>
+      </div>
+
+      <!-- TAB: CONFIG -->
+      <div class="content" id="tab-config">
+        <div style="padding:var(--space-8);max-width:640px;display:flex;flex-direction:column;gap:var(--space-5)">
+          <div>
+            <div class="card-title">Scan Configuration</div>
+          </div>
+          <div class="card">
+            <div class="card-title">Target</div>
+            <div style="display:flex;flex-direction:column;gap:var(--space-3)">
+              <div>
+                <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:500">Domain</div>
+                <input style="width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-md);padding:8px 12px;font-family:var(--font-mono);font-size:13px;color:var(--text-code);outline:none" value="wondr.id" readonly>
+              </div>
+              <div>
+                <div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;font-weight:500">Preset</div>
+                <div style="background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r-md);padding:8px 12px;font-family:var(--font-mono);font-size:13px;color:var(--accent-light)">pentra-ft</div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-title">Authentication</div>
+            <div style="font-size:12px;color:var(--text-muted)">No authentication configured — unauthenticated scan</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: KNOWLEDGE BASE -->
+    <div class="page" id="page-kb">
+      <div class="tabs" style="flex-shrink:0">
+        <div class="tab active">Browse</div>
+        <div class="tab">Search</div>
+        <div class="tab">Stats</div>
+      </div>
+      <div class="kb-layout" style="flex:1;overflow:hidden">
+        <div class="kb-list">
+          <div class="kb-toolbar">
+            <div class="kb-search-wrap">
+              <span class="kb-search-icon">🔍</span>
+              <input class="kb-search" placeholder="Search 8,341 records…" type="text">
+            </div>
+            <div class="kb-filter-row">
+              <div class="chip active all">All</div>
+              <div class="chip critical-chip">SQLi</div>
+              <div class="chip high-chip">IDOR</div>
+              <div class="chip">XSS</div>
+              <div class="chip">JWT</div>
+              <div class="chip">SSRF</div>
+            </div>
+          </div>
+          <div class="kb-item active">
+            <div class="kb-item-header">
+              <div class="kb-item-title">MSSQL time-based blind injection via integer parameter — ASP.NET backend</div>
+              <span class="severity-badge critical">Critical</span>
+            </div>
+            <div class="kb-item-meta">
+              <span class="tag vuln">sql_injection</span>
+              <span class="tag score">0.97</span>
+              <span class="tag">HackerOne</span>
+            </div>
+          </div>
+          <div class="kb-item">
+            <div class="kb-item-header">
+              <div class="kb-item-title">JWT algorithm confusion RS256 → HS256 allows privilege escalation</div>
+              <span class="severity-badge critical">Critical</span>
+            </div>
+            <div class="kb-item-meta">
+              <span class="tag vuln">jwt_vulnerability</span>
+              <span class="tag score">0.94</span>
+              <span class="tag">HackerOne</span>
+            </div>
+          </div>
+          <div class="kb-item">
+            <div class="kb-item-header">
+              <div class="kb-item-title">GraphQL introspection enabled in production exposes full schema</div>
+              <span class="severity-badge medium">Medium</span>
+            </div>
+            <div class="kb-item-meta">
+              <span class="tag vuln">information_disclosure</span>
+              <span class="tag score">0.91</span>
+              <span class="tag">HackerOne</span>
+            </div>
+          </div>
+          <div class="kb-item">
+            <div class="kb-item-header">
+              <div class="kb-item-title">IDOR via sequential user ID allows unauthenticated profile enumeration</div>
+              <span class="severity-badge high">High</span>
+            </div>
+            <div class="kb-item-meta">
+              <span class="tag vuln">idor</span>
+              <span class="tag score">0.89</span>
+              <span class="tag">HackerOne</span>
+            </div>
+          </div>
+          <div class="kb-item">
+            <div class="kb-item-header">
+              <div class="kb-item-title">SSRF via URL parameter fetches internal AWS metadata service</div>
+              <span class="severity-badge critical">Critical</span>
+            </div>
+            <div class="kb-item-meta">
+              <span class="tag vuln">ssrf</span>
+              <span class="tag score">0.88</span>
+              <span class="tag">HackerOne</span>
+            </div>
+          </div>
+        </div>
+        <div class="kb-detail">
+          <div class="kb-detail-title">MSSQL time-based blind injection via integer parameter — ASP.NET backend</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <span class="severity-badge critical">Critical</span>
+            <span class="tag vuln">sql_injection</span>
+            <span class="tag">CWE-89</span>
+            <span class="tag score">Quality: 0.97</span>
+          </div>
+          <div>
+            <div class="kb-detail-section">Description</div>
+            <div class="kb-detail-text">Integer parameters passed directly to MSSQL queries without parameterization allow time-based blind SQL injection using WAITFOR DELAY. Common on ASP.NET applications with legacy ADO.NET code patterns.</div>
+          </div>
+          <div>
+            <div class="kb-detail-section">Payload Pattern</div>
+            <div class="code-block">'; WAITFOR DELAY '0:0:5'--
+1'; WAITFOR DELAY '0:0:5'--
+' OR 1=1; WAITFOR DELAY '0:0:5'--</div>
+          </div>
+          <div>
+            <div class="kb-detail-section">Remediation</div>
+            <div class="kb-detail-text">Use parameterized queries (SqlCommand with SqlParameter). Enable query execution time limits. Implement WAF rules for SQL keywords in parameter values.</div>
+          </div>
+          <div style="display:flex;gap:8px;margin-top:8px">
+            <button class="btn btn-ghost btn-sm">Use in Engagement</button>
+            <button class="btn btn-ghost btn-sm">Copy Payload</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: DASHBOARD -->
+    <div class="page" id="page-dashboard">
+      <div class="dashboard-content" style="overflow-y:auto;flex:1">
+        <div>
+          <div style="font-size:20px;font-weight:700;letter-spacing:-0.5px;color:var(--text-primary);margin-bottom:4px">Overview</div>
+          <div style="font-size:13px;color:var(--text-muted)">BNI Cyber Security — AASE Campaign</div>
+        </div>
+        <div class="dash-grid-3">
+          <div class="card">
+            <div class="card-title">Active Engagements</div>
+            <div class="kpi-value">1</div>
+            <div class="kpi-sub">wondr.id in progress</div>
+            <div class="kpi-delta neutral">2 total this month</div>
+          </div>
+          <div class="card">
+            <div class="card-title">Confirmed Findings</div>
+            <div class="kpi-value" style="color:var(--critical)">12</div>
+            <div class="kpi-sub">across 3 engagements</div>
+            <div class="kpi-delta up">↑ 8 this week</div>
+          </div>
+          <div class="card">
+            <div class="card-title">KB Records</div>
+            <div class="kpi-value">8,341</div>
+            <div class="kpi-sub">HackerOne · 100% embedded</div>
+            <div class="kpi-delta neutral">bge-m3 active</div>
+          </div>
+        </div>
+        <div class="dash-grid-2">
+          <div class="card">
+            <div class="card-title">Findings by Severity</div>
+            <div class="vuln-bars">
+              <div class="vuln-bar-row">
+                <span class="vuln-bar-label" style="color:var(--critical)">Critical</span>
+                <div class="vuln-bar-track"><div class="vuln-bar-fill" style="background:var(--critical);width:75%"></div></div>
+                <span class="vuln-bar-count" style="color:var(--critical)">9</span>
+              </div>
+              <div class="vuln-bar-row">
+                <span class="vuln-bar-label" style="color:var(--high)">High</span>
+                <div class="vuln-bar-track"><div class="vuln-bar-fill" style="background:var(--high);width:0%"></div></div>
+                <span class="vuln-bar-count" style="color:var(--high)">0</span>
+              </div>
+              <div class="vuln-bar-row">
+                <span class="vuln-bar-label" style="color:var(--medium)">Medium</span>
+                <div class="vuln-bar-track"><div class="vuln-bar-fill" style="background:var(--medium);width:25%"></div></div>
+                <span class="vuln-bar-count" style="color:var(--medium)">3</span>
+              </div>
+              <div class="vuln-bar-row">
+                <span class="vuln-bar-label" style="color:var(--low)">Low</span>
+                <div class="vuln-bar-track"><div class="vuln-bar-fill" style="background:var(--low);width:0%"></div></div>
+                <span class="vuln-bar-count" style="color:var(--low)">0</span>
+              </div>
+            </div>
+            <div style="margin-top:20px">
+              <div class="card-title">Vuln Classes</div>
+              <div class="vuln-bars">
+                <div class="vuln-bar-row">
+                  <span class="vuln-bar-label">SQLi</span>
+                  <div class="vuln-bar-track"><div class="vuln-bar-fill" style="background:var(--accent);width:65%"></div></div>
+                  <span class="vuln-bar-count" style="color:var(--text-secondary)">7</span>
+                </div>
+                <div class="vuln-bar-row">
+                  <span class="vuln-bar-label">JWT</span>
+                  <div class="vuln-bar-track"><div class="vuln-bar-fill" style="background:var(--accent);width:18%"></div></div>
+                  <span class="vuln-bar-count" style="color:var(--text-secondary)">2</span>
+                </div>
+                <div class="vuln-bar-row">
+                  <span class="vuln-bar-label">IDOR</span>
+                  <div class="vuln-bar-track"><div class="vuln-bar-fill" style="background:var(--accent);width:18%"></div></div>
+                  <span class="vuln-bar-count" style="color:var(--text-secondary)">2</span>
+                </div>
+                <div class="vuln-bar-row">
+                  <span class="vuln-bar-label">CORS</span>
+                  <div class="vuln-bar-track"><div class="vuln-bar-fill" style="background:var(--accent);width:9%"></div></div>
+                  <span class="vuln-bar-count" style="color:var(--text-secondary)">1</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:var(--space-4)">
+            <div class="card" style="flex:1">
+              <div class="card-title">Recent Activity</div>
+              <div class="activity-list">
+                <div class="activity-item">
+                  <div class="activity-icon finding">🔴</div>
+                  <div class="activity-body">
+                    <div class="activity-text"><strong>SQLi Critical</strong> confirmed on wondr.id /api/v2/products</div>
+                    <div class="activity-time">14 minutes ago</div>
+                  </div>
+                </div>
+                <div class="activity-item">
+                  <div class="activity-icon scan">🎯</div>
+                  <div class="activity-body">
+                    <div class="activity-text">Engagement started: <strong>wondr.id AASE Recon</strong></div>
+                    <div class="activity-time">28 minutes ago</div>
+                  </div>
+                </div>
+                <div class="activity-item">
+                  <div class="activity-icon report">📄</div>
+                  <div class="activity-body">
+                    <div class="activity-text">Report exported: <strong>testaspnet — 8 findings</strong></div>
+                    <div class="activity-time">2 hours ago</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title">Knowledge Base</div>
+              <div class="kb-stats">
+                <div class="kb-stat-row"><span class="kb-stat-label">Total records</span><span class="kb-stat-val">8,341</span></div>
+                <div class="kb-stat-row"><span class="kb-stat-label">Embedded (bge-m3)</span><span class="kb-stat-val">8,341</span></div>
+                <div class="kb-stat-row"><span class="kb-stat-label">Top class</span><span class="kb-stat-val">xss_reflected (909)</span></div>
+                <div class="kb-stat-row"><span class="kb-stat-label">Model</span><span class="kb-stat-val">pentra-ft:latest</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script>
+// ── Tab switching
+function switchTab(id, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
+  const content = document.getElementById('tab-' + id);
+  if (content) content.classList.add('active');
+}
+
+// ── Page switching
+function switchPage(page) {
+  // Update nav icons
+  document.querySelectorAll('.nav-icon').forEach(n => n.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+
+  // Update pages
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+
+  const breadcrumbs = {
+    engagement: 'Engagement',
+    kb: 'Knowledge Base',
+    dashboard: 'Dashboard'
+  };
+
+  if (page === 'engagement') {
+    document.getElementById('page-engagement').classList.add('active');
+    document.getElementById('breadcrumb-page').textContent = 'wondr.id — AASE Recon';
+  } else if (page === 'kb') {
+    document.getElementById('page-kb').classList.add('active');
+    document.getElementById('breadcrumb-page').textContent = 'Knowledge Base';
+  } else if (page === 'dashboard') {
+    document.getElementById('page-dashboard').classList.add('active');
+    document.getElementById('breadcrumb-page').textContent = 'Dashboard';
+  }
+}
+
+// ── Finding expand/collapse
+function toggleFinding(row) {
+  const wasExpanded = row.classList.contains('expanded');
+  document.querySelectorAll('.finding-row').forEach(r => r.classList.remove('expanded'));
+  if (!wasExpanded) row.classList.add('expanded');
+}
+
+// ── Filter findings
+function filterFindings(sev, el) {
+  document.querySelectorAll('.filter-chips .chip').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+}
+
+// ── Engagement switch (sidebar)
+function setEngagement(name, status) {
+  document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+
+  const pill = document.getElementById('global-status');
+  pill.className = 'status-pill ' + (status === 'running' ? 'running' : status === 'complete' ? 'complete' : 'idle');
+  pill.textContent = status === 'running' ? 'Running' : status === 'complete' ? 'Complete' : 'Idle';
+}
+
+// ── Simulate live events
+let eventIdx = 0;
+const newEvents = [
+  { time: '09:29:18', icon: '🔴', node: 'vuln_hunt', text: '<strong>[CRITICAL]</strong> SQL Injection confirmed — <code style="font-family:var(--font-mono);font-size:10px;color:var(--text-code)">/api/v2/search?q=test</code> · param=q', cls: 'finding' },
+  { time: '09:29:45', icon: '🤖', node: 'pentra-ft · ReAct', text: 'Thought: Two SQLi confirmed. Testing JWT endpoints at /api/v1/auth/ next...', cls: 'llm-stream' },
+  { time: '09:31:02', icon: '🔴', node: 'jwt_tester', text: '<strong>[CRITICAL]</strong> JWT alg:none accepted at /api/v1/auth/verify — admin access confirmed', cls: 'finding' },
+];
+
+const liveTab = document.getElementById('tab-feed');
+setInterval(() => {
+  if (!liveTab.classList.contains('active')) return;
+  if (eventIdx >= newEvents.length) return;
+  const ev = newEvents[eventIdx++];
+  const stream = document.getElementById('event-stream');
+  const el = document.createElement('div');
+  el.className = 'event ' + ev.cls;
+  el.innerHTML = `
+    <span class="event-time">${ev.time}</span>
+    <span class="event-icon">${ev.icon}</span>
+    <div class="event-body">
+      <div class="event-node">${ev.node}</div>
+      <div class="event-text">${ev.text}</div>
+    </div>`;
+  stream.appendChild(el);
+  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}, 4000);
+</script>
+</body>
+</html>
