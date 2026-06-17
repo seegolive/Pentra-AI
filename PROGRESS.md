@@ -1,5 +1,5 @@
 # Pentra AI — Progress Report
-> Updated: 2026-06-12 | Tag: `v1.0.0` | Branch: `main`
+> Updated: 2026-06-17 | Tag: `v1.0.0` | Branch: `main`
 
 ---
 
@@ -8,7 +8,7 @@
 Pentra AI mencapai **v1.0.0** — platform stabil dengan 422 unit tests (0 failed)
 di 4 package/app, 90 Playwright E2E tests, KB 8,341 records dari HackerOne,
 dan fine-tuned LLM (pentra-ft) yang tervalidasi unggul pada target real
-(8 confirmed vs baseline 6 confirmed). Semua sprint backlog (18-29) selesai.
+(8 confirmed vs baseline 6 confirmed). Semua sprint backlog (18-29) + UI Polish + UI-2 + UI-3 selesai.
 
 ---
 
@@ -16,7 +16,7 @@ dan fine-tuned LLM (pentra-ft) yang tervalidasi unggul pada target real
 
 Pentra AI adalah self-hosted AI Security Research Platform dengan LLM lokal (Ollama).
 Saat ini platform berjalan penuh dengan **422 unit tests + 90 Playwright E2E tests**, **8,341 records KB** (naik dari 2,758),
-dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JWT alg:none, SSRF, IDOR, subdomain takeover, second-order SQLi secara otomatis, **plus fine-tuned LLM (pentra-ft) yang dilatih pada 8,309 H1 disclosures dan tervalidasi tetap unggul pada target MSSQL/ASP.NET (8 confirmed vs baseline fair 6 confirmed)**.
+dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JWT alg:none, SSRF, IDOR, subdomain takeover, second-order SQLi secara otomatis, **plus fine-tuned LLM (pentra-ft) yang dilatih pada 8,309 H1 disclosures dan tervalidasi tetap unggul pada target MSSQL/ASP.NET (8 confirmed vs baseline fair 6 confirmed)**. Frontend telah di-polish dengan UI Sprint 1-3: design system tokens, notification system, scan wizard, attack surface map (real data + subscan), API vault, GF patterns, trends charts.
 
 ---
 
@@ -30,7 +30,7 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 | **KB records** | **8,341** (Live API as of 2026-06-15; HackerOne — sumber tunggal, lihat keputusan Sprint 29) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
 | **Git tag** | `v1.0.0` — `main` |
-| **Sprint aktif** | v1.0.0 RELEASED — semua sprint 18-29 COMPLETE |
+| **Sprint aktif** | v1.0.0 RELEASED — Sprint 18-29 + UI Polish + UI-2 + UI-3 COMPLETE |
 | **LLM** | qwen2.5-coder:32b (default), qwen3:8b (fast), bge-m3 (embedding), **pentra-ft** (Qwen2.5-Coder-7B fine-tuned, 4.4GB Q4_K_M) |
 
 Live API: 8,341 records as of 2026-06-15.
@@ -545,8 +545,6 @@ Kesimpulan:
 
 **pnpm build:** pass clean — recharts added without breaking existing bundle.
 **Playwright:** 89 passed, 0 deterministic failures (1 flaky HITL test passes in isolation — backend API timing dependency).
-
----
 
 ---
 
