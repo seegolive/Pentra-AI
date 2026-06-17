@@ -141,9 +141,10 @@ test.describe("ST-6.4 — Version Stamp", () => {
   }) => {
     await page.goto("/dashboard");
 
-    await expect(page.getByRole("link", { name: /dashboard/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /workspaces/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /knowledge/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /settings/i })).toBeVisible();
+    // icon-nav + sidebar both render these links — use .first() to avoid strict-mode violation
+    await expect(page.getByRole("link", { name: /dashboard/i }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: /workspaces/i }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: /knowledge/i }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: /settings/i }).first()).toBeVisible();
   });
 });

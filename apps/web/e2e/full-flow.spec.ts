@@ -139,8 +139,8 @@ test.describe("3 — Dashboard", () => {
 
   test("dashboard sidebar nav link ke /workspaces berfungsi", async ({ page }) => {
     await page.goto("/dashboard");
-    // Use nav link in sidebar
-    await page.getByRole("link", { name: /workspaces/i }).click();
+    // icon-nav + sidebar both render this link — use .first() to avoid strict-mode violation
+    await page.getByRole("link", { name: /workspaces/i }).first().click();
     await expect(page).toHaveURL("/workspaces", { timeout: 5_000 });
   });
 });
@@ -211,7 +211,8 @@ test.describe("5 — Engagement Flow", () => {
     const ws = await createWorkspaceViaApi(page.request, token, `E2E-ENG-WS-${Date.now()}`);
 
     await page.goto(`/workspaces/${ws.id}/engagements`);
-    await page.getByRole("button", { name: /new engagement/i }).click();
+    // scope to main to exclude sidebar + button (aria-label="New engagement")
+    await page.locator("main").getByRole("button", { name: /new engagement/i }).click();
 
     const ENG_NAME = `E2E-Eng-${Date.now()}`;
     await page.getByPlaceholder(/HackerOne/i).fill(ENG_NAME);

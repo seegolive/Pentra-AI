@@ -181,8 +181,7 @@ export function AppShell() {
           <button
             type="button"
             onClick={() => navigate("/engagements/new")}
-            aria-label="New engagement"
-            title="New engagement"
+            title="Create engagement"
             className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-ds-sm bg-pentra-accent text-sm font-bold text-white transition-opacity hover:opacity-80"
           >
             +

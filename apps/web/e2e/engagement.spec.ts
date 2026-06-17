@@ -60,8 +60,8 @@ test.describe("Workspace & Engagement Flow", () => {
       timeout: 5_000,
     });
 
-    // Open new engagement form
-    await page.getByRole("button", { name: /new engagement/i }).click();
+    // Open new engagement form — scope to main to exclude sidebar + button
+    await page.locator("main").getByRole("button", { name: /new engagement/i }).click();
 
     // Fill engagement name
     await page.getByPlaceholder("e.g. HackerOne – Acme Corp Q2").fill(ENGAGEMENT_NAME);
