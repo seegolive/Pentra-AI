@@ -507,4 +507,18 @@ Kesimpulan:
 
 ---
 
-*Updated: 2026-06-15 — v1.0.0 RELEASED: 422 unit tests passing (165 tools + 151 agent + 25 pentra-knowledge + 18 worker + 63 api), 33 Playwright E2E tests, Sprint 18-29 complete.*
+### UI Polish Sprint ✅ COMPLETE (4/4 tasks)
+
+| Task | Status | Detail | Commit |
+|------|--------|--------|--------|
+| CSS Foundation | ✅ | `index.css`: tambah `.severity-badge` CSS classes (critical/high/medium/low/info via CSS vars), `.code-block` utility, `@keyframes pulseDot / fadeSlideIn / fadeUp` | `0ff5ad0` |
+| Task 4 — Sidebar | ✅ | `AppShell.tsx`: `StatusDot` (pulsing dot untuk active engagement), `SidebarSection` (ganti `<p>` section label), `SidebarEngagementItem` (exported reusable item dengan StatusDot); tambah `+` New Engagement button di sidebar header | `502e878` |
+| Task 5 — Live Feed | ✅ | `EngagementDetailPage.tsx`: `StatCard` grid di feed tab (Critical/High/Medium/Events counts dari live data); upgrade `FeedRow` — timestamp JetBrains Mono (HH:MM:SS) + node label header + `fadeSlideIn` animation; upgrade `ApprovalDialog` → HITLCard style (bottom-anchored, design token colors, `fadeUp` animation) | `502e878` |
+| Task 6 — Findings Table | ✅ | `FindingsTable.tsx`: `SeverityBadge` (pakai CSS class `severity-badge critical\|high\|medium\|low\|info`); `FilterChip` (count badge + `ring-2` saat active); hapus `SEVERITY_STYLES` Tailwind color map lama | `502e878` |
+| Task 7 — Report Viewer | ✅ | `ReportViewer.tsx`: `ReportKPI` 4-column grid (Critical/High/Medium/Total Findings via `useFindings`); `ReportActionBar` styling pada download strip | `502e878` |
+
+**pnpm build:** pass clean di setiap task — 4/4 builds sukses.
+
+---
+
+*Updated: 2026-06-17 — v1.0.0 RELEASED + UI Polish Sprint complete: 422 unit tests, 33 Playwright E2E, Sprint 18-29 + UI tasks selesai.*
