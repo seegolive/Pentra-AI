@@ -528,4 +528,24 @@ Kesimpulan:
 
 ---
 
-*Updated: 2026-06-17 — v1.0.0 RELEASED + UI Polish Sprint complete: 422 unit tests, 90 Playwright E2E (0 failed), Sprint 18-29 + UI tasks selesai.*
+### Sprint UI-2 ✅ COMPLETE (9/9 tasks)
+
+| Task | Status | Detail | Commit |
+|------|--------|--------|--------|
+| Task 1 — Notification System | ✅ | `useNotifications.ts` Zustand store; `NotificationBell` + `NotificationPanel`; feed hook auto-generates notifications on AWAITING_APPROVAL / FINDING_CONFIRMED / ENGAGEMENT_COMPLETED / error events | `84f19a0` |
+| Task 2 — Scan Wizard | ✅ | `ScanWizard.tsx` 4-step form at `/scan/new`: target config → scope → model selection → confirm; sidebar `+` button navigates to `/scan/new` | `84f19a0` |
+| Task 3 — Stop All | ✅ | `StopAllModal.tsx`; `StopRunningButton` in topbar shows count of running engagements; `useStopEngagement` in `api.ts` (PATCH `/stop`) | `84f19a0` |
+| Task 4 — EngagementOverviewCard | ✅ | `EngagementOverviewCard.tsx` rendered in sidebar when on `/engagements/:id` — shows status, target, finding counts | `84f19a0` |
+| Task 5 — Attack Surface Map | ✅ | `AttackSurfacePage.tsx` SVG canvas with dot-grid background + placeholder asset nodes | `84f19a0` |
+| Task 6 — API Vault | ✅ | `ApiVaultPage.tsx` localStorage-backed key store (add/delete/copy/reveal) for API keys | `84f19a0` |
+| Task 7 — GF Patterns | ✅ | `GFPatternsPage.tsx` 12 default patterns + URL tester (regex match against input) | `84f19a0` |
+| Task 8 — Navigation Update | ✅ | `AppShell.tsx` NAV_ITEMS: Dashboard, Engagements, KB, Attack Surface, Trends, Settings (removed Workspaces from sidebar nav) | `84f19a0` |
+| Task 9 — Trends Page | ✅ | `TrendsPage.tsx` recharts BarChart + AreaChart for findings by severity/week; added `recharts` to `apps/web/package.json` | `84f19a0` |
+| E2E Selector Fix | ✅ | Update `frontend-smoke.spec.ts` + `full-flow.spec.ts`: workspaces→engagements nav selectors after nav update in Task 8. **89/90 pass** (1 flaky HITL API-dependent test) | `84f19a0` |
+
+**pnpm build:** pass clean — recharts added without breaking existing bundle.
+**Playwright:** 89 passed, 0 deterministic failures (1 flaky HITL test passes in isolation — backend API timing dependency).
+
+---
+
+*Updated: 2026-06-17 — v1.0.0 RELEASED + UI Polish Sprint + Sprint UI-2 complete: 422 unit tests, 89/90 Playwright E2E, Sprint 18-29 + UI-1 + UI-2 selesai.*
