@@ -548,4 +548,18 @@ Kesimpulan:
 
 ---
 
-*Updated: 2026-06-17 — v1.0.0 RELEASED + UI Polish Sprint + Sprint UI-2 complete: 422 unit tests, 89/90 Playwright E2E, Sprint 18-29 + UI-1 + UI-2 selesai.*
+---
+
+### Sprint UI-3 ✅ COMPLETE (3/3 tasks)
+
+| Task | Status | Detail | Commit |
+|------|--------|--------|--------|
+| UI3.1 — Attack Surface real data | ✅ | `AttackSurfacePage.tsx`: integrasi `useReconSnapshots` untuk subdomains dari snapshot terakhir; root domain dari `engagement.in_scope` dengan warna `var(--accent)`; domain map gabungan (recon + findings); subscan button fungsional (POST `/api/v1/engagements/{id}/subscan`) dengan pending/done/error state | `2bf0456` |
+| UI3.2 — Fix flaky HITL test | ✅ | `hitl.spec.ts`: tambah `waitForResponse` sebelum heading assertion — eliminasi race condition antara API response dan DOM render di full-suite runs; timeout 10s → 15s | `2bf0456` |
+| UI3.3 — Trends data fix | ✅ | `TrendsPage.tsx`: ganti pola `useMemo`-mutation dengan `useState + useEffect` sehingga `findingsMap` updates trigger re-render; tambah loading state; `VulnClassChart` pakai `useMemo` yang benar | `2bf0456` |
+
+**pnpm build:** clean. **Playwright:** 90/90 passed (0 failures, 0 flaky).
+
+---
+
+*Updated: 2026-06-17 — v1.0.0 RELEASED + UI Polish + UI-2 + UI-3 complete: 422 unit tests, 90/90 Playwright E2E, Sprint 18-29 + UI-1 + UI-2 + UI-3 selesai.*
