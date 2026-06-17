@@ -14,7 +14,7 @@ import {
   Eye,
   Code2,
 } from "lucide-react";
-import { useEngagementReport } from "../../lib/api";
+import { useEngagementReport, useFindings } from "../../lib/api";
 import { useAuthStore } from "../../lib/authStore";
 import { cn } from "../../lib/utils";
 
@@ -152,6 +152,21 @@ const DOWNLOAD_FORMATS = [
   },
 ] as const;
 
+// ── KPI card ─────────────────────────────────────────────────────────────────
+
+function ReportKPI({ label, value, color }: { label: string; value: number; color?: string }) {
+  return (
+    <div className="rounded-ds-md border border-pentra-border bg-pentra-bg-card px-4 py-3">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-pentra-text-muted">
+        {label}
+      </p>
+      <p className="mt-1 text-2xl font-bold text-pentra-text-primary" style={{ color }}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 
 interface ReportViewerProps {
@@ -165,6 +180,7 @@ export function ReportViewer({ engagementId }: ReportViewerProps) {
 
   const { data: markdown, isLoading, isError, error, refetch, isFetching } =
     useEngagementReport(engagementId);
+  const { data: findings } = useFindings(engagementId);
 
   const copy = () => {
     if (!markdown) return;
@@ -201,6 +217,29 @@ export function ReportViewer({ engagementId }: ReportViewerProps) {
 
   return (
     <div className="flex flex-col h-full gap-3">
+      {/* KPI overview */}
+      <div className="flex-shrink-0 grid grid-cols-4 gap-2">
+        <ReportKPI
+          label="Critical"
+          value={findings?.filter((f) => f.severity === "critical").length ?? 0}
+          color="var(--critical)"
+        />
+        <ReportKPI
+          label="High"
+          value={findings?.filter((f) => f.severity === "high").length ?? 0}
+          color="var(--high)"
+        />
+        <ReportKPI
+          label="Medium"
+          value={findings?.filter((f) => f.severity === "medium").length ?? 0}
+          color="var(--medium)"
+        />
+        <ReportKPI
+          label="Total Findings"
+          value={findings?.length ?? 0}
+        />
+      </div>
+
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
         {/* View toggle */}
@@ -294,9 +333,17 @@ export function ReportViewer({ engagementId }: ReportViewerProps) {
         )}
       </div>
 
-      {/* Download strip */}
-      <div className="flex items-center gap-2 flex-wrap border-t border-border pt-3">
-        <span className="text-xs text-muted-foreground">Download:</span>
+      {/* Report action bar */}
+      <div
+        className="flex-shrink-0 flex items-center gap-2 flex-wrap border-t pt-3 pb-1"
+        style={{ borderColor: "var(--border)" }}
+      >
+        <span
+          className="text-[10px] font-semibold uppercase tracking-wide"
+          style={{ color: "var(--text-muted)" }}
+        >
+          Export as:
+        </span>
         {DOWNLOAD_FORMATS.map(({ format, label, ext, icon: Icon, iconColor }) => (
           <button
             key={format}

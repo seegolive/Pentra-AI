@@ -34,6 +34,65 @@ function isRouteActive(pathname: string, to: string) {
   return pathname === to || pathname.startsWith(`${to}/`);
 }
 
+// ── Sidebar design components ─────────────────────────────────────────────────
+
+type EngagementStatus =
+  | "active" | "awaiting_approval" | "paused"
+  | "planning" | "completed" | "failed";
+
+function StatusDot({ status }: { status: EngagementStatus }) {
+  const colors: Record<EngagementStatus, string> = {
+    active:             "var(--status-running)",
+    awaiting_approval:  "var(--status-waiting)",
+    paused:             "var(--status-waiting)",
+    planning:           "var(--status-idle)",
+    completed:          "var(--status-complete)",
+    failed:             "var(--status-failed)",
+  };
+  return (
+    <span
+      className="h-2 w-2 flex-shrink-0 rounded-full"
+      style={{
+        background: colors[status] ?? "var(--status-idle)",
+        animation: status === "active" ? "pulseDot 1.6s ease-in-out infinite" : undefined,
+      }}
+    />
+  );
+}
+
+function SidebarSection({ label }: { label: string }) {
+  return (
+    <p className="px-ds-3 pb-ds-1 pt-ds-2 text-[10px] font-semibold uppercase tracking-[0.8px] text-pentra-text-muted select-none">
+      {label}
+    </p>
+  );
+}
+
+interface SidebarEngagementItemProps {
+  label: string;
+  status: EngagementStatus;
+  active?: boolean;
+  onClick?: () => void;
+}
+
+export function SidebarEngagementItem({ label, status, active, onClick }: SidebarEngagementItemProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex w-full items-center gap-ds-2 rounded-ds-md px-ds-3 py-ds-2 text-[13px] font-medium transition-colors text-left",
+        active
+          ? "bg-pentra-bg-active text-pentra-text-primary"
+          : "text-pentra-text-secondary hover:bg-pentra-bg-card hover:text-pentra-text-primary"
+      )}
+    >
+      <StatusDot status={status} />
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
 export function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -106,7 +165,7 @@ export function AppShell() {
       </nav>
 
       <aside className="flex min-w-sidebar flex-col overflow-hidden border-r border-pentra-border bg-pentra-bg-base">
-        <div className="border-b border-pentra-border px-ds-4 py-ds-4">
+        <div className="flex items-center justify-between border-b border-pentra-border px-ds-4 py-ds-4">
           <button
             type="button"
             onClick={() => navigate("/dashboard")}
@@ -119,12 +178,19 @@ export function AppShell() {
               Pentra <span className="text-pentra-accent-light">AI</span>
             </span>
           </button>
+          <button
+            type="button"
+            onClick={() => navigate("/engagements/new")}
+            aria-label="New engagement"
+            title="New engagement"
+            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-ds-sm bg-pentra-accent text-sm font-bold text-white transition-opacity hover:opacity-80"
+          >
+            +
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-ds-2">
-          <p className="px-ds-3 pb-ds-1 pt-ds-2 text-[10px] font-semibold uppercase tracking-[0.8px] text-pentra-text-muted">
-            Workspace
-          </p>
+          <SidebarSection label="Workspace" />
           <nav aria-label="Workspace navigation" className="space-y-0.5">
             {NAV_ITEMS.map((item) => (
               <NavLink
@@ -147,9 +213,7 @@ export function AppShell() {
 
           {adminNav.length > 0 && (
             <>
-              <p className="px-ds-3 pb-ds-1 pt-ds-4 text-[10px] font-semibold uppercase tracking-[0.8px] text-pentra-text-muted">
-                Admin
-              </p>
+              <SidebarSection label="Admin" />
               <nav aria-label="Admin navigation" className="space-y-0.5">
                 {adminNav.map((item) => (
                   <NavLink

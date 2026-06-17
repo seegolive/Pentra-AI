@@ -38,13 +38,41 @@ const SEVERITY_ORDER: Record<Severity, number> = {
   info: 4,
 };
 
-const SEVERITY_STYLES: Record<string, string> = {
-  critical: "text-red-400 bg-red-500/10 border-red-500/30",
-  high: "text-orange-400 bg-orange-500/10 border-orange-500/30",
-  medium: "text-yellow-400 bg-yellow-500/10 border-yellow-500/30",
-  low: "text-blue-400 bg-blue-400/10 border-blue-400/30",
-  info: "text-slate-400 bg-slate-500/10 border-slate-500/30",
-};
+function SeverityBadge({ severity }: { severity: string }) {
+  return (
+    <span className={`severity-badge ${severity}`}>
+      {severity.toUpperCase()}
+    </span>
+  );
+}
+
+function FilterChip({
+  label,
+  severity,
+  count,
+  active,
+  onClick,
+}: {
+  label: string;
+  severity: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        `severity-badge ${severity} cursor-pointer transition-all`,
+        active && "ring-2 ring-current ring-offset-1 ring-offset-pentra-bg-void"
+      )}
+      style={{ padding: "3px 10px", fontSize: "11px" }}
+    >
+      {label}
+      <span className="ml-1.5 font-mono opacity-70">{count}</span>
+    </button>
+  );
+}
 
 const STATUS_STYLES: Record<FindingStatus, string> = {
   open: "text-red-400 bg-red-500/10 border-red-500/20",
@@ -315,18 +343,14 @@ export function FindingsTable({ findings }: FindingsTableProps) {
       <div className="flex items-center gap-2 flex-wrap">
         {(["critical", "high", "medium", "low", "info"] as const).map((sev) =>
           counts[sev] ? (
-            <button
+            <FilterChip
               key={sev}
+              label={sev.charAt(0).toUpperCase() + sev.slice(1)}
+              severity={sev}
+              count={counts[sev]}
+              active={filterSeverity === sev}
               onClick={() => setFilterSeverity(filterSeverity === sev ? "all" : sev)}
-              className={cn(
-                "inline-flex items-center gap-1 px-2 py-0.5 rounded border text-[11px] font-medium transition-colors",
-                SEVERITY_STYLES[sev],
-                filterSeverity === sev && "ring-1 ring-current"
-              )}
-            >
-              {sev.charAt(0).toUpperCase() + sev.slice(1)}
-              <span className="opacity-70">{counts[sev]}</span>
-            </button>
+            />
           ) : null
         )}
         <div className="ml-auto flex items-center gap-2">
@@ -402,14 +426,7 @@ export function FindingsTable({ findings }: FindingsTableProps) {
                     >
                       {/* Severity */}
                       <td className="px-3 py-2.5">
-                        <span
-                          className={cn(
-                            "inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-semibold",
-                            SEVERITY_STYLES[f.severity] ?? SEVERITY_STYLES.info
-                          )}
-                        >
-                          {f.severity.toUpperCase()}
-                        </span>
+                        <SeverityBadge severity={f.severity} />
                       </td>
 
                       {/* Title + URL */}

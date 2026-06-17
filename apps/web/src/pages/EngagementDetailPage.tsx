@@ -125,6 +125,23 @@ function groupFeedEvents(events: FeedEvent[]): FeedGroup[] {
   return result.reverse(); // back to newest-first
 }
 
+// ── Stat card ─────────────────────────────────────────────────────────────────
+
+function StatCard({ label, value, color }: { label: string; value: number; color?: string }) {
+  return (
+    <div
+      className="flex-1 min-w-0 rounded-ds-md border border-pentra-border bg-pentra-bg-card px-3 py-2"
+    >
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-pentra-text-muted">
+        {label}
+      </p>
+      <p className="mt-0.5 text-xl font-bold text-pentra-text-primary" style={{ color: color }}>
+        {value}
+      </p>
+    </div>
+  );
+}
+
 // ── LLM stream group row ──────────────────────────────────────────────────────
 
 function LLMStreamGroup({ group }: { group: Extract<FeedGroup, { kind: "llm" }> }) {
@@ -182,36 +199,44 @@ function FeedRow({ event }: { event: FeedEvent }) {
   const meta = TYPE_META[event.type];
   const color = meta?.color ?? "text-muted-foreground";
   const icon = meta?.icon ?? <Activity className="h-3 w-3" />;
+  const nodeLabel = event.node
+    ? (NODE_LABELS[event.node] ?? event.node)
+    : (meta?.label ?? event.type);
 
-  let label = event.message;
-  if (!label) {
-    if (event.type === "NODE_START" && event.node) {
-      label = `▶ ${NODE_LABELS[event.node] ?? event.node}`;
-    } else if (event.type === "NODE_COMPLETE" && event.node) {
-      label = `✓ ${NODE_LABELS[event.node] ?? event.node}`;
-    } else if (event.type === "FINDINGS_UPDATED") {
-      label = `${event.count ?? "?"} finding(s) discovered`;
-    } else {
-      label = meta?.label ?? event.type;
-    }
+  let content = event.message;
+  if (!content) {
+    if (event.type === "NODE_START") content = "Started";
+    else if (event.type === "NODE_COMPLETE") content = "Completed";
+    else if (event.type === "FINDINGS_UPDATED") content = `${event.count ?? "?"} finding(s) discovered`;
+    else content = meta?.label ?? event.type;
   }
 
+  const ts = event.timestamp
+    ? new Date(event.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : null;
+
   return (
-    <div className="flex items-start gap-2 py-1.5 px-2 hover:bg-white/5 rounded text-xs font-mono border-b border-border/30 last:border-0">
-      <span className={cn("flex-shrink-0 mt-0.5", color)}>{icon}</span>
-      <span className={cn("flex-1", color)}>
-        {label}
-        {event.data && Object.keys(event.data).length > 0 && (
-          <span className="text-muted-foreground ml-2 text-[10px]">
-            {JSON.stringify(event.data).slice(0, 120)}
+    <div
+      className="flex items-start gap-3 border-b border-border/20 px-3 py-2 transition-colors hover:bg-white/5 last:border-0"
+      style={{ animation: "fadeSlideIn 0.12s ease-out" }}
+    >
+      <span className="w-[58px] flex-shrink-0 pt-0.5 text-right font-mono text-[10px] text-pentra-text-muted">
+        {ts ?? ""}
+      </span>
+      <span className={cn("mt-0.5 flex-shrink-0", color)}>{icon}</span>
+      <span className="min-w-0 flex-1">
+        <span className={cn("text-[11px] font-semibold", color)}>{nodeLabel}</span>
+        {content && (
+          <span className="block truncate text-[11px] text-pentra-text-secondary">
+            {content}
+            {event.data && Object.keys(event.data).length > 0 && (
+              <span className="ml-2 text-[10px] opacity-60">
+                {JSON.stringify(event.data).slice(0, 100)}
+              </span>
+            )}
           </span>
         )}
       </span>
-      {event.timestamp && (
-        <span className="text-muted-foreground text-[10px] flex-shrink-0">
-          {new Date(event.timestamp).toLocaleTimeString()}
-        </span>
-      )}
     </div>
   );
 }
@@ -234,41 +259,72 @@ function ApprovalDialog({ engagementId, phase, summary, onDone }: ApprovalDialog
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
-      <div className="w-full max-w-lg bg-card border border-yellow-500/40 rounded-xl shadow-2xl p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <ShieldAlert className="h-5 w-5 text-yellow-400" />
-          <h2 className="text-base font-semibold text-foreground">Approval Required</h2>
-          <span className="ml-auto text-xs text-muted-foreground border border-border rounded px-2 py-0.5 font-mono">
+    <div className="fixed inset-0 z-50 flex items-end justify-center pb-8 bg-black/60 backdrop-blur-sm">
+      <div
+        className="mx-4 w-full max-w-2xl overflow-hidden rounded-ds-lg border shadow-2xl"
+        style={{
+          borderColor: "rgba(245,197,66,0.35)",
+          background: "var(--bg-card)",
+          animation: "fadeUp 0.2s ease-out",
+        }}
+      >
+        {/* Header */}
+        <div
+          className="flex items-center gap-2 border-b px-4 py-3"
+          style={{ background: "rgba(245,197,66,0.06)", borderColor: "rgba(245,197,66,0.2)" }}
+        >
+          <ShieldAlert className="h-4 w-4 flex-shrink-0" style={{ color: "var(--status-waiting)" }} />
+          <span className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+            Human-in-the-Loop Review Required
+          </span>
+          <span
+            className="ml-auto rounded border px-2 py-0.5 font-mono text-[10px]"
+            style={{ color: "var(--text-muted)", borderColor: "var(--border)" }}
+          >
             {phase}
           </span>
         </div>
 
-        <p className="text-sm text-foreground/80 whitespace-pre-wrap leading-relaxed mb-6">
-          {summary}
-        </p>
+        {/* Summary */}
+        <div className="max-h-48 overflow-auto px-4 py-3">
+          <p
+            className="whitespace-pre-wrap text-[13px] leading-relaxed"
+            style={{ color: "var(--text-secondary)" }}
+          >
+            {summary}
+          </p>
+        </div>
 
-        <div className="flex gap-2">
+        {/* Actions */}
+        <div
+          className="flex items-center gap-2 border-t px-4 py-3"
+          style={{ borderColor: "var(--border)" }}
+        >
           <button
             onClick={() => send("approve")}
             disabled={approveMutation.isPending}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-500 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-2 rounded-ds-md px-5 py-2 text-sm font-semibold text-white disabled:opacity-50 transition-opacity"
+            style={{ background: "var(--status-complete)" }}
           >
             {approveMutation.isPending ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
             ) : (
               <CheckCircle2 className="h-3.5 w-3.5" />
             )}
-            Approve
+            Approve &amp; Continue
           </button>
           <button
             onClick={() => send("skip")}
             disabled={approveMutation.isPending}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-foreground rounded-md text-sm font-medium hover:bg-slate-600 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-2 rounded-ds-md px-4 py-2 text-sm font-medium disabled:opacity-50 transition-colors hover:bg-pentra-bg-hover"
+            style={{ color: "var(--text-secondary)", border: "1px solid var(--border)" }}
           >
             <SkipForward className="h-3.5 w-3.5" />
             Skip
           </button>
+          <span className="ml-auto text-[11px]" style={{ color: "var(--text-muted)" }}>
+            Review required before agent proceeds
+          </span>
         </div>
       </div>
     </div>
@@ -578,7 +634,32 @@ export default function EngagementDetailPage() {
       {/* Content */}
       <div className="flex-1 overflow-hidden p-6">
         {tab === "feed" && (
-          <div className="h-full flex flex-col">
+          <div className="h-full flex flex-col gap-3">
+            {/* Stat overview */}
+            {engagement.status !== "planning" && (
+              <div className="flex gap-2 flex-shrink-0">
+                <StatCard
+                  label="Critical"
+                  value={findings?.filter((f) => f.severity === "critical").length ?? 0}
+                  color="var(--critical)"
+                />
+                <StatCard
+                  label="High"
+                  value={findings?.filter((f) => f.severity === "high").length ?? 0}
+                  color="var(--high)"
+                />
+                <StatCard
+                  label="Medium"
+                  value={findings?.filter((f) => f.severity === "medium").length ?? 0}
+                  color="var(--medium)"
+                />
+                <StatCard
+                  label="Events"
+                  value={events.length}
+                  color="var(--accent)"
+                />
+              </div>
+            )}
             {engagement.status === "planning" ? (
               <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
                 <ScrollText className="h-10 w-10 mb-3 opacity-20" />
