@@ -6,7 +6,7 @@
 ## 🎉 v1.0.0 MILESTONE
 
 Pentra AI mencapai **v1.0.0** — platform stabil dengan 422 unit tests (0 failed)
-di 4 package/app, 33 Playwright E2E tests, KB 8,341 records dari HackerOne,
+di 4 package/app, 90 Playwright E2E tests, KB 8,341 records dari HackerOne,
 dan fine-tuned LLM (pentra-ft) yang tervalidasi unggul pada target real
 (8 confirmed vs baseline 6 confirmed). Semua sprint backlog (18-29) selesai.
 
@@ -15,7 +15,7 @@ dan fine-tuned LLM (pentra-ft) yang tervalidasi unggul pada target real
 ## Ringkasan Eksekutif
 
 Pentra AI adalah self-hosted AI Security Research Platform dengan LLM lokal (Ollama).
-Saat ini platform berjalan penuh dengan **422 unit tests + 33 Playwright E2E tests**, **8,341 records KB** (naik dari 2,758),
+Saat ini platform berjalan penuh dengan **422 unit tests + 90 Playwright E2E tests**, **8,341 records KB** (naik dari 2,758),
 dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JWT alg:none, SSRF, IDOR, subdomain takeover, second-order SQLi secara otomatis, **plus fine-tuned LLM (pentra-ft) yang dilatih pada 8,309 H1 disclosures dan tervalidasi tetap unggul pada target MSSQL/ASP.NET (8 confirmed vs baseline fair 6 confirmed)**.
 
 ---
@@ -25,8 +25,8 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 | Metrik | Nilai |
 |--------|-------|
 | **Test suite** | **422 passing** (165 pentra-tools + 151 pentra-agent + 25 pentra-knowledge + 18 apps/worker + 63 apps/api), 0 failed |
-| **Playwright E2E** | **33 tests** (6 smoke + 7 livefeed + 20 full regression), 0 failed |
-| **Test files** | 47 unit + 5 e2e spec files |
+| **Playwright E2E** | **90 tests** (8 spec files), 0 failed |
+| **Test files** | 47 unit + 8 e2e spec files |
 | **KB records** | **8,341** (Live API as of 2026-06-15; HackerOne — sumber tunggal, lihat keputusan Sprint 29) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
 | **Git tag** | `v1.0.0` — `main` |
@@ -270,7 +270,12 @@ Note: +25 `pentra-knowledge` tests are now included in the v1.0 total.
 | smoke.spec.ts (Sprint 21) | 6 | ✅ all pass |
 | livefeed.spec.ts (Sprint 23) | 7 | ✅ all pass |
 | full.spec.ts (Sprint 23) | 20 | ✅ all pass |
-| **Total E2E** | **33** | **0 failed** |
+| auth.spec.ts | — | ✅ all pass |
+| engagement.spec.ts | — | ✅ all pass |
+| frontend-smoke.spec.ts | — | ✅ all pass |
+| full-flow.spec.ts | — | ✅ all pass |
+| hitl.spec.ts | — | ✅ all pass |
+| **Total E2E** | **90** | **0 failed** |
 
 **Pertumbuhan:**
 - Sprint 18 Tier 1-3: +77 tests (178 → 255)
@@ -512,13 +517,15 @@ Kesimpulan:
 | Task | Status | Detail | Commit |
 |------|--------|--------|--------|
 | CSS Foundation | ✅ | `index.css`: tambah `.severity-badge` CSS classes (critical/high/medium/low/info via CSS vars), `.code-block` utility, `@keyframes pulseDot / fadeSlideIn / fadeUp` | `0ff5ad0` |
-| Task 4 — Sidebar | ✅ | `AppShell.tsx`: `StatusDot` (pulsing dot untuk active engagement), `SidebarSection` (ganti `<p>` section label), `SidebarEngagementItem` (exported reusable item dengan StatusDot); tambah `+` New Engagement button di sidebar header | `502e878` |
+| Task 4 — Sidebar | ✅ | `AppShell.tsx`: `StatusDot` (pulsing dot untuk active engagement), `SidebarSection` (ganti `<p>` section label), `SidebarEngagementItem` (exported reusable item dengan StatusDot); tambah `+` Create Engagement button di sidebar header | `502e878` |
 | Task 5 — Live Feed | ✅ | `EngagementDetailPage.tsx`: `StatCard` grid di feed tab (Critical/High/Medium/Events counts dari live data); upgrade `FeedRow` — timestamp JetBrains Mono (HH:MM:SS) + node label header + `fadeSlideIn` animation; upgrade `ApprovalDialog` → HITLCard style (bottom-anchored, design token colors, `fadeUp` animation) | `502e878` |
 | Task 6 — Findings Table | ✅ | `FindingsTable.tsx`: `SeverityBadge` (pakai CSS class `severity-badge critical\|high\|medium\|low\|info`); `FilterChip` (count badge + `ring-2` saat active); hapus `SEVERITY_STYLES` Tailwind color map lama | `502e878` |
 | Task 7 — Report Viewer | ✅ | `ReportViewer.tsx`: `ReportKPI` 4-column grid (Critical/High/Medium/Total Findings via `useFindings`); `ReportActionBar` styling pada download strip | `502e878` |
+| E2E Selector Fix | ✅ | Update 3 test files: sidebar icon-nav duplicate link fix (`.first()`), sidebar `+` button aria-label conflict fix (`page.locator("main")` scope). **90/90 Playwright tests pass** (naik dari 33, karena 5 spec file baru terdeteksi) | `020b943` |
 
 **pnpm build:** pass clean di setiap task — 4/4 builds sukses.
+**Playwright:** 90 passed, 0 failed (8 spec files: auth, engagement, frontend-smoke, full-flow, full, hitl, livefeed, smoke).
 
 ---
 
-*Updated: 2026-06-17 — v1.0.0 RELEASED + UI Polish Sprint complete: 422 unit tests, 33 Playwright E2E, Sprint 18-29 + UI tasks selesai.*
+*Updated: 2026-06-17 — v1.0.0 RELEASED + UI Polish Sprint complete: 422 unit tests, 90 Playwright E2E (0 failed), Sprint 18-29 + UI tasks selesai.*
