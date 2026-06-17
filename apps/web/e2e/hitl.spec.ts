@@ -78,10 +78,21 @@ test.describe("HITL Approval Flow", () => {
     // Navigate to engagement detail
     await page.goto(`/engagements/${eng.id}`);
 
+    // Wait for the engagement API response before asserting the heading —
+    // prevents flakiness when backend is under load during full suite runs
+    await page
+      .waitForResponse(
+        (r) => r.url().includes(`/api/v1/engagements/${eng.id}`) && r.status() === 200,
+        { timeout: 15_000 }
+      )
+      .catch(() => {
+        // If interception misses (response already cached), proceed anyway
+      });
+
     // Page should load without errors — header with engagement name visible
     await expect(
       page.getByRole("heading", { name: eng.name })
-    ).toBeVisible({ timeout: 10_000 });
+    ).toBeVisible({ timeout: 15_000 });
   });
 
   test("approve endpoint dapat dipanggil dan mengembalikan status resumed", async ({

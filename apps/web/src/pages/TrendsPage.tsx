@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   BarChart,
   Bar,
@@ -9,7 +9,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
-import { BarChart2 } from "lucide-react";
+import { BarChart2, RefreshCw } from "lucide-react";
 import { useEngagements, useFindings } from "../lib/api";
 import type { Engagement, Finding } from "../lib/types";
 
@@ -58,7 +58,7 @@ function CustomTooltip({ active, payload, label }: TooltipProps) {
 }
 
 // ── Per-engagement findings loader ────────────────────────────────────────────
-// We load findings lazily per engagement. Render one component per completed eng.
+// Renders null — side effect only: calls onData when findings arrive.
 
 function EngagementFindingsLoader({
   engagement,
@@ -68,7 +68,7 @@ function EngagementFindingsLoader({
   onData: (id: string, findings: Finding[]) => void;
 }) {
   const { data } = useFindings(engagement.id);
-  useMemo(() => {
+  useEffect(() => {
     if (data) onData(engagement.id, data);
   }, [data, engagement.id, onData]);
   return null;
@@ -98,6 +98,19 @@ function StackedSeverityChart({
       info: findings.filter((f) => f.severity === "info").length,
     };
   });
+
+  if (data.length === 0) {
+    return (
+      <div className="rounded-ds-md border border-pentra-border bg-pentra-bg-card p-4">
+        <h3 className="text-[13px] font-semibold text-pentra-text-primary mb-4">
+          Findings by Severity (last 10 engagements)
+        </h3>
+        <div className="flex h-[220px] items-center justify-center text-[13px] text-pentra-text-muted">
+          No completed engagements
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-ds-md border border-pentra-border bg-pentra-bg-card p-4">
@@ -133,16 +146,16 @@ function StackedSeverityChart({
 }
 
 function VulnClassChart({ findings }: { findings: Finding[] }) {
-  // Top 10 vuln classes
-  const classCounts: Record<string, number> = {};
-  for (const f of findings) {
-    classCounts[f.vuln_class] = (classCounts[f.vuln_class] ?? 0) + 1;
-  }
-
-  const data = Object.entries(classCounts)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10)
-    .map(([name, count]) => ({ name, count }));
+  const data = useMemo(() => {
+    const classCounts: Record<string, number> = {};
+    for (const f of findings) {
+      classCounts[f.vuln_class] = (classCounts[f.vuln_class] ?? 0) + 1;
+    }
+    return Object.entries(classCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([name, count]) => ({ name, count }));
+  }, [findings]);
 
   return (
     <div className="rounded-ds-md border border-pentra-border bg-pentra-bg-card p-4">
@@ -194,7 +207,7 @@ function VulnClassChart({ findings }: { findings: Finding[] }) {
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
 export default function TrendsPage() {
-  const { data: allEngagements = [] } = useEngagements();
+  const { data: allEngagements = [], isLoading: engLoading } = useEngagements();
 
   // Only load findings for completed engagements, capped at 10
   const completedEngagements = useMemo(
@@ -202,27 +215,43 @@ export default function TrendsPage() {
     [allEngagements]
   );
 
-  const [findingsMap, setFindingsMap] = useMemo(() => {
-    const map: FindingsMap = {};
-    const setter = (id: string, findings: Finding[]) => {
-      map[id] = findings;
-    };
-    return [map, setter] as const;
-  }, []);
+  // Use useState so that updates from EngagementFindingsLoader trigger re-renders
+  const [findingsMap, setFindingsMap] = useState<FindingsMap>({});
+
+  const handleFindingsData = useMemo(
+    () => (id: string, findings: Finding[]) => {
+      setFindingsMap((prev) => {
+        if (prev[id] === findings) return prev; // avoid re-render if same reference
+        return { ...prev, [id]: findings };
+      });
+    },
+    []
+  );
 
   // Aggregate all findings across completed engagements
   const allFindings = useMemo(
     () => Object.values(findingsMap).flat(),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [findingsMap]
   );
 
   const totalEngagements = allEngagements.length;
   const totalFindings = allFindings.length;
-  const critHigh = allFindings.filter((f) => f.severity === "critical" || f.severity === "high").length;
-  const avgPerEng = completedEngagements.length > 0
-    ? (allFindings.length / completedEngagements.length).toFixed(1)
-    : "0";
+  const critHigh = allFindings.filter(
+    (f) => f.severity === "critical" || f.severity === "high"
+  ).length;
+  const avgPerEng =
+    completedEngagements.length > 0
+      ? (allFindings.length / completedEngagements.length).toFixed(1)
+      : "0";
+
+  if (engLoading) {
+    return (
+      <div className="flex min-h-full items-center justify-center text-pentra-text-muted gap-2">
+        <RefreshCw className="h-4 w-4 animate-spin" />
+        <span className="text-[13px]">Loading trends…</span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-full flex-col gap-6 p-6">
@@ -237,9 +266,9 @@ export default function TrendsPage() {
         </p>
       </div>
 
-      {/* Hidden loaders for completed engagements */}
+      {/* Hidden loaders — fire useFindings per completed engagement */}
       {completedEngagements.map((eng) => (
-        <EngagementFindingsLoader key={eng.id} engagement={eng} onData={setFindingsMap} />
+        <EngagementFindingsLoader key={eng.id} engagement={eng} onData={handleFindingsData} />
       ))}
 
       {/* KPI Row */}
@@ -249,7 +278,11 @@ export default function TrendsPage() {
         <KpiCard
           label="Critical + High"
           value={critHigh}
-          sub={totalFindings > 0 ? `${Math.round((critHigh / totalFindings) * 100)}% of all findings` : undefined}
+          sub={
+            totalFindings > 0
+              ? `${Math.round((critHigh / totalFindings) * 100)}% of all findings`
+              : undefined
+          }
         />
         <KpiCard
           label="Avg / Engagement"
@@ -259,18 +292,18 @@ export default function TrendsPage() {
       </div>
 
       {/* Charts Row */}
-      <div className="grid grid-cols-2 gap-4">
-        <StackedSeverityChart
-          engagements={completedEngagements}
-          findingsMap={findingsMap}
-        />
-        <VulnClassChart findings={allFindings} />
-      </div>
-
-      {completedEngagements.length === 0 && (
+      {completedEngagements.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded-ds-lg border border-pentra-border bg-pentra-bg-card">
           <BarChart2 className="h-10 w-10 text-pentra-text-muted opacity-30" />
           <p className="text-[13px] text-pentra-text-muted">Complete engagements to see trends</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-4">
+          <StackedSeverityChart
+            engagements={completedEngagements}
+            findingsMap={findingsMap}
+          />
+          <VulnClassChart findings={allFindings} />
         </div>
       )}
     </div>

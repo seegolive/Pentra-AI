@@ -554,6 +554,23 @@ export function useSnapshotDiff(
   });
 }
 
+// ── Subscan ───────────────────────────────────────────────────────────────────
+
+export interface SubscanRequest { target_urls: string[]; }
+export interface SubscanResponse { task_id: string; status: string; }
+
+export function useSubscan(engagementId: string) {
+  return useMutation<SubscanResponse, Error, SubscanRequest>({
+    mutationFn: async (body) => {
+      const res = await apiClient.post<SubscanResponse>(
+        `/api/v1/engagements/${engagementId}/subscan`,
+        body
+      );
+      return res.data;
+    },
+  });
+}
+
 // ── Version ──────────────────────────────────────────────────────────────────
 
 export interface VersionInfo {
