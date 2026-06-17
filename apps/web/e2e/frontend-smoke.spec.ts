@@ -72,19 +72,14 @@ test.describe("ST-6.2 — Dashboard", () => {
     });
   });
 
-  test("dashboard → klik New Workspace navigates ke /workspaces", async ({ page }) => {
+  test("dashboard → klik Engagements navigates ke /engagements", async ({ page }) => {
     await page.goto("/dashboard");
 
-    // Any link/button that goes to workspaces
-    const link = page.getByRole("link", { name: /workspace/i }).first();
-    const btn = page.getByRole("button", { name: /new workspace/i }).first();
-
-    // At least one navigation path should be visible
-    const nav = page.getByRole("link", { name: /workspaces/i });
+    // Engagements is in the sidebar nav (replaced Workspaces in Sprint UI-2)
+    const nav = page.getByRole("link", { name: /^engagements$/i });
     await expect(nav.first()).toBeVisible({ timeout: 5_000 });
     await nav.first().click();
-    await expect(page).toHaveURL(/\/workspaces|\/dashboard/, { timeout: 5_000 });
-    void link; void btn; // unused but checked above
+    await expect(page).toHaveURL(/\/engagements|\/dashboard/, { timeout: 5_000 });
   });
 });
 
@@ -136,14 +131,14 @@ test.describe("ST-6.4 — Version Stamp", () => {
     await expect(page.getByText(/^v\d+\.\d+\.\d+$/)).toBeVisible({ timeout: 5_000 });
   });
 
-  test("sidebar memiliki semua nav links: Dashboard, Workspaces, Knowledge, Settings", async ({
+  test("sidebar memiliki semua nav links: Dashboard, Engagements, Knowledge, Settings", async ({
     page,
   }) => {
     await page.goto("/dashboard");
 
     // icon-nav + sidebar both render these links — use .first() to avoid strict-mode violation
     await expect(page.getByRole("link", { name: /dashboard/i }).first()).toBeVisible();
-    await expect(page.getByRole("link", { name: /workspaces/i }).first()).toBeVisible();
+    await expect(page.getByRole("link", { name: /^engagements$/i }).first()).toBeVisible();
     await expect(page.getByRole("link", { name: /knowledge/i }).first()).toBeVisible();
     await expect(page.getByRole("link", { name: /settings/i }).first()).toBeVisible();
   });

@@ -245,6 +245,20 @@ export function useApproveAction(id: string) {
   });
 }
 
+export function useStopEngagement(id: string) {
+  const qc = useQueryClient();
+  return useMutation<{ status: string }, Error, void>({
+    mutationFn: async () => {
+      const res = await apiClient.patch<{ status: string }>(`/api/v1/engagements/${id}/stop`);
+      return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["engagement", id] });
+      qc.invalidateQueries({ queryKey: ["engagements"] });
+    },
+  });
+}
+
 export function useUpdateEngagementMode(id: string) {
   const qc = useQueryClient();
   return useMutation<{ status: string; mode: string; auto_resumed: boolean }, Error, "semi_auto" | "agentic">({

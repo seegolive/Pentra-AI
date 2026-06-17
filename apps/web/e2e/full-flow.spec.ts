@@ -137,11 +137,11 @@ test.describe("3 — Dashboard", () => {
     await expect(heading).toBeVisible({ timeout: 5_000 });
   });
 
-  test("dashboard sidebar nav link ke /workspaces berfungsi", async ({ page }) => {
+  test("dashboard sidebar nav link ke /engagements berfungsi", async ({ page }) => {
     await page.goto("/dashboard");
     // icon-nav + sidebar both render this link — use .first() to avoid strict-mode violation
-    await page.getByRole("link", { name: /workspaces/i }).first().click();
-    await expect(page).toHaveURL("/workspaces", { timeout: 5_000 });
+    await page.getByRole("link", { name: /^engagements$/i }).first().click();
+    await expect(page).toHaveURL("/engagements", { timeout: 5_000 });
   });
 });
 

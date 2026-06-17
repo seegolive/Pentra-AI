@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FeedEvent, ApprovalRequest } from "../lib/types";
 import { useAuthStore } from "../lib/authStore";
+import { addNotification } from "./useNotifications";
 
 const _apiUrl = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 const WS_URL = import.meta.env.VITE_WS_URL ?? _apiUrl.replace(/^http/, "ws");
@@ -10,9 +11,41 @@ function processEvent(
   event: FeedEvent,
   setEvents: React.Dispatch<React.SetStateAction<FeedEvent[]>>,
   setPendingApproval: React.Dispatch<React.SetStateAction<ApprovalRequest | null>>,
+  engagementId?: string,
 ) {
   if (event.type === "AWAITING_APPROVAL" && event.data) {
     setPendingApproval(event.data as unknown as ApprovalRequest);
+    const phase = (event.data as Record<string, unknown>)["phase"] as string | undefined;
+    addNotification({
+      type: "AWAITING_APPROVAL",
+      title: "Approval Required",
+      description: phase,
+      engagementId,
+    });
+  }
+  if (event.type === "FINDINGS_UPDATED") {
+    const count = event.count ?? 0;
+    addNotification({
+      type: "FINDING_CONFIRMED",
+      title: "New Findings",
+      description: `${count} finding(s) discovered`,
+      engagementId,
+    });
+  }
+  if (event.type === "ENGAGEMENT_COMPLETED") {
+    addNotification({
+      type: "ENGAGEMENT_COMPLETED",
+      title: "Engagement Complete",
+      engagementId,
+    });
+  }
+  if (event.type === "error") {
+    addNotification({
+      type: "AGENT_ERROR",
+      title: "Agent Error",
+      description: event.message,
+      engagementId,
+    });
   }
   if (event.type !== "ping") {
     setEvents((prev) => [event, ...prev].slice(0, MAX_EVENTS));
@@ -76,10 +109,10 @@ export function useEngagementFeed(engagementId: string | undefined) {
         const event: FeedEvent = JSON.parse(e.data);
         // Skip replayed events that are already loaded via REST to avoid duplicates
         if (loadedRef.current === engagementId) {
-          processEvent(event, setEvents, setPendingApproval);
+          processEvent(event, setEvents, setPendingApproval, engagementId);
         } else {
           // REST hasn't returned yet — accept WS events (incl. replay) as-is
-          processEvent(event, setEvents, setPendingApproval);
+          processEvent(event, setEvents, setPendingApproval, engagementId);
         }
       } catch {
         // ignore malformed frames

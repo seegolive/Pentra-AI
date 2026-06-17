@@ -1,7 +1,7 @@
+import { useState } from "react";
 import { NavLink, useNavigate, useLocation, Outlet } from "react-router-dom";
 import {
   BookOpen,
-  FolderOpen,
   Target,
   ShieldCheck,
   ChevronRight,
@@ -10,10 +10,18 @@ import {
   Users,
   Activity,
   LayoutDashboard,
+  Map,
+  BarChart2,
+  OctagonX,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useAuthStore } from "../lib/authStore";
 import { APP_VERSION } from "../lib/version";
+import { useEngagements, useFindings } from "../lib/api";
+import { NotificationBell } from "./NotificationBell";
+import { StopAllModal } from "./StopAllModal";
+import { EngagementOverviewCard } from "./EngagementOverviewCard";
+import type { Engagement } from "../lib/types";
 
 interface NavItem {
   to: string;
@@ -24,9 +32,10 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
-  { to: "/workspaces", label: "Workspaces", icon: <FolderOpen className="h-4 w-4" /> },
-  { to: "/engagements", label: "All Engagements", icon: <Target className="h-4 w-4" /> },
+  { to: "/engagements", label: "Engagements", icon: <Target className="h-4 w-4" /> },
   { to: "/knowledge", label: "Knowledge Base", icon: <BookOpen className="h-4 w-4" /> },
+  { to: "/attack-surface", label: "Attack Surface", icon: <Map className="h-4 w-4" /> },
+  { to: "/trends", label: "Trends", icon: <BarChart2 className="h-4 w-4" /> },
   { to: "/settings", label: "Settings", icon: <Settings className="h-4 w-4" /> },
 ];
 
@@ -93,10 +102,57 @@ export function SidebarEngagementItem({ label, status, active, onClick }: Sideba
   );
 }
 
+// ── Engagement Detail Overview (sidebar card) ─────────────────────────────────
+
+function ActiveEngagementCard({ engagementId }: { engagementId: string }) {
+  const { data: engagements } = useEngagements();
+  const eng = engagements?.find((e) => e.id === engagementId);
+  const { data: findings = [] } = useFindings(engagementId);
+
+  if (!eng) return null;
+  return <EngagementOverviewCard engagement={eng} findings={findings} />;
+}
+
+// ── Stop Running Button (topbar) ──────────────────────────────────────────────
+
+function StopRunningButton({
+  count,
+  onClick,
+}: {
+  count: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-1.5 rounded-ds-md border border-pentra-severity-critical/40 px-2.5 py-1.5 text-[12px] font-medium text-pentra-severity-critical transition-colors hover:bg-pentra-severity-critical/10"
+      title={`${count} engagement(s) running — click to stop`}
+    >
+      <OctagonX className="h-3.5 w-3.5" />
+      Stop ({count})
+    </button>
+  );
+}
+
+// ── App Shell ─────────────────────────────────────────────────────────────────
+
+const RUNNING_STATUSES: Engagement["status"][] = ["active", "awaiting_approval", "planning"];
+
 export function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuthStore();
+  const [stopModalOpen, setStopModalOpen] = useState(false);
+
+  // Get engagement ID from URL for overview card
+  const engagementDetailMatch = location.pathname.match(/^\/engagements\/([^/]+)$/);
+  const currentEngagementId = engagementDetailMatch?.[1] ?? null;
+
+  const { data: allEngagements = [] } = useEngagements();
+  const runningEngagements = allEngagements.filter((e) =>
+    RUNNING_STATUSES.includes(e.status)
+  );
 
   const adminNav: NavItem[] = user?.is_admin
     ? [
@@ -106,7 +162,7 @@ export function AppShell() {
       ]
     : [];
 
-  const isEngagementDetail = location.pathname.startsWith("/engagements/");
+  const isEngagementDetail = location.pathname.startsWith("/engagements/") && currentEngagementId !== null;
   const allNav = [...NAV_ITEMS, ...adminNav];
 
   const handleLogout = () => {
@@ -116,6 +172,7 @@ export function AppShell() {
 
   return (
     <div className="grid h-screen grid-cols-shell overflow-hidden bg-pentra-bg-void font-ui text-pentra-text-primary">
+      {/* Icon Nav */}
       <nav
         aria-label="Primary navigation"
         className="flex min-w-icon-nav flex-col items-center border-r border-pentra-border bg-pentra-bg-panel px-ds-2 py-ds-3"
@@ -164,6 +221,7 @@ export function AppShell() {
         </button>
       </nav>
 
+      {/* Sidebar */}
       <aside className="flex min-w-sidebar flex-col overflow-hidden border-r border-pentra-border bg-pentra-bg-base">
         <div className="flex items-center justify-between border-b border-pentra-border px-ds-4 py-ds-4">
           <button
@@ -180,8 +238,8 @@ export function AppShell() {
           </button>
           <button
             type="button"
-            onClick={() => navigate("/engagements/new")}
-            title="Create engagement"
+            onClick={() => navigate("/scan/new")}
+            title="New scan"
             className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-ds-sm bg-pentra-accent text-sm font-bold text-white transition-opacity hover:opacity-80"
           >
             +
@@ -189,7 +247,7 @@ export function AppShell() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-ds-2">
-          <SidebarSection label="Workspace" />
+          <SidebarSection label="Navigation" />
           <nav aria-label="Workspace navigation" className="space-y-0.5">
             {NAV_ITEMS.map((item) => (
               <NavLink
@@ -236,6 +294,13 @@ export function AppShell() {
           )}
         </div>
 
+        {/* Engagement overview card when on engagement detail page */}
+        {currentEngagementId && (
+          <div className="border-t border-pentra-border pt-ds-2">
+            <ActiveEngagementCard engagementId={currentEngagementId} />
+          </div>
+        )}
+
         <div className="space-y-ds-2 border-t border-pentra-border px-ds-3 py-ds-3">
           {user && (
             <div className="flex min-w-0 items-center gap-ds-2 px-ds-1">
@@ -253,17 +318,40 @@ export function AppShell() {
         </div>
       </aside>
 
+      {/* Main content */}
       <main className="flex min-w-0 flex-col overflow-hidden bg-pentra-bg-base">
-        {isEngagementDetail && (
-          <div className="flex h-9 shrink-0 items-center gap-ds-1 border-b border-pentra-border bg-pentra-bg-panel px-ds-4 text-xs text-pentra-text-secondary">
-            <ChevronRight className="h-3 w-3 opacity-40" />
-            <span>Engagement detail</span>
+        {/* Topbar */}
+        <header className="flex h-11 flex-shrink-0 items-center border-b border-pentra-border bg-pentra-bg-panel px-6 gap-3">
+          <div className="flex flex-1 items-center gap-ds-1">
+            {isEngagementDetail && (
+              <>
+                <ChevronRight className="h-3 w-3 opacity-40" />
+                <span className="text-xs text-pentra-text-secondary">Engagement detail</span>
+              </>
+            )}
           </div>
-        )}
+          <div className="flex items-center gap-2">
+            {runningEngagements.length > 0 && (
+              <StopRunningButton
+                count={runningEngagements.length}
+                onClick={() => setStopModalOpen(true)}
+              />
+            )}
+            <NotificationBell />
+          </div>
+        </header>
+
         <div className="flex min-h-0 flex-1 flex-col overflow-auto">
           <Outlet />
         </div>
       </main>
+
+      {/* Stop All Modal */}
+      <StopAllModal
+        open={stopModalOpen}
+        onClose={() => setStopModalOpen(false)}
+        runningEngagements={runningEngagements}
+      />
     </div>
   );
 }

@@ -15,6 +15,11 @@ import AdminUsersPage from "./pages/AdminUsersPage";
 import WorkerHealthPage from "./pages/WorkerHealthPage";
 import SetupPage from "./pages/SetupPage";
 import SettingsPage from "./pages/SettingsPage";
+import ScanWizard from "./pages/ScanWizard";
+import AttackSurfacePage from "./pages/AttackSurfacePage";
+import ApiVaultPage from "./pages/ApiVaultPage";
+import GFPatternsPage from "./pages/GFPatternsPage";
+import TrendsPage from "./pages/TrendsPage";
 
 function App() {
   return (
@@ -40,6 +45,12 @@ function App() {
               <Route path="/admin/users" element={<AdminUsersPage />} />
               <Route path="/admin/workers" element={<WorkerHealthPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              {/* Sprint UI-2 new routes */}
+              <Route path="/scan/new" element={<ScanWizard />} />
+              <Route path="/attack-surface" element={<AttackSurfacePage />} />
+              <Route path="/api-vault" element={<ApiVaultPage />} />
+              <Route path="/gf-patterns" element={<GFPatternsPage />} />
+              <Route path="/trends" element={<TrendsPage />} />
             </Route>
           </Route>
 
@@ -53,5 +64,3 @@ function App() {
 }
 
 export default App;
-
-
