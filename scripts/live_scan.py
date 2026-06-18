@@ -113,13 +113,15 @@ def _build_initial_state(domain: str, engagement_id: str, mode: str, auth_creden
             "Use Burp Collaborator for OOB detection where possible."
         ),
         "auth_credentials": auth_credentials,
+        "js_crawl_result": {},
     }
 
 
 async def run_live_scan(domain: str, mode: str = "agentic", auth_credentials: dict | None = None, extra_endpoints: list | None = None) -> None:
-    """Run full recon → vuln_hunt pipeline live against target domain."""
+    """Run full recon → crawler → vuln_hunt pipeline live against target domain."""
     # Late imports so env vars are already set
     from pentra_agent.nodes.recon_node import recon_node
+    from pentra_agent.nodes.crawler_node import crawler_node
     from pentra_agent.nodes.vuln_hunt_node import vuln_hunt_node
 
     engagement_id = str(uuid.uuid4())
@@ -180,6 +182,28 @@ async def run_live_scan(domain: str, mode: str = "agentic", auth_credentials: di
         print("\n  Discovered endpoints (first 20):")
         for ep in endpoints[:20]:
             print(f"    {ep.get('method','GET'):7} {ep.get('url', ep)}")
+
+    # ── Phase 1.5: JS/SPA CRAWLER ────────────────────────────────────────────
+    _banner("PHASE 1.5: JS/SPA CRAWLER  (Playwright — intercept XHR/fetch, discover hidden endpoints)")
+    t_crawl = asyncio.get_event_loop().time()
+    try:
+        crawl_update = await crawler_node(state)
+        state = {**state, **crawl_update}
+        crawl_result = state.get("js_crawl_result", {})
+        js_endpoints = crawl_result.get("endpoints", [])
+        skipped = crawl_result.get("skipped", False)
+        elapsed_crawl = asyncio.get_event_loop().time() - t_crawl
+        if skipped:
+            reason = crawl_result.get("error", "no live hosts")
+            print(f"  [crawler_node] Skipped: {reason}")
+        else:
+            print(f"  [crawler_node] JS endpoints discovered: {len(js_endpoints)}")
+            print(f"  Elapsed: {elapsed_crawl:.1f}s")
+            for ep in js_endpoints[:10]:
+                print(f"    {ep.get('method','GET'):7} {ep.get('url', ep)}")
+    except Exception as exc:
+        log.warning("crawler_node failed (non-fatal): %s", exc)
+        print(f"  [crawler_node] Error (non-fatal): {exc}")
 
     # ── Phase 2: VULN HUNT ────────────────────────────────────────────────────
     _banner("PHASE 2: VULN HUNT  (nuclei → ffuf → Burp Pro scanner → LLM exploit testing)")
