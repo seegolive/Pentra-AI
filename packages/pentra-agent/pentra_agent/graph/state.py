@@ -124,3 +124,7 @@ class PentraState(TypedDict):
     # None = unauthenticated scan (default).
     # Use AuthCredentials from pentra_tools.auth.session_manager.
     auth_credentials: dict | None  # serialised AuthCredentials dict
+
+    # ── JS/SPA crawler (Sprint 30.5) ──────────────────────────────────
+    # Populated by crawler_node; read by vuln_hunt_node for extra endpoints.
+    js_crawl_result: dict  # {endpoints: [...], summary: [...]}

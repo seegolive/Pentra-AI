@@ -1,5 +1,5 @@
 # Pentra AI — Progress Report
-> Updated: 2026-06-17 | Tag: `v1.0.0` | Branch: `main`
+> Updated: 2026-06-18 | Tag: `v1.0.0` | Branch: `main` | Sprint 30 Active
 
 ---
 
@@ -24,13 +24,13 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 
 | Metrik | Nilai |
 |--------|-------|
-| **Test suite** | **422 passing** (165 pentra-tools + 151 pentra-agent + 25 pentra-knowledge + 18 apps/worker + 63 apps/api), 0 failed |
+| **Test suite** | **496 passing** (225 pentra-tools + 156 pentra-agent + 25 pentra-knowledge + 27 apps/worker + 63 apps/api), 0 failed |
 | **Playwright E2E** | **90 tests** (8 spec files), 0 failed |
 | **Test files** | 47 unit + 8 e2e spec files |
 | **KB records** | **8,341** (Live API as of 2026-06-15; HackerOne — sumber tunggal, lihat keputusan Sprint 29) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
 | **Git tag** | `v1.0.0` — `main` |
-| **Sprint aktif** | v1.0.0 RELEASED — Sprint 18-29 + UI Polish + UI-2 + UI-3 COMPLETE |
+| **Sprint aktif** | Sprint 30 — Enterprise scan quality (30.1-30.5 COMPLETE) |
 | **LLM** | qwen2.5-coder:32b (default), qwen3:8b (fast), bge-m3 (embedding), **pentra-ft** (Qwen2.5-Coder-7B fine-tuned, 4.4GB Q4_K_M) |
 
 Live API: 8,341 records as of 2026-06-15.
@@ -254,12 +254,12 @@ curl -X POST http://localhost:8001/api/v1/admin/knowledge/bulk-import \
 
 | Package | Tests | Files |
 |---------|-------|-------|
-| pentra-tools | 165 passed, 3 skipped | 16 files |
-| pentra-agent | 151 passed, 4 skipped | 20 files |
+| pentra-tools | 225 passed, 3 skipped | 20 files |
+| pentra-agent | 156 passed, 4 skipped | 21 files |
 | pentra-knowledge | 25 passed | 3 files |
-| apps/worker | 18 passed | 2 files |
+| apps/worker | 27 passed | 3 files |
 | apps/api | 63 passed | 6 files |
-| **Total unit** | **422 passing, 0 failed** | 47 files |
+| **Total unit** | **496 passing, 0 failed** | 53 files |
 
 Note: +25 `pentra-knowledge` tests are now included in the v1.0 total.
 
@@ -560,4 +560,33 @@ Kesimpulan:
 
 ---
 
-*Updated: 2026-06-17 — v1.0.0 RELEASED + UI Polish + UI-2 + UI-3 complete: 422 unit tests, 90/90 Playwright E2E, Sprint 18-29 + UI-1 + UI-2 + UI-3 selesai.*
+---
+
+### Sprint 30 ✅ COMPLETE (5/5 tasks)
+
+| Task | Status | Detail |
+|------|--------|--------|
+| 30.1 — Nuclei Template Auto-Update | ✅ | `apps/worker/app/tasks/maintenance.py` — Celery task `update_nuclei_templates`, daily 02:00 UTC beat schedule, broadcast `TEMPLATES_UPDATED` via WS; 9 tests |
+| 30.2 — Payload Mutation Engine | ✅ | `pentra_tools/mutation/payload_mutator.py` — PayloadMutator, 4 kategori (URL encoding, case variation, comment injection, WAF-specific: cloudflare/akamai/f5/imperva/generic); integrated ke vuln_hunt_node payload loop; 20 tests |
+| 30.3 — Behavioral Response Baseline | ✅ | `pentra_tools/analysis/response_baseline.py` — ResponseBaseline, 6-dimensi scoring (DB error +50, timing 3× +40, length delta +30, status change +25, error page +20, content hash +15), threshold=40; integrated ke vuln_hunt_node anomaly detection; 15 tests |
+| 30.4 — Proof-Based SQLi Verification | ✅ | `pentra_tools/scanners/sqli_prover.py` — SQLiProver, 3 teknik proof (boolean_differential conf=90, error_based conf=95, time_differential conf=85); integrated ke vuln_hunt_node finding confirmation; 15 tests |
+| 30.5 — JS/SPA Crawler Node | ✅ | `pentra_tools/crawlers/js_crawler.py` — JSCrawler Playwright-based, graceful fallback jika Playwright tidak ada; `crawler_node.py` di LangGraph pipeline antara recon dan vuln_hunt; graph builder updated; 10+5 tests |
+
+**Test Delta Sprint 30:**
+- pentra-tools: 165 → **225** (+60: 20 PayloadMutator + 15 ResponseBaseline + 15 SQLiProver + 10 JSCrawler)
+- pentra-agent: 151 → **156** (+5: crawler_node)
+- apps/worker: 18 → **27** (+9: maintenance task)
+- **Total: 422 → 496 passing, 0 failed**
+
+**Pipeline baru (Sprint 30):**
+```
+recon → hitl_recon → CRAWLER (JS/SPA) → vuln_hunt
+                                              ↓
+                              PayloadMutator (WAF bypass variants)
+                                              ↓
+                              ResponseBaseline (multi-dim anomaly)
+                                              ↓
+                              SQLiProver (proof-based verification)
+```
+
+*Updated: 2026-06-18 — Sprint 30 complete: 496 unit tests, 90/90 Playwright E2E, enterprise scan quality (WAF bypass, behavioral baseline, proof-based SQLi, JS crawler).*

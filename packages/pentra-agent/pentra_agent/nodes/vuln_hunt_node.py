@@ -25,6 +25,26 @@ from pentra_agent.audit import write_audit_log
 from pentra_shared.types import normalize_severity
 
 try:
+    from pentra_tools.mutation.payload_mutator import PayloadMutator as _PayloadMutator
+    _PAYLOAD_MUTATOR = _PayloadMutator()
+except ImportError:
+    _PAYLOAD_MUTATOR = None  # type: ignore[assignment]
+
+try:
+    from pentra_tools.analysis.response_baseline import ResponseBaseline as _ResponseBaseline
+    _RESPONSE_BASELINE_AVAILABLE = True
+except ImportError:
+    _ResponseBaseline = None  # type: ignore[assignment,misc]
+    _RESPONSE_BASELINE_AVAILABLE = False
+
+try:
+    from pentra_tools.scanners.sqli_prover import SQLiProver as _SQLiProver
+    _SQLI_PROVER_AVAILABLE = True
+except ImportError:
+    _SQLiProver = None  # type: ignore[assignment,misc]
+    _SQLI_PROVER_AVAILABLE = False
+
+try:
     from pentra_tools.burp.client import BurpMCPClient
     from pentra_tools.burp.exceptions import BurpConnectionError, BurpNotProError
     _BURP_AVAILABLE = True
@@ -1657,6 +1677,22 @@ async def _run_llm_burp_active_testing(
                 log.debug("[llm_burp] baseline request failed for %s: %s", cand_url, exc)
                 original_response = ""
 
+            # ── ResponseBaseline: establish per-endpoint behavioral baseline ───
+            _endpoint_baseline = None
+            if _RESPONSE_BASELINE_AVAILABLE and _ResponseBaseline is not None:
+                try:
+                    _endpoint_baseline = _ResponseBaseline()
+                    _endpoint_baseline.establish_from_strings(
+                        url=cand_url,
+                        param=param_name,
+                        body=original_response,
+                        status_code=200,
+                        elapsed_ms=_baseline_time * 1000,
+                    )
+                except Exception as _rbe:
+                    log.debug("[vuln_hunt] ResponseBaseline establish failed (non-fatal): %s", _rbe)
+                    _endpoint_baseline = None
+
             # ── Task 18.13: Incremental skip gate ────────────────────────────
             # Skip endpoint if response fingerprint matches cached value — unchanged.
             if _incremental.is_unchanged(cand_url, param_name, original_response):
@@ -1810,8 +1846,36 @@ async def _run_llm_burp_active_testing(
                     )
                     payloads = list(payloads) + _bypass_additions
     
+            # ── PayloadMutator: generate WAF-bypass variants per payload ─────────
+            if _PAYLOAD_MUTATOR is not None:
+                _waf_type = state.get("waf_info", {}).get("waf_type") if isinstance(state, dict) else None
+                _mutated_specs: list[dict] = []
+                for _ps in (payloads or []):
+                    _base = str(_ps.get("injected_value", _ps.get("payload", "")))
+                    _ttype = _ps.get("test_type", "")
+                    if not _base or _ps.get("uses_collaborator") or "time" in _ttype:
+                        _mutated_specs.append(_ps)
+                        continue
+                    _mr = _PAYLOAD_MUTATOR.mutate(_base, waf_type=_waf_type)
+                    _mutated_specs.append(_ps)
+                    for _variant in _mr.mutations[:3]:   # cap at 3 extra variants per payload
+                        if _variant != _base:
+                            _mutated_specs.append({
+                                **_ps,
+                                "injected_value": _variant,
+                                "payload": _variant,
+                                "test_type": _ttype + "_mutated",
+                                "detection_hint": f"PayloadMutator variant (WAF={_waf_type}). " + _ps.get("detection_hint", ""),
+                            })
+                if len(_mutated_specs) > len(payloads or []):
+                    log.info(
+                        "[llm_burp] PayloadMutator expanded %d → %d payloads for %s[%s]",
+                        len(payloads or []), len(_mutated_specs), param_name, param_location,
+                    )
+                    payloads = _mutated_specs
+
             log.info("[llm_burp] Testing %d payloads on %s[%s]", len(payloads), param_name, param_location)
-    
+
             # Send each payload
             for payload_spec in payloads[:_MAX_PAYLOADS_PER_CANDIDATE]:  # preset-controlled cap
                 test_payload = str(payload_spec.get("injected_value", payload_spec.get("payload", "")))
@@ -1870,6 +1934,27 @@ async def _run_llm_burp_active_testing(
                     baseline_time_s=_baseline_time,
                     test_time_s=_test_time,
                 )
+
+                # ResponseBaseline: multi-dimensional behavioral scoring supplement
+                if _endpoint_baseline is not None:
+                    try:
+                        _rbs = _endpoint_baseline.score_from_strings(
+                            url=cand_url,
+                            param=param_name,
+                            test_body=test_response,
+                            test_elapsed_ms=_test_time * 1000,
+                        )
+                        if _rbs.confirmed and _rbs.evidence:
+                            anomalies = list(anomalies) + [
+                                f"BASELINE_ANOMALY[{_rbs.score}]: {e}" for e in _rbs.evidence
+                            ]
+                            log.info(
+                                "[baseline] Score %d (confirmed=%s) for %s[%s]",
+                                _rbs.score, _rbs.confirmed, cand_url, param_name,
+                            )
+                    except Exception as _rbe:
+                        log.debug("[vuln_hunt] ResponseBaseline scoring failed (non-fatal): %s", _rbe)
+
                 if anomalies:
                     log.info("[llm_burp] Anomalies detected for %s[%s]: %s", cand_url, param_name, anomalies)
                     detection_hint = (
@@ -1923,6 +2008,51 @@ async def _run_llm_burp_active_testing(
                 if analysis.get("confirmed"):
                     vuln_class = analysis.get("vuln_class", test_type.upper())
                     severity = normalize_severity(analysis.get("severity", "medium"))
+
+                    # ── SQLiProver: proof-based verification for SQLi ──────────
+                    _proof_metadata: dict = {}
+                    _is_sqli = any(kw in (vuln_class or "").lower() for kw in ("sqli", "sql_injection", "sql"))
+                    if _SQLI_PROVER_AVAILABLE and _SQLiProver is not None and _is_sqli:
+                        try:
+                            import httpx as _httpx_prover
+                            _db_type = None
+                            if tech_stack:
+                                _ts_lower = [t.lower() for t in tech_stack]
+                                if any("mssql" in t or "asp" in t or "sqlserver" in t for t in _ts_lower):
+                                    _db_type = "mssql"
+                                elif any("mysql" in t or "php" in t for t in _ts_lower):
+                                    _db_type = "mysql"
+                                elif any("postgres" in t for t in _ts_lower):
+                                    _db_type = "postgresql"
+                            async with _httpx_prover.AsyncClient(
+                                verify=False, follow_redirects=True, timeout=12.0
+                            ) as _prover_client:
+                                _prover = _SQLiProver(timeout=10.0)
+                                _proof = await _prover.prove(
+                                    _prover_client, cand_url, param_name,
+                                    db_type=_db_type, original_value=original_value,
+                                )
+                            _proof_metadata = {
+                                "proof_type": _proof.proof_type,
+                                "proof_evidence": _proof.evidence,
+                                "proof_confidence": _proof.confidence,
+                                "proof_confirmed": _proof.confirmed,
+                                "proof_requests": _proof.request_count,
+                            }
+                            if not _proof.confirmed:
+                                log.info(
+                                    "[sqli_prover] LLM confirmed but prover inconclusive (%s) — downgrading to CANDIDATE for %s[%s]",
+                                    _proof.proof_type, cand_url, param_name,
+                                )
+                                _proof_metadata["status"] = "CANDIDATE"
+                            else:
+                                log.info(
+                                    "[sqli_prover] PROOF OK (%s, conf=%d) for %s[%s]",
+                                    _proof.proof_type, _proof.confidence, cand_url, param_name,
+                                )
+                        except Exception as _pe:
+                            log.debug("[sqli_prover] proof attempt failed (non-fatal): %s", _pe)
+
                     log.info(
                         "[llm_burp] CONFIRMED [%s] %s param=%r payload=%r",
                         severity.upper(), vuln_class, param_name, test_payload[:50],
@@ -1946,6 +2076,7 @@ async def _run_llm_burp_active_testing(
                         "param_name": param_name,
                         "param_location": param_location,
                         "payload": test_payload,
+                        **(_proof_metadata if _proof_metadata else {}),
                     }
                     confirmed_findings.append(finding)
                     # Task 18.10: record confirmed finding in LocatedMemory

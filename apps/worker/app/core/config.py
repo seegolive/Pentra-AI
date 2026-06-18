@@ -86,6 +86,10 @@ class WorkerSettings(BaseSettings):
                     "task": "app.tasks.nuclei_update.update_nuclei_templates",
                     "schedule": 604800.0,  # every 7 days (Sunday 05:00 UTC)
                 },
+                "nuclei-template-update-daily": {
+                    "task": "tasks.maintenance.update_nuclei_templates",
+                    "schedule": 86400.0,   # every 24 hours (02:00 UTC daily)
+                },
                 "cve-enrichment-daily": {
                     "task": "app.tasks.cve_enrichment.enrich_pending_findings",
                     "schedule": 86400.0,   # every 24 hours

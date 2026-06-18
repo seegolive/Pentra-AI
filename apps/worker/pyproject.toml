@@ -22,3 +22,9 @@ packages = ["app"]
 [tool.uv.sources]
 pentra-knowledge = { path = "../../packages/pentra-knowledge", editable = true }
 pentra-shared    = { path = "../../packages/pentra-shared",    editable = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.0",
+    "pytest-asyncio>=1.4.0",
+]

@@ -21,6 +21,7 @@ from pentra_agent.nodes.hitl_nodes import (
     hitl_plan_review,
     hitl_recon_review,
 )
+from pentra_agent.nodes.crawler_node import crawler_node
 from pentra_agent.nodes.osint_node import osint_node
 from pentra_agent.nodes.plan_node import plan_node
 from pentra_agent.nodes.recon_node import recon_node
@@ -110,6 +111,7 @@ def build_pentra_graph(checkpointer=None):
     graph.add_node("hitl_plan", hitl_plan_review)
     graph.add_node("recon", recon_node)
     graph.add_node("hitl_recon", hitl_recon_review)
+    graph.add_node("crawler", crawler_node)
     graph.add_node("vuln_hunt", vuln_hunt_node)
     graph.add_node("triage", triage_node)
     graph.add_node("hitl_exploit", hitl_exploit_review)
@@ -124,8 +126,9 @@ def build_pentra_graph(checkpointer=None):
     graph.add_conditional_edges(
         "hitl_recon",
         route_after_recon,
-        {"vuln_hunt": "vuln_hunt", "report": "report"},
+        {"vuln_hunt": "crawler", "report": "report"},
     )
+    graph.add_edge("crawler", "vuln_hunt")
     graph.add_edge("vuln_hunt", "triage")
     graph.add_conditional_edges(
         "triage",
