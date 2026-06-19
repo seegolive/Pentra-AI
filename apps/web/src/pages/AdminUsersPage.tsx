@@ -273,11 +273,10 @@ export default function AdminUsersPage() {
   const [resetTarget, setResetTarget] = useState<AdminUser | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
 
-  if (!currentUser?.is_admin) return <Navigate to="/" replace />;
-
   const { data: users, isLoading } = useQuery<AdminUser[]>({
     queryKey: ["admin-users"],
     queryFn: fetchUsers,
+    enabled: !!currentUser?.is_admin,
   });
 
   const toggleMutation = useMutation({
@@ -299,6 +298,8 @@ export default function AdminUsersPage() {
       setDeleteConfirm(null);
     },
   });
+
+  if (!currentUser?.is_admin) return <Navigate to="/" replace />;
 
   return (
     <div className="flex-1 overflow-auto p-6">

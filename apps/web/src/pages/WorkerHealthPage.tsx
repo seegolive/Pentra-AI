@@ -191,8 +191,6 @@ function ActiveTasksTable({ tasks }: { tasks: ActiveTask[] }) {
 export default function WorkerHealthPage() {
   const user = useAuthStore((s) => s.user);
 
-  if (!user?.is_admin) return <Navigate to="/" replace />;
-
   const { data, isLoading, isError, refetch, isFetching } =
     useQuery<WorkerHealthResponse>({
       queryKey: ["worker-health"],
@@ -202,9 +200,12 @@ export default function WorkerHealthPage() {
         });
         return res.data;
       },
-      refetchInterval: 10_000,   // auto-refresh every 10 s
+      refetchInterval: 10_000,
       retry: 1,
+      enabled: !!user?.is_admin,
     });
+
+  if (!user?.is_admin) return <Navigate to="/" replace />;
 
   return (
     <div className="flex-1 w-full p-8">

@@ -443,6 +443,40 @@ function ExpandedDetail({ finding }: { finding: Finding }) {
   );
 }
 
+// ── Th helper — defined outside FindingsTable to avoid component-during-render ──
+
+function Th({
+  field,
+  children,
+  className,
+  sortField,
+  sortDir,
+  onSort,
+}: {
+  field: SortField;
+  children: React.ReactNode;
+  className?: string;
+  sortField: SortField;
+  sortDir: SortDir;
+  onSort: (field: SortField) => void;
+}) {
+  return (
+    <th
+      className={cn(
+        "px-3 py-2 text-left text-[11px] font-medium text-muted-foreground cursor-pointer select-none",
+        "hover:text-foreground transition-colors whitespace-nowrap",
+        className,
+      )}
+      onClick={() => onSort(field)}
+    >
+      <span className="inline-flex items-center gap-1">
+        {children}
+        <SortIcon active={sortField === field} dir={sortDir} />
+      </span>
+    </th>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function FindingsTable({ engagementId, findings }: FindingsTableProps) {
@@ -468,7 +502,7 @@ export function FindingsTable({ engagementId, findings }: FindingsTableProps) {
     .filter((f) => filterStatus === "all" || f.status === filterStatus);
 
   const sorted = [...filtered].sort((a, b) => {
-    let cmp = 0;
+    let cmp: number;
     if (sortField === "severity") {
       cmp =
         (SEVERITY_ORDER[a.severity] ?? 9) -
@@ -488,30 +522,6 @@ export function FindingsTable({ engagementId, findings }: FindingsTableProps) {
     acc[f.severity] = (acc[f.severity] ?? 0) + 1;
     return acc;
   }, {});
-
-  const Th = ({
-    field,
-    children,
-    className,
-  }: {
-    field: SortField;
-    children: React.ReactNode;
-    className?: string;
-  }) => (
-    <th
-      className={cn(
-        "px-3 py-2 text-left text-[11px] font-medium text-muted-foreground cursor-pointer select-none",
-        "hover:text-foreground transition-colors whitespace-nowrap",
-        className,
-      )}
-      onClick={() => toggleSort(field)}
-    >
-      <span className="inline-flex items-center gap-1">
-        {children}
-        <SortIcon active={sortField === field} dir={sortDir} />
-      </span>
-    </th>
-  );
 
   return (
     <div className="flex flex-col h-full gap-3">
@@ -565,17 +575,17 @@ export function FindingsTable({ engagementId, findings }: FindingsTableProps) {
           <table className="w-full text-sm border-collapse">
             <thead className="sticky top-0 bg-background/95 backdrop-blur-sm z-10 border-b border-border">
               <tr>
-                <Th field="severity" className="w-24">
+                <Th field="severity" className="w-24" sortField={sortField} sortDir={sortDir} onSort={toggleSort}>
                   Severity
                 </Th>
-                <Th field="title">Title / URL</Th>
-                <Th field="vuln_class" className="w-36">
+                <Th field="title" sortField={sortField} sortDir={sortDir} onSort={toggleSort}>Title / URL</Th>
+                <Th field="vuln_class" className="w-36" sortField={sortField} sortDir={sortDir} onSort={toggleSort}>
                   Vuln Class
                 </Th>
-                <Th field="status" className="w-36">
+                <Th field="status" className="w-36" sortField={sortField} sortDir={sortDir} onSort={toggleSort}>
                   Status
                 </Th>
-                <Th field="cvss_score" className="w-20">
+                <Th field="cvss_score" className="w-20" sortField={sortField} sortDir={sortDir} onSort={toggleSort}>
                   CVSS
                 </Th>
                 <th className="px-3 py-2 w-20" />

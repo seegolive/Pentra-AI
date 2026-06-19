@@ -94,7 +94,7 @@ function CreateEngagementForm({ workspaceId, onClose }: CreateEngagementFormProp
     setH1Error(null);
     try {
       const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
-      const token = (JSON.parse(localStorage.getItem("pentra-auth") ?? "{}") as any)?.state?.accessToken as string | undefined;
+      const token = (JSON.parse(localStorage.getItem("pentra-auth") ?? "{}") as { state?: { accessToken?: string } })?.state?.accessToken;
       const res = await fetch(`${BASE}/api/v1/h1/programs/${encodeURIComponent(handle)}/scope`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -106,8 +106,8 @@ function CreateEngagementForm({ workspaceId, onClose }: CreateEngagementFormProp
       setInScopeRaw(data.in_scope.join("\n"));
       setOutOfScopeRaw(data.out_of_scope.join("\n"));
       if (!name.trim() && data.program_name) setName(data.program_name);
-    } catch (err: any) {
-      setH1Error(err.message ?? "Failed to fetch scope");
+    } catch (err) {
+      setH1Error((err as Error).message ?? "Failed to fetch scope");
     } finally {
       setH1Loading(false);
     }

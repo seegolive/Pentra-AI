@@ -320,7 +320,7 @@ export function FindingsTable({ findings }: FindingsTableProps) {
     .filter((f) => filterStatus === "all" || f.status === filterStatus);
 
   const sorted = [...filtered].sort((a, b) => {
-    let cmp = 0;
+    let cmp: number;
     if (sortField === "severity") {
       cmp = (SEVERITY_ORDER[a.severity] ?? 9) - (SEVERITY_ORDER[b.severity] ?? 9);
     } else if (sortField === "cvss_score") {

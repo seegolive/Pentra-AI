@@ -258,16 +258,16 @@ function ImportPanel() {
 export default function AdminPage() {
   const user = useAuthStore((s) => s.user);
 
-  // Redirect non-admins
-  if (!user?.is_admin) {
-    return <Navigate to="/" replace />;
-  }
-
   const { data: stats, isLoading, error, refetch } = useQuery<AdminStats>({
     queryKey: ["admin-stats"],
     queryFn: fetchStats,
     refetchInterval: 30_000,
+    enabled: !!user?.is_admin,
   });
+
+  if (!user?.is_admin) {
+    return <Navigate to="/" replace />;
+  }
 
   return (
     <div className="flex-1 overflow-auto p-6">

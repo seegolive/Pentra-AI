@@ -41,8 +41,8 @@ export default function LoginPage() {
       const me = await getMeApi();
       setUser(me);
       navigate("/workspaces");
-    } catch (err: any) {
-      setError(err.response?.data?.detail ?? "Login failed");
+    } catch (err) {
+      setError((err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ?? "Login failed");
     }
   };
 

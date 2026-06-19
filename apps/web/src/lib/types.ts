@@ -87,7 +87,7 @@ export interface WorkspaceCreate {
 // ── Engagement ────────────────────────────────────────────────────────────────
 
 export type EngagementMode = "semi_auto" | "agentic";
-export type EngagementStatus = "planning" | "active" | "awaiting_approval" | "paused" | "completed" | "failed";
+export type EngagementStatus = "planning" | "active" | "awaiting_approval" | "paused" | "completed" | "failed" | "cancelled";
 
 export interface Engagement {
   id: string;
@@ -167,18 +167,27 @@ export interface Finding {
 
 export type FeedEventType =
   | "ping"
-  // legacy / generic
+  // agent lifecycle
   | "agent_start"
   | "agent_step"
   | "agent_complete"
+  | "agent_cancelled"
+  | "agent_resumed"
   | "error"
-  // actual backend events (service.py)
+  // structured backend events (service.py / worker)
   | "NODE_START"
   | "NODE_COMPLETE"
   | "AWAITING_APPROVAL"
   | "FINDINGS_UPDATED"
   | "ENGAGEMENT_COMPLETED"
-  | "LLM_STREAM";
+  | "ENGAGEMENT_STARTED"
+  | "AGENT_ERROR"
+  | "AGENT_RESUMED"
+  | "LLM_STREAM"
+  // subscan events
+  | "subscan_started"
+  | "subscan_complete"
+  | "subscan_error";
 
 export interface FeedEvent {
   type: FeedEventType;
