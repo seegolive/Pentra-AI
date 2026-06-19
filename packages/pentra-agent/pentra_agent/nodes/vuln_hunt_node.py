@@ -371,7 +371,10 @@ async def vuln_hunt_node(state: PentraState) -> dict:
                         )
                         await asyncio.sleep(_delay)
                     else:
-                        raise
+                        log.warning(
+                            "[vuln_hunt_node] KB refresh failed after 3 attempts (%s) — continuing with stale context",
+                            _kb_exc,
+                        )
 
             updated_knowledge = [r.model_dump() for r in _kb_records]
             log.info(

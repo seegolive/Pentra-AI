@@ -237,3 +237,7 @@ class SnapshotDiffResponse(BaseModel):
     new_endpoints: list[str]
     new_tech: list[str]
 
+
+class SubscanRequest(BaseModel):
+    target_urls: list[str] = Field(..., min_length=1, max_length=50)
+

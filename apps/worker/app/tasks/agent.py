@@ -192,12 +192,12 @@ async def _run_subscan_async(engagement_id: str, target_urls: list[str]) -> None
             select(EngagementORM).where(EngagementORM.id == engagement_id)
         )
         engagement = result.scalar_one_or_none()
-        if engagement is None:
-            log.error("[run_subscan] Engagement %s not found", engagement_id)
-            await engine.dispose()
-            return
 
     await engine.dispose()
+
+    if engagement is None:
+        log.error("[run_subscan] Engagement %s not found", engagement_id)
+        return
 
     _publish_event(engagement_id, {
         "type": "subscan_started",

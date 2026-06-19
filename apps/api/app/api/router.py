@@ -42,6 +42,7 @@ from app.api.schemas import (
     PayloadGenerateAPIRequest,
     PayloadGenerateAPIResponse,
     PayloadItem,
+    SubscanRequest,
     WorkspaceCreate,
     WorkspaceResponse,
 )
@@ -264,10 +265,12 @@ async def approve_action(
     ))
     await db.commit()
 
-    # Resume agent in background with full WS streaming
-    asyncio.create_task(
+    # Resume agent in background; register for cancellation via /stop
+    _resume_task = asyncio.create_task(
         _resume_agent(str(engagement_id), decision.action)
     )
+    _active_tasks[str(engagement_id)] = _resume_task
+    _resume_task.add_done_callback(lambda _: _active_tasks.pop(str(engagement_id), None))
     return {"status": "resumed", "decision": decision.action}
 
 
@@ -327,6 +330,8 @@ async def stop_engagement(
     eng = await db.get(EngagementORM, engagement_id)
     if eng is None:
         raise HTTPException(status_code=404, detail="Engagement not found")
+    if not current_user.is_admin and eng.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
     if eng.status in ("completed", "cancelled"):
         return {"status": eng.status, "message": "Engagement already finished"}
 
@@ -361,24 +366,22 @@ async def stop_engagement(
 )
 async def run_subscan(
     engagement_id: UUID,
-    body: dict,
+    body: SubscanRequest,
     db: AsyncSession = Depends(get_db),
     current_user: UserORM = Depends(get_current_user),
 ) -> dict:
     eng = await db.get(EngagementORM, engagement_id)
     if eng is None:
         raise HTTPException(status_code=404, detail="Engagement not found")
-
-    target_urls: list[str] = body.get("target_urls", [])
-    if not target_urls:
-        raise HTTPException(status_code=422, detail="target_urls is required and must be non-empty")
+    if not current_user.is_admin and eng.created_by != current_user.id:
+        raise HTTPException(status_code=403, detail="Access denied")
 
     from app.worker_client import send_task
     task_id = send_task(
         "app.tasks.agent.run_subscan",
         kwargs={
             "engagement_id": str(engagement_id),
-            "target_urls": target_urls,
+            "target_urls": body.target_urls,
         },
     )
 
@@ -386,7 +389,7 @@ async def run_subscan(
         engagement_id=engagement_id,
         actor="user",
         action="subscan_queued",
-        detail={"target_urls": target_urls, "task_id": task_id},
+        detail={"target_urls": body.target_urls, "task_id": task_id},
     ))
     await db.commit()
 
