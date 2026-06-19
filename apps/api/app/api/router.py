@@ -52,6 +52,10 @@ from app.ws.manager import ws_manager
 
 router = APIRouter(prefix="/api/v1", tags=["engagements"])
 
+# Registry of active agent tasks, keyed by engagement_id (str).
+# Used by the /stop endpoint to cancel a running scan.
+_active_tasks: dict[str, asyncio.Task] = {}
+
 
 # ── Workspaces ────────────────────────────────────────────────────────────────
 
@@ -151,6 +155,11 @@ async def create_engagement(
 
 
 @router.get(
+    "/engagements",
+    response_model=list[EngagementResponse],
+    include_in_schema=False,
+)
+@router.get(
     "/engagements/",
     response_model=list[EngagementResponse],
     summary="List engagements",
@@ -158,12 +167,15 @@ async def create_engagement(
 )
 async def list_engagements(
     workspace_id: UUID | None = Query(default=None),
+    limit: int | None = Query(default=None, le=100),
     db: AsyncSession = Depends(get_db),
     current_user: UserORM = Depends(get_current_user),
 ) -> list[EngagementResponse]:
     stmt = select(EngagementORM).order_by(EngagementORM.created_at.desc())
     if workspace_id is not None:
         stmt = stmt.where(EngagementORM.workspace_id == workspace_id)
+    if limit is not None:
+        stmt = stmt.limit(limit)
     result = await db.execute(stmt)
     return [EngagementResponse.model_validate(e) for e in result.scalars().all()]
 
@@ -217,8 +229,10 @@ async def start_engagement(
     ))
     await db.commit()
 
-    # Launch agent in background (fire-and-forget)
-    asyncio.create_task(_run_agent(eng))
+    # Launch agent in background and register task for cancellation via /stop
+    task = asyncio.create_task(_run_agent(eng))
+    _active_tasks[str(engagement_id)] = task
+    task.add_done_callback(lambda _: _active_tasks.pop(str(engagement_id), None))
 
     return {"status": "started", "engagement_id": str(engagement_id)}
 
@@ -298,6 +312,85 @@ async def update_engagement_mode(
         auto_resumed = True
 
     return {"status": "updated", "mode": mode, "auto_resumed": auto_resumed}
+
+
+@router.patch(
+    "/engagements/{engagement_id}/stop",
+    summary="Stop engagement",
+    description="Cancel a running engagement. Kills the background agent task and sets status to 'cancelled'.",
+)
+async def stop_engagement(
+    engagement_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserORM = Depends(get_current_user),
+) -> dict:
+    eng = await db.get(EngagementORM, engagement_id)
+    if eng is None:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+    if eng.status in ("completed", "cancelled"):
+        return {"status": eng.status, "message": "Engagement already finished"}
+
+    # Cancel running asyncio task if present
+    task = _active_tasks.pop(str(engagement_id), None)
+    if task and not task.done():
+        task.cancel()
+
+    eng.status = "cancelled"
+    eng.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    db.add(AuditLogORM(
+        engagement_id=engagement_id,
+        actor="user",
+        action="engagement_cancelled",
+        detail={"cancelled_by": str(current_user.id)},
+    ))
+    await db.commit()
+
+    await ws_manager.broadcast(str(engagement_id), {
+        "type": "agent_cancelled",
+        "message": "Engagement cancelled by user",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    })
+
+    return {"status": "cancelled", "engagement_id": str(engagement_id)}
+
+
+@router.post(
+    "/engagements/{engagement_id}/subscan",
+    summary="Run targeted subscan",
+    description="Launch a focused vulnerability scan on a subset of URLs from this engagement. Returns a task_id to track progress.",
+)
+async def run_subscan(
+    engagement_id: UUID,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserORM = Depends(get_current_user),
+) -> dict:
+    eng = await db.get(EngagementORM, engagement_id)
+    if eng is None:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+
+    target_urls: list[str] = body.get("target_urls", [])
+    if not target_urls:
+        raise HTTPException(status_code=422, detail="target_urls is required and must be non-empty")
+
+    from app.worker_client import send_task
+    task_id = send_task(
+        "app.tasks.agent.run_subscan",
+        kwargs={
+            "engagement_id": str(engagement_id),
+            "target_urls": target_urls,
+        },
+    )
+
+    db.add(AuditLogORM(
+        engagement_id=engagement_id,
+        actor="user",
+        action="subscan_queued",
+        detail={"target_urls": target_urls, "task_id": task_id},
+    ))
+    await db.commit()
+
+    return {"task_id": task_id, "status": "queued"}
 
 
 # ── Findings ──────────────────────────────────────────────────────────────────

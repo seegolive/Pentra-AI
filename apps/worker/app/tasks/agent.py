@@ -161,6 +161,98 @@ async def _resume_async(engagement_id: str, user_decision: str) -> None:
         raise
 
 
+@shared_task(
+    bind=True,
+    name="app.tasks.agent.run_subscan",
+    max_retries=0,
+    acks_late=True,
+    queue="agent",
+)
+def run_subscan(self, engagement_id: str, target_urls: list[str]) -> None:
+    """Run a focused vuln scan on a specific subset of URLs.
+
+    Reuses the full vuln_hunt_node logic but skips recon — starts directly
+    from the provided target_urls list.
+    """
+    asyncio.run(_run_subscan_async(engagement_id, target_urls))
+
+
+async def _run_subscan_async(engagement_id: str, target_urls: list[str]) -> None:
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy import select
+
+    engine = create_async_engine(settings.database_url, echo=False)
+    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with async_session() as session:
+        from app.db.models import EngagementORM
+
+        result = await session.execute(
+            select(EngagementORM).where(EngagementORM.id == engagement_id)
+        )
+        engagement = result.scalar_one_or_none()
+        if engagement is None:
+            log.error("[run_subscan] Engagement %s not found", engagement_id)
+            await engine.dispose()
+            return
+
+    await engine.dispose()
+
+    _publish_event(engagement_id, {
+        "type": "subscan_started",
+        "engagement_id": engagement_id,
+        "target_urls": target_urls,
+    })
+
+    try:
+        from pentra_agent.nodes.vuln_hunt_node import vuln_hunt_node
+        from pentra_shared.types.base import Scope, Target
+
+        in_scope = list(engagement.in_scope or [])
+        domain = _extract_domain(in_scope)
+
+        subscan_state = {
+            "engagement_id": engagement_id,
+            "target": {"domain": domain, "ip_ranges": [], "base_urls": target_urls},
+            "scope": {"in_scope": in_scope, "out_of_scope": list(engagement.out_of_scope or [])},
+            "mode": engagement.mode or "semi_auto",
+            "llm_model": engagement.llm_model or settings.ollama_model_fast,
+            "opsec_mode": bool(engagement.opsec_mode),
+            "request_jitter_ms": int(engagement.request_jitter_ms or 0),
+            "current_phase": "vuln_hunt",
+            "phase_history": [],
+            "subdomains": [],
+            "open_ports": [],
+            "tech_stack": [],
+            "endpoints": [{"url": u, "method": "GET"} for u in target_urls],
+            "findings": [],
+            "pentest_plan": "",
+            "current_hypothesis": "",
+            "knowledge_context": [],
+            "awaiting_approval": False,
+            "pending_action": None,
+            "user_decision": None,
+            "messages": [],
+            "tool_outputs": [],
+            "errors": [],
+        }
+
+        result_state = await vuln_hunt_node(subscan_state)
+
+        new_findings = result_state.get("findings", [])
+        _publish_event(engagement_id, {
+            "type": "subscan_complete",
+            "engagement_id": engagement_id,
+            "findings_count": len(new_findings),
+        })
+        log.info("[run_subscan] %s: %d new findings", engagement_id, len(new_findings))
+
+    except Exception as exc:
+        log.exception("[run_subscan] Error in subscan %s: %s", engagement_id, exc)
+        _publish_event(engagement_id, {"type": "subscan_error", "error": str(exc)})
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 
