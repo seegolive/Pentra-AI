@@ -1,0 +1,1325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pentra AI — Enhanced UI v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.383.0/umd/lucide.min.js"></script>
+<style>
+:root{
+  --bg-void:#070a0f;--bg-base:#0b0f17;--bg-panel:#0f1620;
+  --bg-card:#152030;--bg-hover:#19283a;--bg-active:#1c3050;
+  --bg-input:#0d1825;
+  --border:#1c2d42;--border-light:#223450;--border-focus:#2d6ee0;
+  --text-primary:#ddeaf7;--text-secondary:#6e90b5;--text-muted:#344e6e;--text-code:#90c8f8;
+  --critical:#f0364f;--high:#ef7b2c;--medium:#e8bf3a;--low:#3dbf8a;--info:#3d90f0;
+  --accent:#2662d4;--accent-glow:rgba(38,98,212,.16);--accent-light:#4d84f0;--accent-dim:#152456;
+  --status-run:#2662d4;--status-wait:#e8bf3a;--status-ok:#3dbf8a;--status-fail:#f0364f;--status-idle:#344e6e;
+  --r1:4px;--r2:6px;--r3:10px;--r4:14px;
+  --nav-w:52px;--sidebar-w:228px;
+  --font:'Outfit',system-ui,sans-serif;
+  --mono:'JetBrains Mono','Fira Code',monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:var(--bg-void)}
+body{font-family:var(--font);color:var(--text-primary);font-size:13.5px;line-height:1.5;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+svg.icon{display:inline-block;vertical-align:middle;flex-shrink:0}
+
+/* KEYFRAMES */
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeDown{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideRight{from{opacity:0;transform:translateX(10px)}to{opacity:1;transform:translateX(0)}}
+@keyframes toastSlide{from{opacity:0;transform:translateX(110%)}to{opacity:1;transform:translateX(0)}}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.45;transform:scale(.75)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes growW{from{width:0}}
+@keyframes blink{50%{opacity:.3}}
+
+/* SHELL */
+.shell{display:grid;grid-template-columns:var(--nav-w) var(--sidebar-w) 1fr;grid-template-rows:42px 1fr;height:100vh;overflow:hidden}
+
+/* TOPBAR */
+.topbar{grid-column:1/-1;grid-row:1;background:var(--bg-panel);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 14px;gap:10px;z-index:300;position:relative}
+.brand{display:flex;align-items:center;gap:7px;width:calc(var(--nav-w) + var(--sidebar-w) - 28px);flex-shrink:0;padding-right:14px;border-right:1px solid var(--border)}
+.brand-mark{width:26px;height:26px;border-radius:var(--r2);background:var(--accent);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.brand-text{font-size:14px;font-weight:700;letter-spacing:-.4px;color:var(--text-primary)}
+.brand-text em{color:var(--accent-light);font-style:normal}
+.breadcrumb{flex:1;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);margin-left:14px}
+.breadcrumb span{cursor:pointer;transition:color .12s}
+.breadcrumb span:hover{color:var(--text-secondary)}
+.breadcrumb .sep{color:var(--border-light)}
+.breadcrumb .cur{color:var(--text-primary);font-weight:500;cursor:default}
+.tb-right{display:flex;align-items:center;gap:8px;margin-left:auto}
+.tb-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:100px;font-size:10.5px;font-weight:600;letter-spacing:.25px;text-transform:uppercase;border:1px solid;flex-shrink:0}
+.tb-pill.run{color:var(--status-run);background:rgba(38,98,212,.1);border-color:rgba(38,98,212,.25)}
+.tb-pill.run .pdot{width:5px;height:5px;border-radius:50%;background:var(--status-run);animation:pulse 1.3s ease infinite}
+.tb-pill.ok{color:var(--status-ok);background:rgba(61,191,138,.08);border-color:rgba(61,191,138,.22)}
+.tb-pill.idle{color:var(--text-muted);background:rgba(52,78,110,.1);border-color:var(--border)}
+.icon-btn{width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:var(--r2);border:1px solid var(--border);background:transparent;cursor:pointer;color:var(--text-secondary);transition:all .12s;position:relative;flex-shrink:0}
+.icon-btn:hover{background:var(--bg-hover);color:var(--text-primary);border-color:var(--border-light)}
+.icon-btn.danger{border-color:rgba(240,54,79,.3);color:var(--critical);background:rgba(240,54,79,.07)}
+.icon-btn.danger:hover{background:rgba(240,54,79,.16)}
+.notif-count{position:absolute;top:-4px;right:-4px;min-width:15px;height:15px;padding:0 3px;border-radius:100px;background:var(--critical);border:1.5px solid var(--bg-panel);font-size:9px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:center;line-height:1}
+.avatar{width:26px;height:26px;border-radius:50%;background:var(--accent-dim);border:1.5px solid var(--border-light);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:var(--accent-light);cursor:pointer;flex-shrink:0}
+
+/* NOTIF PANEL */
+.notif-panel{position:absolute;top:calc(100% + 6px);right:14px;width:340px;background:var(--bg-panel);border:1px solid var(--border-light);border-radius:var(--r4);box-shadow:0 20px 60px rgba(0,0,0,.55);z-index:1000;animation:fadeDown .16s ease;display:none;overflow:hidden}
+.notif-panel.open{display:block}
+.np-head{display:flex;align-items:center;justify-content:space-between;padding:12px 14px 10px;border-bottom:1px solid var(--border)}
+.np-title{font-size:12px;font-weight:600;color:var(--text-primary)}
+.np-action{font-size:11px;color:var(--accent-light);cursor:pointer;padding:2px 6px;border-radius:var(--r1);transition:background .1s}
+.np-action:hover{background:var(--accent-glow)}
+.np-list{max-height:320px;overflow-y:auto}
+.ni{display:flex;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;position:relative}
+.ni:hover{background:var(--bg-hover)}
+.ni.unread{background:rgba(38,98,212,.04)}
+.ni.unread::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--accent)}
+.ni-icon{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ni-icon.crit{background:rgba(240,54,79,.12)}
+.ni-icon.warn{background:rgba(232,191,58,.1)}
+.ni-icon.ok{background:rgba(61,191,138,.1)}
+.ni-icon.info{background:rgba(38,98,212,.12)}
+.ni-body{flex:1;min-width:0}
+.ni-msg{font-size:11.5px;color:var(--text-secondary);line-height:1.4}
+.ni-msg strong{color:var(--text-primary);font-weight:600}
+.ni-time{font-size:10px;color:var(--text-muted);margin-top:3px}
+.np-footer{padding:9px 14px;border-top:1px solid var(--border);text-align:center;font-size:11.5px;color:var(--accent-light);cursor:pointer}
+.np-footer:hover{background:var(--bg-hover)}
+
+/* ICON NAV */
+.nav{grid-column:1;grid-row:2;background:var(--bg-panel);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:2px}
+.ni-btn{width:34px;height:34px;border-radius:var(--r3);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text-muted);transition:all .14s;position:relative}
+.ni-btn:hover{background:var(--bg-hover);color:var(--text-secondary)}
+.ni-btn.on{background:var(--accent-glow);color:var(--accent-light)}
+.ni-btn .tip{position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);background:var(--bg-card);border:1px solid var(--border-light);padding:4px 9px;border-radius:var(--r2);font-size:11px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .13s;z-index:999;color:var(--text-primary);box-shadow:0 4px 12px rgba(0,0,0,.4)}
+.ni-btn:hover .tip{opacity:1}
+.ni-sep{flex:1}
+
+/* SIDEBAR */
+.sidebar{grid-column:2;grid-row:2;background:var(--bg-base);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.sb-head{padding:12px 12px 8px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.sb-label{font-size:10px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;color:var(--text-muted)}
+.sb-new{width:22px;height:22px;border-radius:var(--r2);background:var(--accent);border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity .12s}
+.sb-new:hover{opacity:.82}
+.sb-body{flex:1;overflow-y:auto;padding:6px}
+.sb-sec{padding:8px 8px 4px;font-size:9.5px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:var(--text-muted);margin-top:6px;display:flex;align-items:center;gap:6px}
+.sb-sec:first-child{margin-top:0}
+.sb-item{padding:9px 10px;border-radius:var(--r3);cursor:pointer;transition:background .1s;margin-bottom:2px;position:relative}
+.sb-item:hover{background:var(--bg-card)}
+.sb-item.on{background:var(--bg-active)}
+.sb-name{font-size:12.5px;font-weight:500;color:var(--text-primary);margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sb-meta{display:flex;align-items:center;gap:5px}
+.sdot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.sdot.r{background:var(--status-run);animation:pulse 1.3s infinite}
+.sdot.ok{background:var(--status-ok)}
+.sdot.i{background:var(--text-muted)}
+.sdot.f{background:var(--status-fail)}
+.sb-txt{font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rescan-btn{position:absolute;top:8px;right:8px;display:flex;align-items:center;gap:3px;padding:2px 6px;border-radius:var(--r1);background:rgba(61,191,138,.1);border:1px solid rgba(61,191,138,.22);color:var(--status-ok);font-size:9.5px;font-weight:600;cursor:pointer;transition:background .12s}
+.rescan-btn:hover{background:rgba(61,191,138,.22)}
+
+/* ENG OVERVIEW */
+.ov{background:var(--bg-card);border:1px solid var(--border-light);border-radius:var(--r3);padding:12px;margin:8px 8px 0;animation:fadeUp .16s ease}
+.ov-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.ov-name{font-size:11.5px;font-weight:600;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1;margin-right:8px}
+.ov-x{display:flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:var(--r1);color:var(--text-muted);cursor:pointer;transition:all .12s;flex-shrink:0}
+.ov-x:hover{background:var(--bg-hover);color:var(--text-primary)}
+.ov-kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px}
+.ov-kpi{background:var(--bg-panel);border-radius:var(--r2);padding:7px 6px;text-align:center}
+.ov-kv{font-size:17px;font-weight:700;letter-spacing:-.5px;line-height:1}
+.ov-kv.c{color:var(--critical)}
+.ov-kv.h{color:var(--high)}
+.ov-kv.m{color:var(--medium)}
+.ov-kv.g{color:var(--status-ok)}
+.ov-kl{font-size:8.5px;color:var(--text-muted);margin-top:2px;text-transform:uppercase;letter-spacing:.4px}
+.ov-phase{font-size:10.5px;color:var(--text-secondary);margin-bottom:8px;display:flex;align-items:center;gap:5px}
+.ov-actions{display:flex;gap:5px}
+.ov-btn{flex:1;padding:5px 8px;border-radius:var(--r2);font-size:10.5px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:transparent;color:var(--text-secondary);transition:all .12s;display:flex;align-items:center;justify-content:center;gap:4px;font-family:var(--font)}
+.ov-btn:hover{background:var(--bg-hover);color:var(--text-primary)}
+.ov-btn.p{background:var(--accent);border-color:var(--accent);color:#fff}
+.ov-btn.p:hover{opacity:.88}
+
+/* MAIN */
+.main{grid-column:3;grid-row:2;display:flex;flex-direction:column;overflow:hidden;background:var(--bg-base);min-width:0}
+.ptabs{display:flex;align-items:center;border-bottom:1px solid var(--border);padding:0 20px;background:var(--bg-panel);flex-shrink:0}
+.ptab{padding:11px 14px;font-size:12.5px;font-weight:500;color:var(--text-muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;display:flex;align-items:center;gap:5px;transition:all .12s}
+.ptab:hover{color:var(--text-secondary)}
+.ptab.on{color:var(--accent-light);border-bottom-color:var(--accent)}
+.tbadge{background:var(--accent-dim);color:var(--accent-light);font-size:9.5px;font-weight:700;padding:1px 5px;border-radius:100px}
+.tbadge.c{background:rgba(240,54,79,.14);color:var(--critical)}
+.pg{display:none;flex:1;overflow:hidden;flex-direction:column}
+.pg.on{display:flex}
+.nav-pg{display:none;flex:1;overflow:hidden;flex-direction:column}
+.nav-pg.on{display:flex}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:var(--r2);font-family:var(--font);font-size:12px;font-weight:600;cursor:pointer;transition:all .13s;border:none;white-space:nowrap}
+.btn-pr{background:var(--accent);color:#fff}
+.btn-pr:hover{background:var(--accent-light)}
+.btn-gh{background:transparent;color:var(--text-secondary);border:1px solid var(--border-light)}
+.btn-gh:hover{background:var(--bg-hover);color:var(--text-primary)}
+.btn-dn{background:rgba(240,54,79,.1);color:var(--critical);border:1px solid rgba(240,54,79,.25)}
+.btn-dn:hover{background:rgba(240,54,79,.2)}
+.btn-sm{padding:4px 9px;font-size:11px}
+
+/* WIZARD OVERLAY */
+.wiz-ov{position:fixed;inset:0;background:rgba(7,10,15,.82);backdrop-filter:blur(5px);z-index:500;display:none;align-items:center;justify-content:center}
+.wiz-ov.on{display:flex}
+.wiz-box{background:var(--bg-panel);border:1px solid var(--border-light);border-radius:var(--r4);width:540px;max-height:90vh;display:flex;flex-direction:column;box-shadow:0 28px 80px rgba(0,0,0,.7);animation:fadeUp .18s ease;overflow:hidden}
+.wiz-hdr{padding:18px 20px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.wiz-title{font-size:15px;font-weight:600}
+.wiz-close{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:var(--r2);color:var(--text-muted);cursor:pointer;transition:all .12s}
+.wiz-close:hover{background:var(--bg-hover);color:var(--text-primary)}
+.wiz-steps{display:flex;align-items:center;padding:14px 20px 0;flex-shrink:0;gap:0}
+.ws{display:flex;align-items:center;flex:1}
+.ws-dot{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;border:2px solid var(--border);color:var(--text-muted);transition:all .2s}
+.ws-dot.done{background:var(--status-ok);border-color:var(--status-ok);color:#fff}
+.ws-dot.cur{background:var(--accent);border-color:var(--accent);color:#fff}
+.ws-lbl{font-size:11px;color:var(--text-muted);margin-left:6px;white-space:nowrap;transition:color .2s}
+.ws-lbl.cur{color:var(--text-primary);font-weight:500}
+.ws-lbl.done{color:var(--status-ok)}
+.ws-line{flex:1;height:1px;background:var(--border);margin:0 6px;transition:background .2s}
+.ws-line.done{background:var(--status-ok)}
+.wiz-body{flex:1;overflow-y:auto;padding:18px 20px}
+.wiz-ftr{padding:14px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+.w-lbl{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:7px}
+.w-inp{width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r2);padding:8px 11px;font-family:var(--mono);font-size:12px;color:var(--text-code);outline:none;transition:border-color .14s;margin-bottom:12px}
+.w-inp:focus{border-color:var(--border-focus)}
+.w-hint{font-size:10.5px;color:var(--text-muted);margin-top:-8px;margin-bottom:12px;line-height:1.4}
+.tag-row{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px}
+.tag{padding:3px 9px;border-radius:100px;font-size:11px;font-weight:500;border:1px solid var(--border);color:var(--text-muted);cursor:pointer;transition:all .11s}
+.tag:hover{border-color:var(--border-light);color:var(--text-secondary)}
+.tag.on{border-color:var(--accent);color:var(--accent-light);background:rgba(38,98,212,.1)}
+.preset-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pc{border:1.5px solid var(--border);border-radius:var(--r3);padding:11px;cursor:pointer;transition:all .13s;position:relative}
+.pc:hover{border-color:var(--border-light);background:var(--bg-hover)}
+.pc.on{border-color:var(--accent);background:rgba(38,98,212,.07)}
+.pc.on::after{content:'';position:absolute;top:9px;right:10px;width:7px;height:7px;border-radius:50%;background:var(--accent)}
+.pc-name{font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:3px;display:flex;align-items:center;gap:6px}
+.pc-desc{font-size:10.5px;color:var(--text-muted);line-height:1.4;margin-bottom:6px}
+.pc-tags{display:flex;gap:4px;flex-wrap:wrap}
+.pc-tag{font-size:9.5px;padding:1px 5px;border-radius:var(--r1);background:var(--bg-hover);color:var(--text-muted);font-weight:500}
+.pc-tag.hl{background:rgba(38,98,212,.12);color:var(--accent-light)}
+.pc-time{font-size:10px;color:var(--text-muted);margin-top:5px;font-family:var(--mono)}
+.auth-row{display:flex;gap:6px;margin-bottom:14px}
+.at{padding:5px 12px;border-radius:var(--r2);border:1px solid var(--border);font-size:11.5px;font-weight:500;color:var(--text-muted);cursor:pointer;transition:all .12s;font-family:var(--font)}
+.at:hover{border-color:var(--border-light);color:var(--text-secondary)}
+.at.on{border-color:var(--accent);color:var(--accent-light);background:rgba(38,98,212,.1)}
+.rv-box{background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r3);overflow:hidden;margin-bottom:12px}
+.rv-row{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border)}
+.rv-row:last-child{border:none}
+.rv-k{font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:5px}
+.rv-v{font-size:11.5px;font-weight:500;font-family:var(--mono);color:var(--text-code)}
+.rv-v.hi{color:var(--accent-light)}
+.launch-hint{background:rgba(38,98,212,.07);border:1px solid rgba(38,98,212,.18);border-radius:var(--r3);padding:11px 14px;font-size:11.5px;color:var(--text-secondary);line-height:1.5}
+
+/* STOP MODAL */
+.stop-ov{position:fixed;inset:0;background:rgba(7,10,15,.8);backdrop-filter:blur(4px);z-index:600;display:none;align-items:center;justify-content:center}
+.stop-ov.on{display:flex}
+.stop-box{background:var(--bg-panel);border:1px solid var(--border-light);border-radius:var(--r4);padding:22px;width:380px;box-shadow:0 24px 64px rgba(0,0,0,.65);animation:fadeUp .16s ease}
+.stop-title{font-size:14px;font-weight:700;color:var(--critical);margin-bottom:5px;display:flex;align-items:center;gap:7px}
+.stop-msg{font-size:12px;color:var(--text-secondary);margin-bottom:16px;line-height:1.5}
+.stop-list{background:var(--bg-input);border-radius:var(--r2);padding:10px 12px;margin-bottom:18px;display:flex;flex-direction:column;gap:5px}
+.stop-eng{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--text-secondary)}
+.stop-ftr{display:flex;gap:8px;justify-content:flex-end}
+
+/* API VAULT */
+.vault-pg{overflow-y:auto;padding:24px 28px;flex:1}
+.pg-title{font-size:17px;font-weight:700;letter-spacing:-.3px;margin-bottom:3px}
+.pg-sub{font-size:12.5px;color:var(--text-muted);margin-bottom:22px}
+.vault-list{display:flex;flex-direction:column;gap:8px}
+.vc{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--r3);padding:14px 16px;display:grid;grid-template-columns:36px 1fr auto auto;align-items:center;gap:12px;transition:border-color .12s}
+.vc:hover{border-color:var(--border-light)}
+.vc-icon{width:36px;height:36px;border-radius:var(--r2);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.vc-name{font-size:12.5px;font-weight:600;color:var(--text-primary);margin-bottom:2px}
+.vc-key{font-size:10.5px;color:var(--text-muted);font-family:var(--mono)}
+.vc-status{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:600;flex-shrink:0}
+.vc-status.ok{color:var(--status-ok)}
+.vc-status.miss{color:var(--text-muted)}
+.vc-status::before{content:'';width:5px;height:5px;border-radius:50%;background:currentColor;flex-shrink:0}
+.vc-acts{display:flex;gap:5px;flex-shrink:0}
+.vc-btn{padding:3px 9px;border-radius:var(--r1);font-size:11px;font-weight:600;border:1px solid var(--border);background:transparent;color:var(--text-secondary);cursor:pointer;transition:all .11s;font-family:var(--font);display:flex;align-items:center;gap:4px}
+.vc-btn:hover{background:var(--bg-hover);color:var(--text-primary)}
+.vc-btn.p{background:var(--accent);border-color:var(--accent);color:#fff}
+.vc-btn.p:hover{opacity:.88}
+.vc-btn.test:hover{border-color:var(--status-ok);color:var(--status-ok)}
+.vault-add{background:transparent;border:1.5px dashed var(--border-light);border-radius:var(--r3);padding:14px 16px;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;color:var(--text-muted);font-size:12.5px;font-weight:500;transition:all .14s;font-family:var(--font)}
+.vault-add:hover{border-color:var(--accent);color:var(--accent-light);background:rgba(38,98,212,.04)}
+
+/* ATTACK SURFACE */
+.map-pg{display:flex;flex-direction:column;height:100%;overflow:hidden}
+.map-tb{padding:10px 18px;border-bottom:1px solid var(--border);background:var(--bg-panel);display:flex;align-items:center;gap:10px;flex-shrink:0}
+.map-info{font-size:12px;color:var(--text-muted)}
+.map-canvas{flex:1;position:relative;overflow:hidden;background:var(--bg-void);cursor:crosshair}
+.map-canvas::before{content:'';position:absolute;inset:0;background-image:radial-gradient(circle,var(--border) 1px,transparent 1px);background-size:28px 28px;opacity:.35}
+.map-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.node{position:absolute;transform:translate(-50%,-50%);cursor:pointer;display:flex;flex-direction:column;align-items:center;transition:transform .15s}
+.node:hover{transform:translate(-50%,-50%) scale(1.08)}
+.nc{border-radius:50%;display:flex;align-items:center;justify-content:center;border:2.5px solid;font-size:9px;font-weight:700;letter-spacing:.3px;transition:all .15s}
+.nl{font-size:9.5px;margin-top:4px;white-space:nowrap;text-align:center;max-width:88px;overflow:hidden;text-overflow:ellipsis}
+.nf{font-size:9px;font-weight:700;margin-top:1px}
+.map-leg{position:absolute;bottom:14px;left:14px;background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--r3);padding:10px 13px;display:flex;flex-direction:column;gap:5px}
+.ll{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:2px}
+.li{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--text-secondary)}
+.ld{width:8px;height:8px;border-radius:50%}
+.map-det{position:absolute;top:14px;right:14px;width:268px;background:var(--bg-panel);border:1px solid var(--border-light);border-radius:var(--r3);padding:14px;animation:slideRight .16s ease;display:none;box-shadow:0 12px 36px rgba(0,0,0,.45)}
+.map-det.on{display:block}
+.md-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.md-host{font-size:13px;font-weight:600;color:var(--text-primary)}
+.md-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:11.5px}
+.md-row:last-of-type{border:none}
+.md-k{color:var(--text-muted)}
+.md-v{color:var(--text-secondary);font-family:var(--mono);font-size:11px}
+.md-findings{margin-top:10px}
+.md-fi{display:flex;align-items:center;gap:6px;padding:4px 0;font-size:11px;color:var(--text-secondary)}
+
+/* TRENDS */
+.trends-pg{overflow-y:auto;flex:1;padding:22px 26px}
+.kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:20px}
+.kpi-card{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--r3);padding:18px}
+.kpi-val{font-size:28px;font-weight:700;letter-spacing:-1px;line-height:1}
+.kpi-lbl{font-size:11px;color:var(--text-muted);margin-top:3px}
+.kpi-d{font-size:10.5px;font-weight:600;margin-top:7px;display:flex;align-items:center;gap:4px}
+.kpi-d.up{color:var(--status-ok)}
+.kpi-d.warn{color:var(--status-wait)}
+.chart-card{background:var(--bg-panel);border:1px solid var(--border);border-radius:var(--r3);padding:18px;margin-bottom:14px}
+.chart-h{font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:14px}
+.bar-chart{display:flex;align-items:flex-end;gap:10px;height:100px}
+.bcol{display:flex;flex-direction:column;align-items:center;gap:3px;flex:1}
+.bstack{display:flex;flex-direction:column;gap:1px;width:100%;max-width:32px;align-self:flex-end}
+.bar{width:100%;border-radius:2px 2px 0 0;cursor:pointer;transition:opacity .13s}
+.bar:hover{opacity:.75}
+.blbl{font-size:9.5px;color:var(--text-muted);text-align:center;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60px}
+.blbl.live{color:var(--status-run)}
+.vuln-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.vrow{display:flex;align-items:center;gap:7px;font-size:11px}
+.vname{width:80px;color:var(--text-secondary);flex-shrink:0}
+.vtrack{flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden}
+.vfill{height:100%;border-radius:2px}
+.vcount{width:18px;text-align:right;color:var(--text-secondary);font-family:var(--mono);font-size:10px}
+
+/* GF PATTERNS */
+.gf-pg{overflow-y:auto;flex:1;padding:22px 26px}
+.gf-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px}
+.upload-zone{border:1.5px dashed var(--border-light);border-radius:var(--r3);padding:22px 18px;text-align:center;cursor:pointer;transition:all .14s;margin-bottom:18px;background:transparent}
+.upload-zone:hover{border-color:var(--accent);background:rgba(38,98,212,.04)}
+.uz-ico{display:flex;justify-content:center;margin-bottom:8px;color:var(--text-muted)}
+.uz-t{font-size:12.5px;color:var(--text-secondary);font-weight:500}
+.uz-s{font-size:11px;color:var(--text-muted);margin-top:3px}
+.test-row{display:flex;gap:8px;margin-bottom:16px}
+.test-inp{flex:1;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r2);padding:7px 11px;font-family:var(--mono);font-size:11.5px;color:var(--text-code);outline:none;transition:border-color .14s}
+.test-inp:focus{border-color:var(--border-focus)}
+.gf-table{width:100%;border-collapse:collapse}
+.gfh{padding:7px 10px;text-align:left;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);border-bottom:1px solid var(--border)}
+.gfr{border-bottom:1px solid var(--border);transition:background .1s}
+.gfr:hover{background:var(--bg-card)}
+.gfd{padding:8px 10px;font-size:11.5px;color:var(--text-secondary);vertical-align:middle}
+.gfd.code{font-family:var(--mono);color:var(--text-code);font-size:11px}
+.pri{display:inline-flex;align-items:center;gap:4px;font-weight:600;font-size:11px}
+.pr1{color:var(--critical)}.pr2{color:var(--high)}.pr3{color:var(--medium)}.pr4{color:var(--text-muted)}
+.gf-match{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:var(--r1);font-size:10px;font-weight:600;transition:all .15s}
+.gf-match.hit{background:rgba(61,191,138,.1);color:var(--status-ok);border:1px solid rgba(61,191,138,.22)}
+.gf-match.no{background:rgba(52,78,110,.15);color:var(--text-muted);border:1px solid var(--border)}
+.toggle{width:30px;height:16px;border-radius:100px;border:none;cursor:pointer;position:relative;transition:background .2s;flex-shrink:0;background:var(--border)}
+.toggle.on{background:var(--status-ok)}
+.toggle::after{content:'';position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:transform .2s}
+.toggle.on::after{transform:translateX(14px)}
+.editor-box{margin-top:16px;animation:fadeUp .15s ease}
+.editor-ta{width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--r2);padding:12px;font-family:var(--mono);font-size:11.5px;color:var(--text-code);outline:none;resize:vertical;min-height:100px;line-height:1.6;transition:border-color .14s}
+.editor-ta:focus{border-color:var(--border-focus)}
+
+/* SETTINGS */
+.set-pg{overflow-y:auto;flex:1;padding:22px 26px}
+.set-section{margin-bottom:22px}
+.set-sec-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:var(--text-muted);margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.set-row{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--bg-card);border-radius:var(--r3);margin-bottom:6px;border:1px solid var(--border)}
+.set-info{flex:1;margin-right:16px}
+.set-name{font-size:12.5px;font-weight:600;margin-bottom:2px}
+.set-desc{font-size:11px;color:var(--text-muted);line-height:1.4}
+.sw{position:relative;width:38px;height:20px;flex-shrink:0}
+.sw input{opacity:0;width:0;height:0;position:absolute}
+.sw-sl{position:absolute;inset:0;background:var(--border);border-radius:100px;cursor:pointer;transition:.22s}
+.sw-sl::before{content:'';position:absolute;height:14px;width:14px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.22s}
+.sw input:checked+.sw-sl{background:var(--accent)}
+.sw input:checked+.sw-sl::before{transform:translateX(18px)}
+
+/* TOAST */
+.toast-wrap{position:fixed;bottom:18px;right:18px;display:flex;flex-direction:column;gap:7px;z-index:9999;pointer-events:none}
+.toast{display:flex;align-items:flex-start;gap:10px;padding:10px 13px;border-radius:var(--r3);border:1px solid;min-width:272px;max-width:340px;animation:toastSlide .25s ease;pointer-events:all;box-shadow:0 8px 28px rgba(0,0,0,.45)}
+.toast.ok{background:rgba(61,191,138,.1);border-color:rgba(61,191,138,.26);color:var(--status-ok)}
+.toast.warn{background:rgba(232,191,58,.08);border-color:rgba(232,191,58,.26);color:var(--status-wait)}
+.toast.crit{background:rgba(240,54,79,.1);border-color:rgba(240,54,79,.26);color:var(--critical)}
+.toast.info{background:rgba(38,98,212,.1);border-color:rgba(38,98,212,.26);color:var(--accent-light)}
+.toast-ico{flex-shrink:0;margin-top:1px}
+.toast-body{flex:1;min-width:0}
+.toast-title{font-size:12px;font-weight:600}
+.toast-msg{font-size:11px;opacity:.8;margin-top:1px;line-height:1.4}
+.toast-x{cursor:pointer;opacity:.6;flex-shrink:0;margin-top:1px}
+.toast-x:hover{opacity:1}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<!-- TOPBAR -->
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark">
+      <svg class="icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    </div>
+    <span class="brand-text">Pentra<em>AI</em></span>
+  </div>
+  <div class="breadcrumb">
+    <span>Workspaces</span>
+    <span class="sep">/</span>
+    <span>BNI AASE 2026</span>
+    <span class="sep">/</span>
+    <span class="cur" id="bc-cur">wondr.id — AASE Recon</span>
+  </div>
+  <div class="tb-right">
+    <!-- Stop All -->
+    <button class="icon-btn danger" title="Stop all running scans" onclick="openStop()">
+      <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+    </button>
+    <!-- Status pill -->
+    <span class="tb-pill run" id="gb-status"><span class="pdot"></span>Running</span>
+    <!-- Notifications -->
+    <div class="icon-btn" id="bell-btn" title="Notifications" onclick="toggleNotif(event)">
+      <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      <span class="notif-count" id="notif-ct">3</span>
+    </div>
+    <!-- Avatar -->
+    <div class="avatar" title="AS — BNI Cyber Security">AS</div>
+  </div>
+
+  <!-- NOTIFICATION PANEL -->
+  <div class="notif-panel" id="notif-panel">
+    <div class="np-head">
+      <span class="np-title">Notifications</span>
+      <span class="np-action" onclick="markAllRead()">Mark all read</span>
+    </div>
+    <div class="np-list" id="np-list">
+      <div class="ni unread" onclick="navToEng()">
+        <div class="ni-icon crit">
+          <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--critical)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <div class="ni-body">
+          <div class="ni-msg"><strong>CRITICAL:</strong> SQL Injection confirmed — api.wondr.id/products?id=</div>
+          <div class="ni-time">wondr.id · 2 minutes ago</div>
+        </div>
+      </div>
+      <div class="ni unread" onclick="navToEng()">
+        <div class="ni-icon warn">
+          <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--status-wait)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </div>
+        <div class="ni-body">
+          <div class="ni-msg"><strong>Approval needed</strong> — Recon completed, 47 subdomains found</div>
+          <div class="ni-time">wondr.id · 14 minutes ago</div>
+        </div>
+      </div>
+      <div class="ni unread">
+        <div class="ni-icon ok">
+          <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--status-ok)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div class="ni-body">
+          <div class="ni-msg">Engagement <strong>testaspnet.vulnweb.com</strong> complete — 8 findings</div>
+          <div class="ni-time">2 hours ago</div>
+        </div>
+      </div>
+      <div class="ni">
+        <div class="ni-icon info">
+          <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-light)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        </div>
+        <div class="ni-body">
+          <div class="ni-msg">KB updated: <strong>8,341 records</strong> — 100% bge-m3 embedded</div>
+          <div class="ni-time">Yesterday 18:32</div>
+        </div>
+      </div>
+      <div class="ni">
+        <div class="ni-icon info">
+          <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent-light)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        </div>
+        <div class="ni-body">
+          <div class="ni-msg"><strong>pentra-ft:latest</strong> loaded — 4.7GB Q4_K_M, 89.1% accuracy</div>
+          <div class="ni-time">2 days ago</div>
+        </div>
+      </div>
+    </div>
+    <div class="np-footer" onclick="toast('info','Notifications','Full notification history would open here')">View all</div>
+  </div>
+</header>
+
+<!-- ICON NAV -->
+<nav class="nav">
+  <div class="ni-btn on" onclick="switchNav('eng',this)" data-page="pg-eng">
+    <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    <span class="tip">Engagements</span>
+  </div>
+  <div class="ni-btn" onclick="switchNav('surface',this)" data-page="pg-surface">
+    <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+    <span class="tip">Attack Surface</span>
+  </div>
+  <div class="ni-btn" onclick="switchNav('trends',this)" data-page="pg-trends">
+    <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="2" y1="20" x2="22" y2="20"/></svg>
+    <span class="tip">Trends</span>
+  </div>
+  <div class="ni-sep"></div>
+  <div class="ni-btn" onclick="switchNav('vault',this)" data-page="pg-vault">
+    <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    <span class="tip">API Vault</span>
+  </div>
+  <div class="ni-btn" onclick="switchNav('patterns',this)" data-page="pg-patterns">
+    <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <span class="tip">GF Patterns</span>
+  </div>
+  <div class="ni-btn" onclick="switchNav('settings',this)" data-page="pg-settings">
+    <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    <span class="tip">Settings</span>
+  </div>
+</nav>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sb-head">
+    <span class="sb-label">Engagements</span>
+    <button class="sb-new" onclick="openWiz()" title="New scan">
+      <svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+  </div>
+  <!-- Overview card slot -->
+  <div id="ov-slot"></div>
+  <div class="sb-body">
+    <div class="sb-sec">
+      <svg class="icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Active
+    </div>
+    <div class="sb-item on" onclick="selEng(this,'wondr.id — AASE Recon','r','vuln_hunt · 14 min',true)">
+      <div class="sb-name">wondr.id — AASE Recon</div>
+      <div class="sb-meta"><span class="sdot r"></span><span class="sb-txt">vuln_hunt phase · 14 min</span></div>
+    </div>
+    <div class="sb-sec">
+      <svg class="icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Recent
+    </div>
+    <div class="sb-item" style="position:relative" onclick="selEng(this,'testaspnet.vulnweb.com','ok','8 confirmed · 2h ago',false)">
+      <div class="sb-name">testaspnet.vulnweb.com</div>
+      <div class="sb-meta"><span class="sdot ok"></span><span class="sb-txt">8 confirmed · 2h ago</span></div>
+      <span class="rescan-btn" onclick="event.stopPropagation();doRescan()">
+        <svg class="icon" width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.27"/></svg>
+        Rescan
+      </span>
+    </div>
+    <div class="sb-item" onclick="selEng(this,'Juice Shop — E2E','ok','3 critical · yesterday',false)">
+      <div class="sb-name">Juice Shop — E2E</div>
+      <div class="sb-meta"><span class="sdot ok"></span><span class="sb-txt">3 critical · yesterday</span></div>
+    </div>
+    <div class="sb-item" onclick="selEng(this,'DVWA Authenticated Scan','ok','5 findings · 3d ago',false)">
+      <div class="sb-name">DVWA Authenticated Scan</div>
+      <div class="sb-meta"><span class="sdot ok"></span><span class="sb-txt">5 findings · 3d ago</span></div>
+    </div>
+    <div class="sb-item" onclick="selEng(this,'bni.co.id — Draft','i','Not started',false)">
+      <div class="sb-name">bni.co.id — Draft</div>
+      <div class="sb-meta"><span class="sdot i"></span><span class="sb-txt">Not started</span></div>
+    </div>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<main class="main">
+
+  <!-- ENGAGEMENTS PAGE -->
+  <div class="nav-pg on" id="pg-eng">
+    <div class="ptabs">
+      <div class="ptab on" onclick="switchTab('feed',this)">
+        <svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Live Feed
+      </div>
+      <div class="ptab" onclick="switchTab('findings',this)">
+        <svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        Findings <span class="tbadge c">8</span>
+      </div>
+      <div class="ptab" onclick="switchTab('report',this)">
+        <svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Report
+      </div>
+    </div>
+    <div class="pg on" id="t-feed" style="align-items:center;justify-content:center">
+      <div style="text-align:center;color:var(--text-muted);max-width:320px">
+        <svg style="display:block;margin:0 auto 14px;color:var(--border-light)" width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        <div style="font-size:14px;font-weight:600;color:var(--text-secondary);margin-bottom:5px">Live Feed</div>
+        <div style="font-size:11.5px;line-height:1.6">wondr.id running · vuln_hunt phase<br>
+        Try: click <strong style="color:var(--text-secondary)">🔔</strong> for notifications, <strong style="color:var(--text-secondary)">+</strong> for scan wizard,<br>
+        <strong style="color:var(--text-secondary)">↻ Rescan</strong> on testaspnet in sidebar,<br>
+        nav icons for Attack Surface, Trends, Vault, Patterns</div>
+        <div style="margin-top:16px"><span class="tb-pill run"><span class="pdot"></span>Running · 14m</span></div>
+      </div>
+    </div>
+    <div class="pg" id="t-findings"></div>
+    <div class="pg" id="t-report"></div>
+  </div>
+
+  <!-- ATTACK SURFACE -->
+  <div class="nav-pg" id="pg-surface">
+    <div class="map-tb">
+      <svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      <span style="font-size:13px;font-weight:600">Attack Surface</span>
+      <span class="map-info">wondr.id · 47 subdomains discovered</span>
+      <div style="margin-left:auto;display:flex;gap:6px">
+        <button class="btn btn-gh btn-sm">
+          <svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+          Filter
+        </button>
+        <button class="btn btn-gh btn-sm" onclick="toast('info','Export','Exporting attack surface as JSON…')">
+          <svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export
+        </button>
+      </div>
+    </div>
+    <div class="map-canvas" id="map-c" onclick="closeMapDet(event)">
+      <svg class="map-svg" id="map-svg"></svg>
+      <!-- Nodes: left%,top%,id,label,color,border,textcolor,finding -->
+      <div class="node" style="left:50%;top:50%" onclick="openMapDet(event,'wondr.id','Root Domain','—','Cloudflare','—')">
+        <div class="nc" style="width:50px;height:50px;background:var(--accent-dim);border-color:var(--accent);color:var(--accent-light)">ROOT</div>
+        <div class="nl" style="color:var(--text-primary);font-weight:600;font-size:10.5px">wondr.id</div>
+      </div>
+      <div class="node" style="left:71%;top:26%" onclick="openMapDet(event,'api.wondr.id','API Gateway','SQLi CRITICAL · IDOR MEDIUM','Cloudflare','2 findings')">
+        <div class="nc" style="width:38px;height:38px;background:rgba(240,54,79,.14);border-color:var(--critical);color:var(--critical)">API</div>
+        <div class="nl">api.wondr.id</div>
+        <div class="nf" style="color:var(--critical)">2 findings</div>
+      </div>
+      <div class="node" style="left:28%;top:30%" onclick="openMapDet(event,'app.wondr.id','Web Application','JWT alg:none bypass','Cloudflare','1 finding')">
+        <div class="nc" style="width:34px;height:34px;background:rgba(239,123,44,.12);border-color:var(--high);color:var(--high)">APP</div>
+        <div class="nl">app.wondr.id</div>
+        <div class="nf" style="color:var(--high)">1 finding</div>
+      </div>
+      <div class="node" style="left:78%;top:63%" onclick="openMapDet(event,'cdn.wondr.id','CDN / Static Assets','—','Cloudflare','Clean')">
+        <div class="nc" style="width:28px;height:28px;background:rgba(61,191,138,.1);border-color:var(--low);color:var(--low)">CDN</div>
+        <div class="nl">cdn.wondr.id</div>
+      </div>
+      <div class="node" style="left:22%;top:68%" onclick="openMapDet(event,'staging.wondr.id','Staging Environment','Possible takeover (GitHub Pages CNAME)','None','Takeover risk')">
+        <div class="nc" style="width:28px;height:28px;background:rgba(232,191,58,.1);border-color:var(--medium);color:var(--medium)">STG</div>
+        <div class="nl">staging.wondr.id</div>
+        <div class="nf" style="color:var(--medium)">Takeover?</div>
+      </div>
+      <div class="node" style="left:50%;top:18%" onclick="openMapDet(event,'auth.wondr.id','Auth Service','—','Cloudflare','Clean')">
+        <div class="nc" style="width:28px;height:28px;background:rgba(61,191,138,.1);border-color:var(--low);color:var(--low)">AUTH</div>
+        <div class="nl">auth.wondr.id</div>
+      </div>
+      <div class="node" style="left:62%;top:76%" onclick="openMapDet(event,'admin.wondr.id','Admin Interface','Exposed without WAF','None','WAF absent')">
+        <div class="nc" style="width:28px;height:28px;background:rgba(232,191,58,.1);border-color:var(--medium);color:var(--medium)">ADM</div>
+        <div class="nl">admin.wondr.id</div>
+        <div class="nf" style="color:var(--medium)">No WAF</div>
+      </div>
+      <div class="node" style="left:36%;top:78%">
+        <div class="nc" style="width:26px;height:26px;background:rgba(52,78,110,.2);border-color:var(--border);color:var(--text-muted);font-size:8.5px">+40</div>
+        <div class="nl" style="color:var(--text-muted)">more</div>
+      </div>
+      <div class="map-leg">
+        <div class="ll">Legend</div>
+        <div class="li"><span class="ld" style="background:var(--critical)"></span>Critical findings</div>
+        <div class="li"><span class="ld" style="background:var(--high)"></span>High findings</div>
+        <div class="li"><span class="ld" style="background:var(--medium)"></span>Risk / warning</div>
+        <div class="li"><span class="ld" style="background:var(--low)"></span>Clean</div>
+      </div>
+      <div class="map-det" id="map-det">
+        <div class="md-head">
+          <span class="md-host" id="md-h">api.wondr.id</span>
+          <div class="icon-btn" style="width:22px;height:22px" onclick="closeMapDetBtn()">
+            <svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </div>
+        </div>
+        <div class="md-row"><span class="md-k">Type</span><span class="md-v" id="md-t">—</span></div>
+        <div class="md-row"><span class="md-k">WAF</span><span class="md-v" id="md-w">—</span></div>
+        <div class="md-row"><span class="md-k">Findings</span><span class="md-v" id="md-f">—</span></div>
+        <div class="md-findings" id="md-fi"></div>
+        <div style="margin-top:10px;display:flex;gap:6px">
+          <button class="btn btn-pr btn-sm" onclick="toast('info','Subscan','Launching subscan on ' + document.getElementById('md-h').textContent)">
+            <svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            Subscan
+          </button>
+          <button class="btn btn-gh btn-sm">Details</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TRENDS -->
+  <div class="nav-pg" id="pg-trends">
+    <div class="trends-pg">
+      <div style="font-size:17px;font-weight:700;letter-spacing:-.3px;margin-bottom:3px">Findings Trends</div>
+      <div style="font-size:12px;color:var(--text-muted);margin-bottom:20px">BNI AASE Campaign · All engagements</div>
+      <div class="kpi-row">
+        <div class="kpi-card">
+          <div class="kpi-val" style="color:var(--critical)">12</div>
+          <div class="kpi-lbl">Total confirmed findings</div>
+          <div class="kpi-d up">
+            <svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+            8 this week
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-val" style="color:var(--status-ok)">3</div>
+          <div class="kpi-lbl">Engagements completed</div>
+          <div class="kpi-d up">
+            <svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+            1 in progress
+          </div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-val" style="color:var(--accent-light)">8,341</div>
+          <div class="kpi-lbl">KB records (bge-m3)</div>
+          <div class="kpi-d warn">
+            <svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            HackerOne only
+          </div>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-h">Confirmed findings per engagement</div>
+        <div class="bar-chart">
+          <div class="bcol"><div class="bstack"><div class="bar" style="height:60px;background:var(--critical)" title="6 Critical"></div><div class="bar" style="height:14px;background:var(--medium)" title="2 Medium"></div></div><div class="blbl">testaspnet</div></div>
+          <div class="bcol"><div class="bstack"><div class="bar" style="height:26px;background:var(--critical)" title="3 Critical"></div></div><div class="blbl">Juice Shop</div></div>
+          <div class="bcol"><div class="bstack"><div class="bar" style="height:14px;background:var(--high)" title="2 High"></div><div class="bar" style="height:12px;background:var(--medium)" title="3 Med"></div></div><div class="blbl">DVWA</div></div>
+          <div class="bcol"><div class="bstack"><div class="bar" style="height:9px;background:var(--critical)" title="1 Critical so far"></div></div><div class="blbl live">wondr.id ●</div></div>
+          <div class="bcol"></div>
+          <div class="bcol"></div>
+        </div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-h">Vulnerability classes confirmed</div>
+        <div class="vuln-grid">
+          <div><div class="vrow"><span class="vname">SQL Injection</span><div class="vtrack"><div class="vfill" style="width:75%;background:var(--critical)"></div></div><span class="vcount">9</span></div>
+          <div class="vrow"><span class="vname">IDOR</span><div class="vtrack"><div class="vfill" style="width:17%;background:var(--accent)"></div></div><span class="vcount">2</span></div>
+          <div class="vrow"><span class="vname">JWT</span><div class="vtrack"><div class="vfill" style="width:17%;background:var(--accent)"></div></div><span class="vcount">2</span></div>
+          <div class="vrow"><span class="vname">SSRF</span><div class="vtrack"><div class="vfill" style="width:17%;background:var(--high)"></div></div><span class="vcount">2</span></div></div>
+          <div><div class="vrow"><span class="vname">XSS</span><div class="vtrack"><div class="vfill" style="width:9%;background:var(--medium)"></div></div><span class="vcount">1</span></div>
+          <div class="vrow"><span class="vname">GraphQL</span><div class="vtrack"><div class="vfill" style="width:9%;background:var(--low)"></div></div><span class="vcount">1</span></div>
+          <div class="vrow"><span class="vname">CORS</span><div class="vtrack"><div class="vfill" style="width:9%;background:var(--low)"></div></div><span class="vcount">1</span></div>
+          <div class="vrow"><span class="vname">Race Cond.</span><div class="vtrack"><div class="vfill" style="width:9%;background:var(--medium)"></div></div><span class="vcount">1</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- API VAULT -->
+  <div class="nav-pg" id="pg-vault">
+    <div class="vault-pg">
+      <div class="pg-title">API Vault</div>
+      <div class="pg-sub">Manage API keys for external integrations. Keys are masked — click Reveal to view.</div>
+      <div class="vault-list">
+        <div class="vc">
+          <div class="vc-icon" style="background:rgba(239,123,44,.12)"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--high)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+          <div><div class="vc-name">Burp Suite Pro MCP</div><div class="vc-key">localhost:●●●●7  ·  SSE /sse</div></div>
+          <div class="vc-status ok">Connected</div>
+          <div class="vc-acts"><button class="vc-btn test" onclick="testVault('Burp MCP','Burp MCP connection healthy · 33 tools available')">Test</button><button class="vc-btn" onclick="toast('info','Burp MCP','Edit port / URL in environment config')">Edit</button></div>
+        </div>
+        <div class="vc">
+          <div class="vc-icon" style="background:rgba(38,98,212,.1)"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--accent-light)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+          <div><div class="vc-name">Ollama (Local LLM)</div><div class="vc-key">localhost:●●●●●  ·  pentra-ft:latest</div></div>
+          <div class="vc-status ok">Connected</div>
+          <div class="vc-acts"><button class="vc-btn test" onclick="testVault('Ollama','pentra-ft:latest loaded · 4.7GB · 89.1% accuracy')">Test</button><button class="vc-btn" onclick="toast('info','Ollama','Edit base URL in .env OLLAMA_BASE_URL')">Edit</button></div>
+        </div>
+        <div class="vc">
+          <div class="vc-icon" style="background:rgba(61,191,138,.1)"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--status-ok)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div>
+          <div><div class="vc-name">Shodan API</div><div class="vc-key" id="vc-shodan-key">●●●●●●●●●●●●ZGh4</div></div>
+          <div class="vc-status ok">Active</div>
+          <div class="vc-acts">
+            <button class="vc-btn test" onclick="testVault('Shodan','API key valid · Credits: 100/month remaining')">Test</button>
+            <button class="vc-btn" id="reveal-shodan" onclick="revealKey('shodan','SHODAN_API_KEY_●●●h4x8')">Reveal</button>
+            <button class="vc-btn" onclick="toast('info','Shodan','Edit key in .env SHODAN_API_KEY')">Edit</button>
+          </div>
+        </div>
+        <div class="vc">
+          <div class="vc-icon" style="background:rgba(52,78,110,.2)"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2l-19 10 7.33 3.67L21.5 2zM10.83 15.67L14.5 23l3.17-13.84"/></svg></div>
+          <div><div class="vc-name">CHAOS (ProjectDiscovery)</div><div class="vc-key">Not configured · cloud.projectdiscovery.io</div></div>
+          <div class="vc-status miss">Not set</div>
+          <div class="vc-acts"><button class="vc-btn p" onclick="addVaultKey('CHAOS','CHAOS_API_KEY')">+ Add Key</button></div>
+        </div>
+        <div class="vc">
+          <div class="vc-icon" style="background:rgba(239,123,44,.1)"><svg class="icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--high)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg></div>
+          <div><div class="vc-name">Burp Collaborator</div><div class="vc-key">●●●●●●●●.oastify.com  ·  OOB listener</div></div>
+          <div class="vc-status ok">Active</div>
+          <div class="vc-acts"><button class="vc-btn test" onclick="testVault('Collaborator','OOB listener active · DNS and HTTP callbacks working')">Test OOB</button><button class="vc-btn" onclick="toast('info','Collaborator','Auto-generated by Burp Suite Pro')">Info</button></div>
+        </div>
+        <div class="vault-add" onclick="addVaultKey('New Service','')">
+          <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add new API key or service connection
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- GF PATTERNS -->
+  <div class="nav-pg" id="pg-patterns">
+    <div class="gf-pg">
+      <div class="gf-top">
+        <div>
+          <div class="pg-title">GF Patterns</div>
+          <div class="pg-sub" id="gf-sub">22 active patterns · Click Test to match against a URL</div>
+        </div>
+        <div style="display:flex;gap:7px;flex-shrink:0">
+          <button class="btn btn-gh btn-sm" onclick="toggleEditor()">
+            <svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            Write Pattern
+          </button>
+          <button class="btn btn-pr btn-sm" onclick="fakeUpload()">
+            <svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg>
+            Upload .json
+          </button>
+        </div>
+      </div>
+      <div class="upload-zone" onclick="fakeUpload()">
+        <div class="uz-ico"><svg class="icon" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/></svg></div>
+        <div class="uz-t">Drop GF pattern files here or click to browse</div>
+        <div class="uz-s">Accepts .json · Multiple files · Auto-dedup by name</div>
+      </div>
+      <div class="test-row">
+        <input class="test-inp" id="gf-url-in" placeholder="Paste a URL to test patterns — e.g. https://target.com/products?id=1&redirect=http://evil.com" oninput="runGFTest(this.value)">
+        <button class="btn btn-gh btn-sm" onclick="runGFTest(document.getElementById('gf-url-in').value)">
+          <svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Test
+        </button>
+        <button class="btn btn-gh btn-sm" onclick="clearGFTest()">Clear</button>
+      </div>
+      <div id="gf-match-summary" style="font-size:11px;color:var(--text-muted);margin-bottom:10px;min-height:16px"></div>
+      <table class="gf-table">
+        <thead><tr>
+          <th class="gfh">Pattern name</th>
+          <th class="gfh">Vuln hint</th>
+          <th class="gfh">Priority</th>
+          <th class="gfh">Test result</th>
+          <th class="gfh">Enabled</th>
+        </tr></thead>
+        <tbody id="gf-body"></tbody>
+      </table>
+      <div class="editor-box" id="editor-box" style="display:none">
+        <div style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Pattern Editor</div>
+        <textarea class="editor-ta" id="editor-ta" placeholder='{"name":"custom_api_key","regex":"[\\?&](api_key|apikey|token|key)=[a-zA-Z0-9]{16,}","vuln_hint":"API key exposed in URL parameter","priority":1}'></textarea>
+        <div style="display:flex;gap:7px;margin-top:8px">
+          <button class="btn btn-pr btn-sm" onclick="savePattern()">
+            <svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Save Pattern
+          </button>
+          <button class="btn btn-gh btn-sm" onclick="validatePattern()">Validate JSON</button>
+          <button class="btn btn-gh btn-sm" onclick="toggleEditor()">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="nav-pg" id="pg-settings">
+    <div class="set-pg">
+      <div class="pg-title">Settings</div>
+      <div class="pg-sub" style="margin-bottom:22px">Platform preferences and operation mode</div>
+      <div class="set-section">
+        <div class="set-sec-title">Operation Mode</div>
+        <div class="set-row">
+          <div class="set-info">
+            <div class="set-name">AASE / Red Team Mode</div>
+            <div class="set-desc">Full offensive features enabled · Regulatory report format (OJK POJK No.11/2022) · All 13 scan tools active</div>
+          </div>
+          <label class="sw"><input type="checkbox" checked onchange="toggleMode('AASE Mode',this.checked)"><span class="sw-sl"></span></label>
+        </div>
+        <div class="set-row">
+          <div class="set-info">
+            <div class="set-name">Bug Bounty Mode</div>
+            <div class="set-desc">HackerOne report format · Bounty-focused triage · H1 submission-ready output</div>
+          </div>
+          <label class="sw"><input type="checkbox" onchange="toggleMode('Bug Bounty Mode',this.checked)"><span class="sw-sl"></span></label>
+        </div>
+      </div>
+      <div class="set-section">
+        <div class="set-sec-title">Notifications</div>
+        <div class="set-row">
+          <div class="set-info">
+            <div class="set-name">In-app notification bell</div>
+            <div class="set-desc">Show bell icon with count badge for scan events and HITL approvals</div>
+          </div>
+          <label class="sw"><input type="checkbox" checked onchange="toast('info','Setting saved','Notification bell '+(this.checked?'enabled':'disabled'))"><span class="sw-sl"></span></label>
+        </div>
+        <div class="set-row">
+          <div class="set-info">
+            <div class="set-name">Toast alerts for critical findings</div>
+            <div class="set-desc">Show pop-up toasts when CRITICAL or HIGH findings are confirmed during a scan</div>
+          </div>
+          <label class="sw"><input type="checkbox" checked onchange="toast('info','Setting saved','Toast alerts '+(this.checked?'enabled':'disabled'))"><span class="sw-sl"></span></label>
+        </div>
+      </div>
+      <div class="set-section">
+        <div class="set-sec-title">Smart Rescan</div>
+        <div class="set-row">
+          <div class="set-info">
+            <div class="set-name">Auto-import previous configuration</div>
+            <div class="set-desc">When rescanning, automatically load preset, scope, auth headers, and path exclusions from the previous run on the same target</div>
+          </div>
+          <label class="sw"><input type="checkbox" checked onchange="toast('info','Setting saved','Smart Rescan '+(this.checked?'enabled':'disabled'))"><span class="sw-sl"></span></label>
+        </div>
+        <div class="set-row">
+          <div class="set-info">
+            <div class="set-name">Incremental fingerprint cache</div>
+            <div class="set-desc">Skip unchanged endpoints using SHA-256 content fingerprints — reduces rescan time by up to 60%</div>
+          </div>
+          <label class="sw"><input type="checkbox" checked onchange="toast('info','Setting saved','Fingerprint cache '+(this.checked?'enabled':'disabled'))"><span class="sw-sl"></span></label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+</div>
+
+<!-- SCAN WIZARD -->
+<div class="wiz-ov" id="wiz-ov" onclick="closeWizOut(event)">
+<div class="wiz-box" onclick="event.stopPropagation()">
+  <div class="wiz-hdr">
+    <span class="wiz-title">New Scan</span>
+    <div class="wiz-close" onclick="closeWiz()"><svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>
+  </div>
+  <div class="wiz-steps" id="wiz-steps"></div>
+  <div class="wiz-body" id="wiz-body"></div>
+  <div class="wiz-ftr">
+    <button class="btn btn-gh" id="wiz-back" onclick="wStep(-1)">
+      <svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+      Back
+    </button>
+    <div style="display:flex;gap:7px">
+      <button class="btn btn-gh" onclick="closeWiz()">Cancel</button>
+      <button class="btn btn-pr" id="wiz-next" onclick="wStep(1)">Next <svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- STOP ALL MODAL -->
+<div class="stop-ov" id="stop-ov">
+<div class="stop-box">
+  <div class="stop-title">
+    <svg class="icon" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+    Stop All Running Scans
+  </div>
+  <div class="stop-msg">This will immediately terminate all active engagements. Partial results will be saved and the engagement can be resumed later.</div>
+  <div class="stop-list">
+    <div class="stop-eng"><span class="sdot r"></span>wondr.id — AASE Recon (vuln_hunt · 14 min elapsed)</div>
+  </div>
+  <div class="stop-ftr">
+    <button class="btn btn-gh" onclick="closeStop()">Cancel</button>
+    <button class="btn btn-dn" onclick="confirmStop()">
+      <svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+      Stop All
+    </button>
+  </div>
+</div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<script>
+// Init Lucide icons
+document.addEventListener('DOMContentLoaded', () => { if(window.lucide) lucide.createIcons(); });
+
+// ── GF PATTERN DATA
+const GF_PATTERNS = [
+  {name:'sqli_int',hint:'Integer param → time-based blind injection',pri:1,rx:/[\?&](id|cat|uid|pid|num|page|item|product|order|article)=\d+/i},
+  {name:'idor',hint:'Direct object reference — user/account/doc ID',pri:1,rx:/[\?&](id|user_id|uid|account_id|order_id|doc_id|profile_id)=/i},
+  {name:'ssrf',hint:'URL / destination parameter — server-side fetch',pri:1,rx:/[\?&](url|uri|redirect|dest|destination|webhook|callback|imageUrl|image_url|src|fetch|proxy)=/i},
+  {name:'lfi',hint:'File or path parameter — local file inclusion',pri:1,rx:/[\?&](file|path|page|template|include|load|read|document)=/i},
+  {name:'rce',hint:'Command execution parameter',pri:1,rx:/[\?&](cmd|exec|command|shell|ping|host|run)=/i},
+  {name:'interesting_ext',hint:'Backup / config file exposure',pri:1,rx:/\.(bak|backup|old|orig|sql|env|config|log|zip|rar|7z|tar)(\?.*)?$/i},
+  {name:'api_key_in_url',hint:'API key or token exposed in URL',pri:1,rx:/[\?&](api_key|apikey|access_token|token|secret|key)=[a-zA-Z0-9_\-]{16,}/i},
+  {name:'xss',hint:'Reflection parameter — XSS candidate',pri:2,rx:/[\?&](search|q|query|s|name|input|message|comment|feedback|text|content)=/i},
+  {name:'open_redirect',hint:'Redirect URL starting with http/https',pri:2,rx:/[\?&](redirect|url|return|next|goto|destination|redir|forward)=https?/i},
+  {name:'ssti',hint:'Template parameter — SSTI candidate',pri:2,rx:/[\?&](template|render|view|theme|layout|format|lang)=/i},
+  {name:'graphql',hint:'GraphQL endpoint',pri:3,rx:/\/(graphql|graphiql|gql|api\/graphql)(\?.*)?$/i},
+  {name:'debug_endpoint',hint:'Debug or admin interface exposed',pri:2,rx:/\/(debug|test|dev|admin|internal|actuator|\.env|setup|install)(\?|\/|$)/i},
+];
+
+let gfEnabled = {};
+GF_PATTERNS.forEach(p=>gfEnabled[p.name]=true);
+let gfCustom = [];
+
+function renderGFTable(testUrl=''){
+  const tbody = document.getElementById('gf-body');
+  const all = [...GF_PATTERNS,...gfCustom];
+  let matchCount=0;
+  tbody.innerHTML = all.map(p=>{
+    const on = gfEnabled[p.name]!==false;
+    let matchHtml='<span class="gf-match no">—</span>';
+    if(testUrl){
+      const hit = p.rx && p.rx.test(testUrl);
+      if(hit) matchCount++;
+      matchHtml = hit
+        ? '<span class="gf-match hit"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Match</span>'
+        : '<span class="gf-match no">No match</span>';
+    }
+    const priClass=['','pr1','pr2','pr3','pr4'][p.pri]||'pr4';
+    const priLabel=['','P1','P2','P3','P4'][p.pri]||'P?';
+    return `<tr class="gfr">
+      <td class="gfd code">${p.name}</td>
+      <td class="gfd" style="color:var(--text-secondary);font-size:11px">${p.hint}</td>
+      <td class="gfd"><span class="pri ${priClass}">● ${priLabel}</span></td>
+      <td class="gfd" id="gfm-${p.name}">${matchHtml}</td>
+      <td class="gfd"><button class="toggle ${on?'on':''}" onclick="toggleGF('${p.name}',this)" title="${on?'Disable':'Enable'} pattern"></button></td>
+    </tr>`;
+  }).join('');
+  return matchCount;
+}
+renderGFTable();
+
+function runGFTest(url){
+  const mc = renderGFTable(url);
+  const el = document.getElementById('gf-match-summary');
+  if(!url){el.textContent='';return;}
+  const all=GF_PATTERNS.length+gfCustom.length;
+  el.innerHTML = mc>0
+    ? `<span style="color:var(--status-ok);font-weight:600">${mc} pattern${mc>1?'s':''} matched</span> out of ${all} — highest priority match highlighted`
+    : `<span style="color:var(--text-muted)">No patterns matched for this URL</span>`;
+}
+function clearGFTest(){
+  document.getElementById('gf-url-in').value='';
+  renderGFTable();
+  document.getElementById('gf-match-summary').textContent='';
+}
+function toggleGF(name,btn){
+  gfEnabled[name]=!gfEnabled[name];
+  btn.classList.toggle('on');
+  btn.classList.toggle('off');
+  const en=Object.values(gfEnabled).filter(Boolean).length+gfCustom.filter(p=>gfEnabled[p.name]!==false).length;
+  document.getElementById('gf-sub').textContent=`${en} active patterns · Click Test to match against a URL`;
+}
+let editorOpen=false;
+function toggleEditor(){
+  editorOpen=!editorOpen;
+  document.getElementById('editor-box').style.display=editorOpen?'block':'none';
+  if(editorOpen)document.getElementById('editor-box').scrollIntoView({behavior:'smooth'});
+}
+function validatePattern(){
+  const ta=document.getElementById('editor-ta');
+  try{
+    const p=JSON.parse(ta.value);
+    if(!p.name||!p.regex||!p.hint||!p.priority) throw new Error('Missing required fields: name, regex, hint, priority');
+    new RegExp(p.regex);
+    toast('ok','Valid JSON','Pattern structure and regex are valid');
+  }catch(e){toast('crit','Invalid',''+e.message);}
+}
+function savePattern(){
+  const ta=document.getElementById('editor-ta');
+  try{
+    const p=JSON.parse(ta.value);
+    if(!p.name||!p.regex) throw new Error('Pattern must have name and regex');
+    const rx=new RegExp(p.regex,'i');
+    gfCustom.push({name:p.name,hint:p.hint||'Custom pattern',pri:p.priority||3,rx});
+    gfEnabled[p.name]=true;
+    renderGFTable(document.getElementById('gf-url-in').value||'');
+    ta.value='';
+    toggleEditor();
+    toast('ok','Pattern saved',`"${p.name}" added to GF patterns`);
+    document.getElementById('gf-sub').textContent=`${GF_PATTERNS.length+gfCustom.length} active patterns · Click Test to match against a URL`;
+  }catch(e){toast('crit','Save failed',''+e.message);}
+}
+function fakeUpload(){
+  toast('info','Upload','Simulating file upload… (functional in real app)');
+  setTimeout(()=>{
+    gfCustom.push({name:'custom_jwt_in_url',hint:'JWT token found in URL — security misconfiguration',pri:1,rx:/(eyJ[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,}\.[a-zA-Z0-9_-]{10,})/});
+    gfEnabled['custom_jwt_in_url']=true;
+    renderGFTable(document.getElementById('gf-url-in').value||'');
+    toast('ok','Pattern uploaded','"custom_jwt_in_url" added from upload');
+    document.getElementById('gf-sub').textContent=`${GF_PATTERNS.length+gfCustom.length} active patterns · Click Test to match against a URL`;
+  },900);
+}
+
+// ── NAVIGATION
+function switchNav(page,el){
+  document.querySelectorAll('.ni-btn').forEach(b=>b.classList.remove('on'));
+  el.classList.add('on');
+  document.querySelectorAll('.nav-pg').forEach(p=>p.classList.remove('on'));
+  document.getElementById('pg-'+page).classList.add('on');
+  const labels={eng:'Engagements',surface:'Attack Surface',trends:'Trends',vault:'API Vault',patterns:'GF Patterns',settings:'Settings'};
+  document.getElementById('bc-cur').textContent=labels[page]||page;
+}
+function switchTab(id,el){
+  document.querySelectorAll('.ptab').forEach(t=>t.classList.remove('on'));
+  el.classList.add('on');
+  document.querySelectorAll('.pg').forEach(p=>p.classList.remove('on'));
+  const t=document.getElementById('t-'+id);
+  if(t)t.classList.add('on');
+}
+function navToEng(){
+  document.getElementById('notif-panel').classList.remove('open');
+  document.querySelectorAll('.ni-btn').forEach(b=>b.classList.remove('on'));
+  document.querySelector('.ni-btn[data-page="pg-eng"]').classList.add('on');
+  document.querySelectorAll('.nav-pg').forEach(p=>p.classList.remove('on'));
+  document.getElementById('pg-eng').classList.add('on');
+}
+
+// ── SIDEBAR
+function selEng(el,name,status,meta,showOv){
+  document.querySelectorAll('.sb-item').forEach(i=>i.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById('bc-cur').textContent=name;
+  const slot=document.getElementById('ov-slot');
+  const pills={r:'tb-pill run',ok:'tb-pill ok',i:'tb-pill idle'};
+  const ps={r:'Running',ok:'Complete',i:'Idle'};
+  document.getElementById('gb-status').className=pills[status]||'tb-pill idle';
+  document.getElementById('gb-status').innerHTML=status==='r'?'<span class="pdot"></span>Running':ps[status];
+  if(showOv){
+    slot.innerHTML=`<div class="ov">
+      <div class="ov-head"><span class="ov-name">${name}</span>
+        <div class="ov-x" onclick="document.getElementById('ov-slot').innerHTML=''" title="Close">
+          <svg class="icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </div>
+      </div>
+      <div class="ov-kpi-row">
+        <div class="ov-kpi"><div class="ov-kv c">1</div><div class="ov-kl">Critical</div></div>
+        <div class="ov-kpi"><div class="ov-kv h">0</div><div class="ov-kl">High</div></div>
+        <div class="ov-kpi"><div class="ov-kv m">0</div><div class="ov-kl">Medium</div></div>
+        <div class="ov-kpi"><div class="ov-kv g">47</div><div class="ov-kl">Hosts</div></div>
+      </div>
+      <div class="ov-phase">
+        <svg class="icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--status-run)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        vuln_hunt phase · 14 min elapsed
+      </div>
+      <div class="ov-actions">
+        <button class="ov-btn p" onclick="navToEng()">
+          <svg class="icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Feed
+        </button>
+        <button class="ov-btn" onclick="switchNav('surface',document.querySelector('[data-page=pg-surface]'))">
+          <svg class="icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+          Map
+        </button>
+        <button class="ov-btn" onclick="openStop()">
+          <svg class="icon" width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>
+          Stop
+        </button>
+      </div>
+    </div>`;
+    lucide && lucide.createIcons();
+  } else {
+    slot.innerHTML='';
+  }
+}
+
+// ── NOTIFICATIONS
+function toggleNotif(e){
+  e.stopPropagation();
+  const p=document.getElementById('notif-panel');
+  p.classList.toggle('open');
+}
+document.addEventListener('click',e=>{
+  const p=document.getElementById('notif-panel');
+  const b=document.getElementById('bell-btn');
+  if(p.classList.contains('open')&&!p.contains(e.target)&&!b.contains(e.target))
+    p.classList.remove('open');
+});
+function markAllRead(){
+  document.querySelectorAll('.ni.unread').forEach(i=>i.classList.remove('unread'));
+  document.getElementById('notif-ct').style.display='none';
+  toast('ok','Done','All notifications marked as read');
+}
+
+// ── WIZARD
+let wCur=0;
+const wData={target:'wondr.id',preset:'pentra-ft',auth:'none',scope:'wondr.id, *.wondr.id',excl:'',outScope:''};
+const wSteps=[
+  {dot:'Target',lbl:'Target'},
+  {dot:'Preset',lbl:'Preset'},
+  {dot:'Auth',lbl:'Auth'},
+  {dot:'Review',lbl:'Review'},
+];
+const wContent=[
+  ()=>`
+    <div class="w-lbl">Target domain</div>
+    <input class="w-inp" value="${wData.target}" oninput="wData.target=this.value" placeholder="e.g. wondr.id" id="wi-domain">
+    <div class="w-lbl">In scope</div>
+    <input class="w-inp" value="${wData.scope}" oninput="wData.scope=this.value" placeholder="wondr.id, *.wondr.id">
+    <div class="w-lbl">Path exclusion <span style="font-weight:400;color:var(--text-muted)">(optional)</span></div>
+    <input class="w-inp" value="${wData.excl}" oninput="wData.excl=this.value" placeholder="/css, /images, /static">
+    <div class="w-hint">Supports exact paths and regex · e.g. <code style="font-family:var(--mono);font-size:11px">/static/(?:css|js)/</code></div>
+    <div class="w-lbl">Out of scope <span style="font-weight:400;color:var(--text-muted)">(optional)</span></div>
+    <input class="w-inp" value="${wData.outScope}" oninput="wData.outScope=this.value" placeholder="careers.wondr.id, status.wondr.id">
+  `,
+  ()=>`
+    <div class="w-lbl" style="margin-bottom:10px">Select scan preset</div>
+    <div class="preset-grid">
+      ${[
+        {k:'quick',n:'Quick',d:'LLM-only assessment. No active probing.',tags:['LLM only'],t:'~5-8 min',hl:false},
+        {k:'fast',n:'Fast',d:'Nuclei + Burp. Good coverage, quick turnaround.',tags:['nuclei','burp'],t:'~10-15 min',hl:false},
+        {k:'full',n:'Full',d:'All 13 tools. Most comprehensive coverage.',tags:['all tools'],t:'~40-60 min',hl:false},
+        {k:'stealth',n:'Stealth',d:'Passive only, 1 RPS. Minimal noise for production targets.',tags:['passive','1 RPS'],t:'~60-90 min',hl:false},
+        {k:'authenticated',n:'Authenticated',d:'Full scan with auth headers injected. Reveals auth-gated vulns.',tags:['auth','IDOR'],t:'~50-70 min',hl:false},
+        {k:'pentra-ft',n:'pentra-ft',d:'Domain fine-tuned model (89.1% acc). +33% more findings vs baseline in E2E test.',tags:['fine-tuned LLM','nuclei'],t:'~15-20 min',hl:true},
+      ].map(p=>`
+        <div class="pc ${wData.preset===p.k?'on':''}" onclick="selPreset('${p.k}',this)">
+          <div class="pc-name">${p.n}</div>
+          <div class="pc-desc">${p.d}</div>
+          <div class="pc-tags">${p.tags.map(t=>`<span class="pc-tag ${p.hl&&t==='fine-tuned LLM'?'hl':''}">${t}</span>`).join('')}</div>
+          <div class="pc-time">${p.t}</div>
+        </div>
+      `).join('')}
+    </div>
+  `,
+  ()=>`
+    <div class="w-lbl">Authentication type</div>
+    <div class="auth-row">
+      ${['none','cookie','bearer','auto-login'].map(a=>`<button class="at ${wData.auth===a?'on':''}" onclick="selAuth('${a}',this)">${a.charAt(0).toUpperCase()+a.slice(1)}</button>`).join('')}
+    </div>
+    <div id="auth-fields">${getAuthFields()}</div>
+  `,
+  ()=>`
+    <div class="w-lbl" style="margin-bottom:10px">Confirm and launch</div>
+    <div class="rv-box">
+      <div class="rv-row"><span class="rv-k">Target</span><span class="rv-v hi">${wData.target||'—'}</span></div>
+      <div class="rv-row"><span class="rv-k">Scope</span><span class="rv-v">${wData.scope||'—'}</span></div>
+      ${wData.excl?`<div class="rv-row"><span class="rv-k">Path exclusion</span><span class="rv-v">${wData.excl}</span></div>`:''}
+      <div class="rv-row"><span class="rv-k">Preset</span><span class="rv-v hi">${wData.preset}</span></div>
+      <div class="rv-row"><span class="rv-k">Auth</span><span class="rv-v">${wData.auth}</span></div>
+      <div class="rv-row"><span class="rv-k">LLM model</span><span class="rv-v">pentra-ft:latest</span></div>
+      <div class="rv-row"><span class="rv-k">Estimated time</span><span class="rv-v">~15-20 min (pentra-ft)</span></div>
+    </div>
+    <div class="launch-hint">The agent will pause at three HITL checkpoints (after Plan, Recon, and Exploit phases) for your approval before continuing.</div>
+  `,
+];
+function getAuthFields(){
+  if(wData.auth==='cookie') return `<div class="w-lbl">Cookie string</div><input class="w-inp" placeholder="session=abc123; csrf_token=xyz" oninput="">`;
+  if(wData.auth==='bearer') return `<div class="w-lbl">Bearer token</div><input class="w-inp" placeholder="eyJhbGciOiJIUzI1NiJ9..." oninput="" style="font-family:var(--mono)">`;
+  if(wData.auth==='auto-login') return `<div class="w-lbl">Login URL</div><input class="w-inp" placeholder="https://target.com/login"><div class="w-lbl">Username</div><input class="w-inp" placeholder="admin"><div class="w-lbl">Password</div><input class="w-inp" type="password" placeholder="••••••••">`;
+  return `<div style="padding:16px 0;font-size:12px;color:var(--text-muted)">Unauthenticated scan — no auth headers will be injected</div>`;
+}
+function selPreset(k,el){
+  wData.preset=k;
+  document.querySelectorAll('.pc').forEach(c=>c.classList.remove('on'));
+  el.classList.add('on');
+}
+function selAuth(a,el){
+  wData.auth=a;
+  document.querySelectorAll('.at').forEach(t=>t.classList.remove('on'));
+  el.classList.add('on');
+  document.getElementById('auth-fields').innerHTML=getAuthFields();
+}
+function renderWiz(){
+  const steps=document.getElementById('wiz-steps');
+  steps.innerHTML=wSteps.map((s,i)=>`
+    <div class="ws">
+      <div class="ws-dot ${i<wCur?'done':i===wCur?'cur':''}">${i<wCur?'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>':i+1}</div>
+      <span class="ws-lbl ${i<wCur?'done':i===wCur?'cur':''}">${s.lbl}</span>
+      ${i<3?`<div class="ws-line ${i<wCur?'done':''}"></div>`:''}
+    </div>
+  `).join('');
+  document.getElementById('wiz-body').innerHTML=wContent[wCur]();
+  const back=document.getElementById('wiz-back');
+  back.style.visibility=wCur===0?'hidden':'visible';
+  const next=document.getElementById('wiz-next');
+  if(wCur===3){
+    next.innerHTML=`<svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> Launch Scan`;
+  } else {
+    next.innerHTML=`Next <svg class="icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>`;
+  }
+  lucide && lucide.createIcons();
+}
+function openWiz(){document.getElementById('wiz-ov').classList.add('on');wCur=0;renderWiz();}
+function closeWiz(){document.getElementById('wiz-ov').classList.remove('on');}
+function closeWizOut(e){if(e.target===document.getElementById('wiz-ov'))closeWiz();}
+function wStep(d){
+  if(d>0&&wCur===3){
+    closeWiz();
+    toast('ok','Scan started',`${wData.target} · ${wData.preset} preset · agent initializing…`);
+    setTimeout(()=>toast('info','OSINT phase','Passive reconnaissance started for '+wData.target),2000);
+    return;
+  }
+  if(d>0&&wCur===0&&!wData.target.trim()){
+    toast('crit','Target required','Please enter a target domain');
+    return;
+  }
+  wCur=Math.max(0,Math.min(3,wCur+d));
+  renderWiz();
+}
+
+// ── STOP ALL
+function openStop(){document.getElementById('stop-ov').classList.add('on');}
+function closeStop(){document.getElementById('stop-ov').classList.remove('on');}
+function confirmStop(){
+  closeStop();
+  document.getElementById('gb-status').className='tb-pill idle';
+  document.getElementById('gb-status').textContent='Stopped';
+  document.querySelector('.sdot.r').className='sdot f';
+  toast('warn','Scans stopped','All engagements terminated — partial results saved');
+}
+
+// ── MAP
+function openMapDet(e,host,type,vuln,waf,findings){
+  e.stopPropagation();
+  const d=document.getElementById('map-det');
+  document.getElementById('md-h').textContent=host;
+  document.getElementById('md-t').textContent=type;
+  document.getElementById('md-w').textContent=waf;
+  document.getElementById('md-f').textContent=findings;
+  const fi=document.getElementById('md-fi');
+  if(vuln&&vuln!=='—'){
+    fi.innerHTML=`<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:6px">Findings</div>`+
+      vuln.split(' · ').map(v=>{
+        const c=v.includes('CRITICAL')?'critical':v.includes('HIGH')||v.includes('JWT')?'high':v.includes('MEDIUM')?'medium':'info';
+        return `<div class="md-fi" style="border-color:rgba(0,0,0,0)"><svg style="flex-shrink:0" width="8" height="8" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="var(--${c})"/></svg> <span style="font-size:11px;color:var(--text-secondary)">${v}</span></div>`;
+      }).join('');
+  } else {
+    fi.innerHTML='';
+  }
+  d.classList.add('on');
+}
+function closeMapDet(e){if(!document.getElementById('map-det').contains(e.target))closeMapDetBtn();}
+function closeMapDetBtn(){document.getElementById('map-det').classList.remove('on');}
+
+// ── API VAULT
+function testVault(name,msg){
+  toast('ok',name+' — Test passed',msg);
+}
+function revealKey(id,val){
+  const el=document.getElementById('vc-'+id+'-key');
+  const btn=document.getElementById('reveal-'+id);
+  if(el){el.textContent=val;btn.textContent='Hide';btn.onclick=()=>{el.textContent='●●●●●●●●●●●●ZGh4';btn.textContent='Reveal';btn.onclick=()=>revealKey(id,val);}}
+}
+function addVaultKey(name,envKey){
+  toast('info','Add key','Would open a form to add '+name+' API key (saved to .env as '+envKey+')');
+}
+
+// ── SETTINGS
+function toggleMode(name,on){
+  toast('info','Setting saved',name+' is now '+(on?'enabled':'disabled'));
+}
+
+// ── SMART RESCAN
+function doRescan(){
+  toast('ok','Smart Rescan','Loading previous config: testaspnet · full preset · unauthenticated…');
+  setTimeout(()=>toast('ok','Rescan launched','testaspnet.vulnweb.com — same configuration as last run'),1200);
+}
+
+// ── TOAST SYSTEM
+let toastTimers={};
+function toast(type,title,msg){
+  const icons={ok:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',warn:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',crit:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',info:'<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>'};
+  const id='t'+Date.now()+Math.random();
+  const el=document.createElement('div');
+  el.className='toast '+type;
+  el.id=id;
+  el.innerHTML=`<span class="toast-ico">${icons[type]||icons.info}</span><div class="toast-body"><div class="toast-title">${title}</div><div class="toast-msg">${msg}</div></div><span class="toast-x" onclick="removeToast('${id}')"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></span>`;
+  document.getElementById('toast-wrap').appendChild(el);
+  toastTimers[id]=setTimeout(()=>removeToast(id),4500);
+}
+function removeToast(id){
+  const el=document.getElementById(id);
+  if(el){el.style.opacity='0';el.style.transform='translateX(110%)';el.style.transition='all .22s ease';setTimeout(()=>el.remove(),220);}
+  clearTimeout(toastTimers[id]);
+}
+
+// Auto demo toasts
+setTimeout(()=>toast('crit','Critical finding','SQL Injection confirmed — api.wondr.id/products?id=1'),2500);
+setTimeout(()=>toast('warn','Approval needed','Recon phase complete — 47 subdomains, 3 risk hosts'),7000);
+</script>
+</body>
+</html>

@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pentra AI — UI Enhancement Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg-void:#080b10;--bg-base:#0c1018;--bg-panel:#111722;--bg-card:#162030;
+  --bg-hover:#1a2840;--bg-active:#1e3050;--bg-input:#0f1a28;
+  --border:#1e2e45;--border-light:#243650;--border-focus:#2d6ee0;
+  --text-primary:#e4ecf7;--text-secondary:#7a95b8;--text-muted:#3d5470;--text-code:#a5d6ff;
+  --critical:#ff3b5c;--high:#ff7b2f;--medium:#f5c542;--low:#4caf94;--info:#4d9fff;
+  --accent:#2d6ee0;--accent-glow:rgba(45,110,224,.18);--accent-light:#5b94f5;--accent-dim:#1a3d80;
+  --status-running:#2d6ee0;--status-waiting:#f5c542;--status-complete:#2ecf8e;
+  --status-failed:#ff3b5c;--status-idle:#3d5470;
+  --sidebar-w:220px;--nav-w:52px;
+  --font-ui:'Outfit',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono','Fira Code',monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;overflow:hidden}
+body{font-family:var(--font-ui);background:var(--bg-void);color:var(--text-primary);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+@keyframes fadeSlideIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:translateX(0)}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulseDot{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+@keyframes slideInRight{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
+@keyframes toastIn{from{opacity:0;transform:translateX(120%)}to{opacity:1;transform:translateX(0)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes growBar{from{width:0}}
+@keyframes drawCircle{from{stroke-dashoffset:283}to{stroke-dashoffset:var(--target-offset)}}
+
+/* APP SHELL */
+.app{display:grid;grid-template-columns:var(--nav-w) var(--sidebar-w) 1fr;grid-template-rows:44px 1fr;height:100vh;overflow:hidden}
+
+/* TOPBAR */
+.topbar{grid-column:1/-1;grid-row:1;background:var(--bg-panel);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:12px;z-index:200;position:relative}
+.brand{display:flex;align-items:center;gap:8px;width:calc(var(--nav-w) - 16px);flex-shrink:0}
+.brand-icon{width:28px;height:28px;background:var(--accent);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;letter-spacing:-.5px}
+.brand-name{font-size:15px;font-weight:600;letter-spacing:-.3px}
+.brand-name span{color:var(--accent-light)}
+.breadcrumb{flex:1;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary)}
+.breadcrumb .sep{color:var(--text-muted)}
+.breadcrumb .cur{color:var(--text-primary);font-weight:500}
+.topbar-right{display:flex;align-items:center;gap:10px;margin-left:auto}
+
+/* STATUS PILL */
+.status-pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:100px;font-size:11px;font-weight:600;letter-spacing:.3px;text-transform:uppercase;border:1px solid}
+.status-pill.running{color:var(--status-running);background:rgba(45,110,224,.12);border-color:rgba(45,110,224,.28)}
+.status-pill.running::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--status-running);animation:pulseDot 1.4s ease-in-out infinite;flex-shrink:0}
+.status-pill.complete{color:var(--status-complete);background:rgba(46,207,142,.1);border-color:rgba(46,207,142,.22)}
+.status-pill.idle{color:var(--text-muted);background:rgba(61,84,112,.15);border-color:var(--border)}
+
+/* STOP ALL BUTTON */
+.btn-stop-all{display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:6px;border:1px solid rgba(255,59,92,.35);background:rgba(255,59,92,.1);color:var(--critical);font-size:11px;font-weight:600;cursor:pointer;transition:all .15s}
+.btn-stop-all:hover{background:rgba(255,59,92,.2);border-color:rgba(255,59,92,.5)}
+.stop-all-dot{width:7px;height:7px;background:var(--critical);border-radius:1px}
+
+/* NOTIFICATION BELL */
+.notif-btn{position:relative;width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;background:transparent;border:1px solid var(--border);color:var(--text-secondary);transition:all .15s;font-size:16px}
+.notif-btn:hover{background:var(--bg-hover);color:var(--text-primary)}
+.notif-badge{position:absolute;top:-3px;right:-3px;width:16px;height:16px;border-radius:50%;background:var(--critical);border:2px solid var(--bg-panel);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;line-height:1}
+
+/* NOTIFICATION PANEL */
+.notif-panel{position:absolute;top:calc(100% + 8px);right:16px;width:360px;background:var(--bg-panel);border:1px solid var(--border-light);border-radius:12px;box-shadow:0 16px 48px rgba(0,0,0,.5);z-index:1000;overflow:hidden;animation:fadeDown .18s ease both;display:none}
+.notif-panel.open{display:block}
+.notif-header{padding:14px 16px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.notif-title{font-size:13px;font-weight:600;color:var(--text-primary)}
+.notif-mark-all{font-size:11px;color:var(--accent-light);cursor:pointer}
+.notif-list{max-height:360px;overflow-y:auto}
+.notif-item{display:flex;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;position:relative}
+.notif-item:hover{background:var(--bg-hover)}
+.notif-item.unread{background:rgba(45,110,224,.05)}
+.notif-item.unread::before{content:'';position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--accent)}
+.notif-icon{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.notif-icon.success{background:rgba(46,207,142,.12)}
+.notif-icon.warning{background:rgba(245,197,66,.1)}
+.notif-icon.info{background:rgba(45,110,224,.12)}
+.notif-icon.critical{background:rgba(255,59,92,.1)}
+.notif-body{flex:1;min-width:0}
+.notif-msg{font-size:12px;color:var(--text-secondary);line-height:1.4}
+.notif-msg strong{color:var(--text-primary)}
+.notif-time{font-size:10px;color:var(--text-muted);margin-top:3px}
+.notif-footer{padding:10px 16px;border-top:1px solid var(--border);text-align:center;font-size:12px;color:var(--accent-light);cursor:pointer}
+
+/* AVATAR */
+.avatar{width:28px;height:28px;border-radius:50%;background:var(--accent-dim);border:1.5px solid var(--border-light);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:var(--accent-light);cursor:pointer}
+
+/* ICON NAV */
+.nav-icons{grid-column:1;grid-row:2;background:var(--bg-panel);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:4px}
+.nav-icon{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;color:var(--text-muted);transition:all .15s;position:relative}
+.nav-icon:hover{background:var(--bg-hover);color:var(--text-secondary)}
+.nav-icon.active{background:var(--accent-glow);color:var(--accent-light)}
+.nav-icon .tip{position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);background:var(--bg-card);border:1px solid var(--border-light);padding:4px 10px;border-radius:4px;font-size:11px;white-space:nowrap;pointer-events:none;opacity:0;transition:opacity .15s;z-index:999;color:var(--text-primary)}
+.nav-icon:hover .tip{opacity:1}
+.nav-spacer{flex:1}
+
+/* SIDEBAR */
+.sidebar{grid-column:2;grid-row:2;background:var(--bg-base);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.sidebar-hdr{padding:14px 14px 10px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.sidebar-label{font-size:11px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--text-muted)}
+.btn-new{width:24px;height:24px;border-radius:4px;background:var(--accent);border:none;color:#fff;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity .15s}
+.btn-new:hover{opacity:.85}
+.sidebar-body{flex:1;overflow-y:auto;padding:8px}
+.sidebar-sec{padding:8px 10px 4px;font-size:10px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;color:var(--text-muted);margin-top:8px}
+.sidebar-sec:first-child{margin-top:0}
+.s-item{padding:10px 10px;border-radius:8px;cursor:pointer;transition:background .12s;margin-bottom:2px;position:relative}
+.s-item:hover{background:var(--bg-card)}
+.s-item.active{background:var(--bg-active)}
+.s-item-name{font-size:13px;font-weight:500;color:var(--text-primary);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.s-item-meta{display:flex;align-items:center;gap:6px}
+.dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.dot.running{background:var(--status-running);animation:pulseDot 1.4s ease-in-out infinite}
+.dot.complete{background:var(--status-complete)}
+.dot.idle{background:var(--text-muted)}
+.dot.failed{background:var(--status-failed)}
+.s-item-txt{font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ENGAGEMENT OVERVIEW CARD */
+.eng-overview{background:var(--bg-card);border:1px solid var(--border-light);border-radius:10px;padding:12px;margin:8px 8px 0;animation:fadeUp .18s ease}
+.eng-ov-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.eng-ov-name{font-size:12px;font-weight:600;color:var(--text-primary)}
+.eng-ov-close{color:var(--text-muted);cursor:pointer;font-size:14px;padding:2px}
+.eng-ov-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}
+.eng-ov-stat{background:var(--bg-panel);border-radius:6px;padding:8px;text-align:center}
+.eng-ov-stat-val{font-size:18px;font-weight:700;letter-spacing:-.5px}
+.eng-ov-stat-val.c{color:var(--critical)}
+.eng-ov-stat-val.h{color:var(--high)}
+.eng-ov-stat-val.m{color:var(--medium)}
+.eng-ov-stat-val.ok{color:var(--status-complete)}
+.eng-ov-stat-lbl{font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-top:1px}
+.donut-wrap{display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:8px}
+.donut{position:relative;width:64px;height:64px}
+.donut svg{transform:rotate(-90deg)}
+.donut-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.donut-total{font-size:16px;font-weight:700;color:var(--text-primary)}
+.donut-lbl{font-size:8px;color:var(--text-muted)}
+.donut-legend{display:flex;flex-direction:column;gap:4px}
+.donut-leg-item{display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text-secondary)}
+.donut-leg-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+.eng-ov-actions{display:flex;gap:4px}
+.eng-ov-btn{flex:1;padding:5px 8px;border-radius:6px;font-size:10px;font-weight:600;cursor:pointer;text-align:center;border:1px solid var(--border);background:transparent;color:var(--text-secondary);transition:all .12s}
+.eng-ov-btn:hover{background:var(--bg-hover);color:var(--text-primary)}
+.eng-ov-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.eng-ov-btn.primary:hover{opacity:.85}
+
+/* MAIN */
+.main{grid-column:3;grid-row:2;overflow:hidden;display:flex;flex-direction:column;background:var(--bg-base);min-width:0}
+
+/* PAGE TABS */
+.page-tabs{display:flex;align-items:center;border-bottom:1px solid var(--border);padding:0 24px;background:var(--bg-panel);flex-shrink:0;overflow-x:auto;gap:0}
+.page-tab{padding:12px 16px;font-size:13px;font-weight:500;color:var(--text-muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;display:flex;align-items:center;gap:6px;transition:all .15s}
+.page-tab:hover{color:var(--text-secondary)}
+.page-tab.active{color:var(--accent-light);border-bottom-color:var(--accent)}
+.tab-badge{background:var(--accent-dim);color:var(--accent-light);font-size:10px;font-weight:600;padding:1px 6px;border-radius:100px}
+.tab-badge.crit{background:rgba(255,59,92,.15);color:var(--critical)}
+
+/* PAGE CONTENT */
+.page{display:none;flex:1;overflow:hidden;flex-direction:column}
+.page.active{display:flex}
+
+/* ───── SCAN WIZARD ───── */
+.wizard-overlay{position:fixed;inset:0;background:rgba(8,11,16,.8);backdrop-filter:blur(4px);z-index:500;display:flex;align-items:center;justify-content:center;animation:fadeUp .2s ease}
+.wizard-modal{background:var(--bg-panel);border:1px solid var(--border-light);border-radius:16px;width:560px;max-height:88vh;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 24px 64px rgba(0,0,0,.6);animation:fadeUp .2s ease}
+.wizard-header{padding:20px 24px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.wizard-title{font-size:16px;font-weight:600;color:var(--text-primary)}
+.wizard-close{color:var(--text-muted);cursor:pointer;font-size:18px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:6px;transition:all .15s}
+.wizard-close:hover{background:var(--bg-hover);color:var(--text-primary)}
+.wizard-steps{display:flex;align-items:center;gap:0;padding:16px 24px 0;flex-shrink:0}
+.wstep{display:flex;align-items:center;flex:1}
+.wstep-dot{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;transition:all .2s;border:2px solid var(--border)}
+.wstep-dot.done{background:var(--status-complete);border-color:var(--status-complete);color:#fff}
+.wstep-dot.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.wstep-dot.pending{background:transparent;color:var(--text-muted)}
+.wstep-label{font-size:11px;color:var(--text-muted);margin-left:6px;white-space:nowrap}
+.wstep-label.active{color:var(--text-primary);font-weight:500}
+.wstep-label.done{color:var(--status-complete)}
+.wstep-line{flex:1;height:1px;background:var(--border);margin:0 8px}
+.wstep-line.done{background:var(--status-complete)}
+.wizard-body{flex:1;overflow-y:auto;padding:20px 24px}
+.wizard-footer{padding:16px 24px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;flex-shrink:0}
+.w-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:8px}
+.w-input{width:100%;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-family:var(--font-mono);font-size:13px;color:var(--text-code);outline:none;transition:border-color .15s;margin-bottom:14px}
+.w-input:focus{border-color:var(--border-focus)}
+.w-tag-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.w-tag{padding:4px 10px;border-radius:100px;font-size:11px;font-weight:500;border:1px solid var(--border);color:var(--text-muted);cursor:pointer;transition:all .12s}
+.w-tag:hover{border-color:var(--border-light);color:var(--text-secondary)}
+.w-tag.active{border-color:var(--accent);color:var(--accent-light);background:rgba(45,110,224,.1)}
+
+/* PRESET CARDS */
+.preset-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px}
+.preset-card{border:1.5px solid var(--border);border-radius:10px;padding:12px;cursor:pointer;transition:all .15s;position:relative}
+.preset-card:hover{border-color:var(--border-light);background:var(--bg-hover)}
+.preset-card.selected{border-color:var(--accent);background:rgba(45,110,224,.08)}
+.preset-card.selected::after{content:'✓';position:absolute;top:8px;right:10px;font-size:12px;color:var(--accent-light);font-weight:700}
+.preset-name{font-size:12px;font-weight:600;color:var(--text-primary);margin-bottom:3px}
+.preset-desc{font-size:10px;color:var(--text-muted);line-height:1.4;margin-bottom:6px}
+.preset-meta{display:flex;gap:6px;flex-wrap:wrap}
+.preset-tag{font-size:9px;padding:1px 6px;border-radius:3px;background:var(--bg-hover);color:var(--text-muted);font-weight:500}
+.preset-tag.pentra{background:rgba(45,110,224,.12);color:var(--accent-light)}
+.preset-time{font-size:9px;color:var(--text-muted);margin-top:4px}
+
+/* AUTH SECTION */
+.auth-toggle-row{display:flex;gap:8px;margin-bottom:14px}
+.auth-toggle{padding:6px 14px;border-radius:6px;border:1px solid var(--border);font-size:12px;font-weight:500;color:var(--text-muted);cursor:pointer;transition:all .12s}
+.auth-toggle.active{border-color:var(--accent);color:var(--accent-light);background:rgba(45,110,224,.1)}
+
+/* REVIEW BOX */
+.review-box{background:var(--bg-input);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px}
+.review-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)}
+.review-row:last-child{border-bottom:none}
+.review-key{font-size:11px;color:var(--text-muted)}
+.review-val{font-size:12px;font-weight:500;color:var(--text-primary);font-family:var(--font-mono)}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;border-radius:8px;font-family:var(--font-ui);font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;border:none;white-space:nowrap}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:var(--accent-light)}
+.btn-ghost{background:transparent;color:var(--text-secondary);border:1px solid var(--border-light)}
+.btn-ghost:hover{background:var(--bg-hover);color:var(--text-primary)}
+.btn-sm{padding:5px 10px;font-size:11px}
+
+/* ───── API VAULT ───── */
+.vault-page{overflow-y:auto;padding:28px 32px}
+.vault-title{font-size:18px;font-weight:700;letter-spacing:-.3px;margin-bottom:4px}
+.vault-sub{font-size:13px;color:var(--text-muted);margin-bottom:24px}
+.vault-grid{display:flex;flex-direction:column;gap:10px}
+.vault-card{background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;padding:16px 20px;display:grid;grid-template-columns:32px 1fr auto auto;align-items:center;gap:14px}
+.vault-icon{font-size:20px}
+.vault-name{font-size:13px;font-weight:600;color:var(--text-primary)}
+.vault-key{font-size:11px;color:var(--text-muted);font-family:var(--font-mono);margin-top:2px}
+.vault-status{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:500}
+.vault-status.ok{color:var(--status-complete)}
+.vault-status.miss{color:var(--text-muted)}
+.vault-status::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0}
+.vault-actions{display:flex;gap:6px}
+.vault-btn{padding:4px 10px;border-radius:6px;font-size:11px;font-weight:600;border:1px solid var(--border);background:transparent;color:var(--text-secondary);cursor:pointer;transition:all .12s}
+.vault-btn:hover{background:var(--bg-hover);color:var(--text-primary)}
+.vault-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.vault-add{background:var(--bg-card);border:1.5px dashed var(--border-light);border-radius:12px;padding:16px 20px;display:flex;align-items:center;justify-content:center;gap:8px;cursor:pointer;color:var(--text-muted);font-size:13px;font-weight:500;transition:all .15s}
+.vault-add:hover{border-color:var(--accent);color:var(--accent-light);background:rgba(45,110,224,.05)}
+
+/* ───── ATTACK SURFACE MAP ───── */
+.map-page{display:flex;flex-direction:column;height:100%;overflow:hidden}
+.map-toolbar{padding:12px 20px;border-bottom:1px solid var(--border);background:var(--bg-panel);display:flex;align-items:center;gap:12px;flex-shrink:0}
+.map-canvas{flex:1;position:relative;overflow:hidden;background:radial-gradient(ellipse at center,var(--bg-card) 0%,var(--bg-void) 100%)}
+.map-legend{position:absolute;bottom:16px;left:16px;background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;padding:10px 14px;display:flex;flex-direction:column;gap:6px}
+.leg-item{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--text-secondary)}
+.leg-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.map-node{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;cursor:pointer;transition:transform .15s}
+.map-node:hover{transform:translate(-50%,-50%) scale(1.1)}
+.node-circle{border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;border:2px solid;transition:all .15s}
+.node-label{font-size:10px;color:var(--text-secondary);margin-top:4px;white-space:nowrap;text-align:center;max-width:100px;overflow:hidden;text-overflow:ellipsis}
+.node-finding{font-size:9px;font-weight:700;margin-top:1px}
+svg.map-lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.map-detail-panel{position:absolute;top:16px;right:16px;width:280px;background:var(--bg-panel);border:1px solid var(--border-light);border-radius:12px;padding:16px;animation:slideInRight .18s ease;display:none}
+.map-detail-panel.open{display:block}
+.mdp-host{font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:4px}
+.mdp-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px}
+.mdp-row:last-of-type{border:none}
+.mdp-key{color:var(--text-muted)}
+.mdp-val{color:var(--text-secondary);font-family:var(--font-mono);font-size:11px}
+.mdp-findings{margin-top:10px}
+.mdp-finding-item{display:flex;align-items:center;gap:6px;padding:5px 0;font-size:11px;color:var(--text-secondary)}
+
+/* ───── TRENDS CHART ───── */
+.trends-page{overflow-y:auto;padding:24px 28px}
+.trends-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:24px}
+.trend-card{background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;padding:20px}
+.trend-kpi{font-size:30px;font-weight:700;letter-spacing:-1px}
+.trend-kpi.c{color:var(--critical)}
+.trend-kpi.g{color:var(--status-complete)}
+.trend-kpi.b{color:var(--accent-light)}
+.trend-lbl{font-size:11px;color:var(--text-muted);margin-top:2px}
+.trend-delta{font-size:11px;font-weight:600;margin-top:6px}
+.trend-delta.up{color:var(--status-complete)}
+.trend-delta.warn{color:var(--status-waiting)}
+.chart-card{background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px}
+.chart-title{font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:16px}
+.chart-area{position:relative;height:120px}
+.bar-chart{display:flex;align-items:flex-end;gap:6px;height:100%;padding-bottom:0}
+.bar-group{display:flex;flex-direction:column;align-items:center;gap:3px;flex:1}
+.bar-stack{display:flex;flex-direction:column;gap:1px;width:100%;align-items:center}
+.bar{width:100%;border-radius:2px 2px 0 0;transition:opacity .15s;cursor:pointer}
+.bar:hover{opacity:.8}
+.bar-lbl{font-size:9px;color:var(--text-muted);text-align:center}
+.sparkline{width:100%;height:100%}
+.chart-vuln-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.vuln-bar-row{display:flex;align-items:center;gap:8px;font-size:11px}
+.vuln-bar-name{width:90px;color:var(--text-secondary);flex-shrink:0}
+.vuln-bar-track{flex:1;height:5px;background:var(--border);border-radius:3px;overflow:hidden}
+.vuln-bar-fill{height:100%;border-radius:3px;animation:growBar .6s ease}
+.vuln-bar-count{width:20px;text-align:right;color:var(--text-secondary);font-family:var(--font-mono);font-size:10px}
+
+/* ───── GF PATTERN UPLOAD ───── */
+.gf-page{overflow-y:auto;padding:24px 28px}
+.gf-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.gf-title-row{font-size:18px;font-weight:700;letter-spacing:-.3px}
+.gf-sub{font-size:13px;color:var(--text-muted);margin-top:2px}
+.gf-upload-zone{background:var(--bg-card);border:1.5px dashed var(--border-light);border-radius:12px;padding:28px 20px;text-align:center;cursor:pointer;transition:all .15s;margin-bottom:20px}
+.gf-upload-zone:hover{border-color:var(--accent);background:rgba(45,110,224,.04)}
+.gf-upload-icon{font-size:28px;margin-bottom:8px}
+.gf-upload-text{font-size:13px;color:var(--text-secondary)}
+.gf-upload-sub{font-size:11px;color:var(--text-muted);margin-top:4px}
+.gf-table{width:100%;border-collapse:collapse}
+.gf-th{padding:8px 12px;text-align:left;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);border-bottom:1px solid var(--border)}
+.gf-tr{border-bottom:1px solid var(--border);transition:background .1s}
+.gf-tr:hover{background:var(--bg-card)}
+.gf-td{padding:10px 12px;font-size:12px;color:var(--text-secondary);vertical-align:middle}
+.gf-td.name{font-family:var(--font-mono);color:var(--text-code);font-size:11px}
+.priority-dot{display:inline-flex;align-items:center;gap:5px}
+.p1{color:var(--critical)}
+.p2{color:var(--high)}
+.p3{color:var(--medium)}
+.p4{color:var(--text-muted)}
+.gf-toggle{width:30px;height:17px;border-radius:100px;border:none;cursor:pointer;position:relative;transition:background .2s;flex-shrink:0}
+.gf-toggle.on{background:var(--status-complete)}
+.gf-toggle.off{background:var(--border)}
+.gf-toggle::after{content:'';position:absolute;top:2.5px;width:12px;height:12px;border-radius:50%;background:#fff;transition:left .2s}
+.gf-toggle.on::after{left:16px}
+.gf-toggle.off::after{left:2.5px}
+.gf-test-preview{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600}
+.gf-test-preview.match{background:rgba(46,207,142,.1);color:var(--status-complete)}
+.gf-test-preview.no{background:rgba(61,84,112,.2);color:var(--text-muted)}
+.gf-editor{background:var(--bg-input);border:1px solid var(--border);border-radius:10px;padding:14px;font-family:var(--font-mono);font-size:12px;color:var(--text-code);width:100%;min-height:120px;outline:none;resize:vertical;margin-bottom:10px;line-height:1.6}
+
+/* SMART RESCAN BADGE */
+.rescan-badge{position:absolute;top:6px;right:6px;background:rgba(46,207,142,.12);border:1px solid rgba(46,207,142,.25);border-radius:4px;padding:1px 6px;font-size:9px;font-weight:600;color:var(--status-complete);cursor:pointer;transition:all .15s}
+.rescan-badge:hover{background:rgba(46,207,142,.25)}
+
+/* MODE TOGGLE */
+.mode-row{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;background:var(--bg-card);border-radius:10px;margin-bottom:10px}
+.mode-info{flex:1}
+.mode-name{font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:2px}
+.mode-desc{font-size:11px;color:var(--text-muted)}
+.toggle-switch{position:relative;width:40px;height:22px;flex-shrink:0}
+.toggle-switch input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;inset:0;background:var(--border);border-radius:100px;cursor:pointer;transition:.25s}
+.toggle-slider::before{content:'';position:absolute;height:16px;width:16px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.25s}
+.toggle-switch input:checked+.toggle-slider{background:var(--accent)}
+.toggle-switch input:checked+.toggle-slider::before{transform:translateX(18px)}
+
+/* TOAST */
+.toast-container{position:fixed;bottom:20px;right:20px;display:flex;flex-direction:column;gap:8px;z-index:9999}
+.toast{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;border:1px solid;min-width:280px;animation:toastIn .3s ease;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.toast.success{background:rgba(46,207,142,.12);border-color:rgba(46,207,142,.28);color:var(--status-complete)}
+.toast.warning{background:rgba(245,197,66,.1);border-color:rgba(245,197,66,.28);color:var(--status-waiting)}
+.toast.critical{background:rgba(255,59,92,.1);border-color:rgba(255,59,92,.28);color:var(--critical)}
+.toast.info{background:rgba(45,110,224,.1);border-color:rgba(45,110,224,.28);color:var(--accent-light)}
+.toast-icon{font-size:16px;flex-shrink:0}
+.toast-body{flex:1}
+.toast-title{font-size:12px;font-weight:600}
+.toast-msg{font-size:11px;opacity:.8;margin-top:1px}
+.toast-close{font-size:14px;opacity:.6;cursor:pointer;flex-shrink:0}
+.toast-close:hover{opacity:1}
+
+/* STOP CONFIRM */
+.stop-modal{position:fixed;inset:0;background:rgba(8,11,16,.75);backdrop-filter:blur(4px);z-index:600;display:none;align-items:center;justify-content:center;animation:fadeUp .18s ease}
+.stop-modal.open{display:flex}
+.stop-box{background:var(--bg-panel);border:1px solid var(--border-light);border-radius:14px;padding:24px;width:400px;box-shadow:0 20px 60px rgba(0,0,0,.6)}
+.stop-title{font-size:15px;font-weight:700;color:var(--critical);margin-bottom:6px;display:flex;align-items:center;gap:8px}
+.stop-msg{font-size:13px;color:var(--text-secondary);margin-bottom:20px;line-height:1.5}
+.stop-list{background:var(--bg-input);border-radius:8px;padding:12px;margin-bottom:20px;display:flex;flex-direction:column;gap:6px}
+.stop-eng{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-secondary)}
+
+/* NAV PAGE SYSTEM */
+.nav-pages{flex:1;overflow:hidden;display:flex;flex-direction:column}
+.nav-page{display:none;flex:1;overflow:hidden;flex-direction:column}
+.nav-page.active{display:flex}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- TOPBAR -->
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-icon">P</div>
+    <div class="brand-name">Pentra<span>AI</span></div>
+  </div>
+  <div class="breadcrumb">
+    <span>Workspaces</span>
+    <span class="sep">/</span>
+    <span>BNI AASE Q2-2026</span>
+    <span class="sep">/</span>
+    <span class="cur" id="bc">wondr.id</span>
+  </div>
+  <div class="topbar-right">
+    <button class="btn-stop-all" onclick="openStopAll()">
+      <span class="stop-all-dot"></span>Stop All Scans
+    </button>
+    <span class="status-pill running" id="global-status">Running</span>
+    <!-- Bell -->
+    <div class="notif-btn" id="notif-btn" onclick="toggleNotif()">
+      🔔
+      <span class="notif-badge" id="notif-badge">3</span>
+    </div>
+    <div class="avatar">AS</div>
+  </div>
+
+  <!-- Notification Panel -->
+  <div class="notif-panel" id="notif-panel">
+    <div class="notif-header">
+      <span class="notif-title">Notifications</span>
+      <span class="notif-mark-all" onclick="markAllRead()">Mark all read</span>
+    </div>
+    <div class="notif-list">
+      <div class="notif-item unread">
+        <div class="notif-icon critical">🔴</div>
+        <div class="notif-body">
+          <div class="notif-msg"><strong>CRITICAL:</strong> SQL Injection confirmed — /api/v2/products?id=</div>
+          <div class="notif-time">wondr.id · 2 minutes ago</div>
+        </div>
+      </div>
+      <div class="notif-item unread">
+        <div class="notif-icon warning">⏸</div>
+        <div class="notif-body">
+          <div class="notif-msg"><strong>HITL approval needed</strong> — Recon phase completed, 47 subdomains</div>
+          <div class="notif-time">wondr.id · 14 minutes ago</div>
+        </div>
+      </div>
+      <div class="notif-item unread">
+        <div class="notif-icon success">✓</div>
+        <div class="notif-body">
+          <div class="notif-msg">Engagement <strong>testaspnet.vulnweb.com</strong> completed — 8 findings</div>
+          <div class="notif-time">2 hours ago</div>
+        </div>
+      </div>
+      <div class="notif-item">
+        <div class="notif-icon info">ℹ</div>
+        <div class="notif-body">
+          <div class="notif-msg">KB record count updated: <strong>8,341 records</strong> (bge-m3 embedded)</div>
+          <div class="notif-time">Yesterday, 18:32</div>
+        </div>
+      </div>
+      <div class="notif-item">
+        <div class="notif-icon info">🤖</div>
+        <div class="notif-body">
+          <div class="notif-msg"><strong>pentra-ft:latest</strong> model loaded — 4.7GB, 89.1% accuracy</div>
+          <div class="notif-time">2 days ago</div>
+        </div>
+      </div>
+    </div>
+    <div class="notif-footer">View all notifications</div>
+  </div>
+</header>
+
+<!-- ICON NAV -->
+<nav class="nav-icons">
+  <div class="nav-icon active" onclick="switchNav('engagements',this)">🎯<span class="tip">Engagements</span></div>
+  <div class="nav-icon" onclick="switchNav('surface',this)">🗺<span class="tip">Attack Surface</span></div>
+  <div class="nav-icon" onclick="switchNav('kb',this)">📚<span class="tip">Knowledge Base</span></div>
+  <div class="nav-icon" onclick="switchNav('trends',this)">📊<span class="tip">Trends</span></div>
+  <div class="nav-spacer"></div>
+  <div class="nav-icon" onclick="switchNav('vault',this)">🔑<span class="tip">API Vault</span></div>
+  <div class="nav-icon" onclick="switchNav('patterns',this)">🔍<span class="tip">GF Patterns</span></div>
+  <div class="nav-icon" onclick="switchNav('settings',this)">⚙️<span class="tip">Settings</span></div>
+</nav>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+  <div class="sidebar-hdr">
+    <span class="sidebar-label">Engagements</span>
+    <button class="btn-new" onclick="openWizard()" title="New Scan">+</button>
+  </div>
+  <div id="eng-overview-slot"></div>
+  <div class="sidebar-body">
+    <div class="sidebar-sec">Active</div>
+    <div class="s-item active" onclick="selectEng(this,'wondr.id — AASE Recon','running','vuln_hunt · 14 min',true)">
+      <div class="s-item-name">wondr.id — AASE Recon</div>
+      <div class="s-item-meta"><span class="dot running"></span><span class="s-item-txt">vuln_hunt · 14 min</span></div>
+    </div>
+    <div class="sidebar-sec">Recent</div>
+    <div class="s-item" style="position:relative" onclick="selectEng(this,'testaspnet.vulnweb.com','complete','8 confirmed · 2h ago',false)">
+      <div class="s-item-name">testaspnet.vulnweb.com</div>
+      <div class="s-item-meta"><span class="dot complete"></span><span class="s-item-txt">8 confirmed · 2h ago</span></div>
+      <span class="rescan-badge" onclick="event.stopPropagation();triggerRescan()">↻ Rescan</span>
+    </div>
+    <div class="s-item" onclick="selectEng(this,'Juice Shop E2E','complete','3 critical · yesterday',false)">
+      <div class="s-item-name">Juice Shop E2E</div>
+      <div class="s-item-meta"><span class="dot complete"></span><span class="s-item-txt">3 critical · yesterday</span></div>
+    </div>
+    <div class="s-item" onclick="selectEng(this,'DVWA Auth Scan','complete','5 findings · 3d ago',false)">
+      <div class="s-item-name">DVWA Auth Scan</div>
+      <div class="s-item-meta"><span class="dot complete"></span><span class="s-item-txt">5 findings · 3d ago</span></div>
+    </div>
+    <div class="s-item" onclick="selectEng(this,'bni.co.id — Draft','idle','Not started',false)">
+      <div class="s-item-name">bni.co.id — Draft</div>
+      <div class="s-item-meta"><span class="dot idle"></span><span class="s-item-txt">Not started</span></div>
+    </div>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<main class="main">
+  <div class="nav-pages">
+
+    <!-- PAGE: ENGAGEMENTS -->
+    <div class="nav-page active" id="page-engagements">
+      <div class="page-tabs">
+        <div class="page-tab active" onclick="switchTab('feed',this)">Live Feed</div>
+        <div class="page-tab" onclick="switchTab('findings',this)">Findings <span class="tab-badge crit">8</span></div>
+        <div class="page-tab" onclick="switchTab('report',this)">Report</div>
+        <div class="page-tab" onclick="switchTab('config',this)">Config</div>
+      </div>
+      <div class="page active" id="tab-feed" style="align-items:center;justify-content:center">
+        <div style="text-align:center;color:var(--text-muted);padding:40px">
+          <div style="font-size:36px;margin-bottom:12px">🎯</div>
+          <div style="font-size:14px;font-weight:500;margin-bottom:6px;color:var(--text-secondary)">Live Feed — wondr.id</div>
+          <div style="font-size:12px">Engagement running · vuln_hunt phase</div>
+          <div style="margin-top:20px;display:flex;gap:8px;justify-content:center">
+            <span class="status-pill running">Running</span>
+            <span style="font-size:12px;color:var(--text-muted);align-self:center">14 min elapsed</span>
+          </div>
+          <div style="margin-top:16px;font-size:11px;color:var(--text-muted)">← See sidebar for engagement overview card</div>
+          <div style="margin-top:4px;font-size:11px;color:var(--text-muted)">🔔 Check notifications in topbar</div>
+          <div style="margin-top:4px;font-size:11px;color:var(--text-muted)">➕ Click + to open Scan Wizard</div>
+        </div>
+      </div>
+      <div class="page" id="tab-findings"></div>
+      <div class="page" id="tab-report"></div>
+      <div class="page" id="tab-config"></div>
+    </div>
+
+    <!-- PAGE: ATTACK SURFACE MAP -->
+    <div class="nav-page" id="page-surface">
+      <div class="map-toolbar">
+        <span style="font-size:14px;font-weight:600">Attack Surface — wondr.id</span>
+        <span style="font-size:12px;color:var(--text-muted);margin-left:8px">47 subdomains · 3 with findings</span>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm">Filter</button>
+          <button class="btn btn-ghost btn-sm">Export</button>
+        </div>
+      </div>
+      <div class="map-canvas" id="map-canvas" onclick="closeMapDetail(event)">
+        <svg class="map-lines" id="map-svg"></svg>
+        <!-- Center node -->
+        <div class="map-node" style="left:50%;top:50%" onclick="openMapDetail(event,'wondr.id','Root Domain','—','Cloudflare','None')">
+          <div class="node-circle" style="width:52px;height:52px;background:var(--accent-dim);border-color:var(--accent);color:var(--accent-light);font-size:11px">ROOT</div>
+          <div class="node-label" style="color:var(--text-primary);font-weight:600">wondr.id</div>
+        </div>
+        <!-- Nodes with findings -->
+        <div class="map-node" style="left:72%;top:28%" onclick="openMapDetail(event,'api.wondr.id','API Gateway','SQLi CRITICAL','Cloudflare','2 findings')">
+          <div class="node-circle" style="width:38px;height:38px;background:rgba(255,59,92,.15);border-color:var(--critical);color:var(--critical)">API</div>
+          <div class="node-label">api.wondr.id</div>
+          <div class="node-finding" style="color:var(--critical)">2 findings</div>
+        </div>
+        <div class="map-node" style="left:28%;top:30%" onclick="openMapDetail(event,'app.wondr.id','Web App','JWT bypass','Cloudflare','1 finding')">
+          <div class="node-circle" style="width:36px;height:36px;background:rgba(255,123,47,.12);border-color:var(--high);color:var(--high)">APP</div>
+          <div class="node-label">app.wondr.id</div>
+          <div class="node-finding" style="color:var(--high)">1 finding</div>
+        </div>
+        <div class="map-node" style="left:78%;top:62%" onclick="openMapDetail(event,'cdn.wondr.id','CDN','—','Cloudflare','Clean')">
+          <div class="node-circle" style="width:30px;height:30px;background:rgba(76,175,148,.1);border-color:var(--low);color:var(--low)">CDN</div>
+          <div class="node-label">cdn.wondr.id</div>
+          <div class="node-finding" style="color:var(--low)">Clean</div>
+        </div>
+        <div class="map-node" style="left:22%;top:65%" onclick="openMapDetail(event,'staging.wondr.id','Staging','—','None','Takeover?')">
+          <div class="node-circle" style="width:30px;height:30px;background:rgba(245,197,66,.1);border-color:var(--medium);color:var(--medium)">STG</div>
+          <div class="node-label">staging.wondr.id</div>
+          <div class="node-finding" style="color:var(--medium)">Takeover?</div>
+        </div>
+        <div class="map-node" style="left:50%;top:20%" onclick="openMapDetail(event,'auth.wondr.id','Auth Service','—','Cloudflare','Clean')">
+          <div class="node-circle" style="width:30px;height:30px;background:rgba(76,175,148,.1);border-color:var(--low);color:var(--low)">AUTH</div>
+          <div class="node-label">auth.wondr.id</div>
+        </div>
+        <div class="map-node" style="left:62%;top:74%" onclick="openMapDetail(event,'admin.wondr.id','Admin Panel','—','None','Exposed?')">
+          <div class="node-circle" style="width:30px;height:30px;background:rgba(245,197,66,.1);border-color:var(--medium);color:var(--medium)">ADM</div>
+          <div class="node-label">admin.wondr.id</div>
+          <div class="node-finding" style="color:var(--medium)">Exposed?</div>
+        </div>
+        <div class="map-node" style="left:38%;top:76%">
+          <div class="node-circle" style="width:26px;height:26px;background:rgba(61,84,112,.2);border-color:var(--border);color:var(--text-muted);font-size:9px">+40</div>
+          <div class="node-label" style="color:var(--text-muted)">more hosts</div>
+        </div>
+
+        <!-- Legend -->
+        <div class="map-legend">
+          <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:4px">Legend</div>
+          <div class="leg-item"><span class="leg-dot" style="background:var(--critical)"></span>Critical findings</div>
+          <div class="leg-item"><span class="leg-dot" style="background:var(--high)"></span>High findings</div>
+          <div class="leg-item"><span class="leg-dot" style="background:var(--medium)"></span>Warning / takeover risk</div>
+          <div class="leg-item"><span class="leg-dot" style="background:var(--low)"></span>Clean</div>
+        </div>
+
+        <!-- Detail panel -->
+        <div class="map-detail-panel" id="map-detail">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <span class="mdp-host" id="mdp-host">api.wondr.id</span>
+            <span style="color:var(--text-muted);cursor:pointer;font-size:16px" onclick="closeMapDetailBtn()">✕</span>
+          </div>
+          <div class="mdp-row"><span class="mdp-key">Type</span><span class="mdp-val" id="mdp-type">API Gateway</span></div>
+          <div class="mdp-row"><span class="mdp-key">WAF</span><span class="mdp-val" id="mdp-waf">Cloudflare</span></div>
+          <div class="mdp-row"><span class="mdp-key">Status</span><span class="mdp-val" id="mdp-vuln">2 findings</span></div>
+          <div class="mdp-findings">
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:6px" id="mdp-note">Critical</div>
+            <div class="mdp-finding-item"><span style="color:var(--critical)">⬤</span> SQL Injection — CRITICAL</div>
+            <div class="mdp-finding-item"><span style="color:var(--medium)">⬤</span> IDOR — MEDIUM</div>
+          </div>
+          <div style="margin-top:12px;display:flex;gap:6px">
+            <button class="btn btn-primary btn-sm">Subscan</button>
+            <button class="btn btn-ghost btn-sm">Details</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: TRENDS -->
+    <div class="nav-page" id="page-trends">
+      <div class="trends-page">
+        <div style="font-size:18px;font-weight:700;letter-spacing:-.3px;margin-bottom:4px">Findings Trends</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:24px">Across all engagements — BNI AASE Campaign</div>
+        <div class="trends-grid">
+          <div class="trend-card">
+            <div class="trend-kpi c">12</div>
+            <div class="trend-lbl">Total Confirmed</div>
+            <div class="trend-delta up">↑ 8 this week</div>
+          </div>
+          <div class="trend-card">
+            <div class="trend-kpi c">9</div>
+            <div class="trend-lbl">Critical Findings</div>
+            <div class="trend-delta warn">⚠ Requires immediate action</div>
+          </div>
+          <div class="trend-card">
+            <div class="trend-kpi b">3</div>
+            <div class="trend-lbl">Engagements Run</div>
+            <div class="trend-delta up">↑ 1 in progress</div>
+          </div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Findings per Engagement</div>
+          <div class="chart-area">
+            <div class="bar-chart">
+              <div class="bar-group">
+                <div class="bar-stack">
+                  <div class="bar" style="height:80px;background:var(--critical)" title="6 Critical"></div>
+                  <div class="bar" style="height:14px;background:var(--medium)" title="2 Medium"></div>
+                </div>
+                <div class="bar-lbl">testaspnet</div>
+              </div>
+              <div class="bar-group">
+                <div class="bar-stack">
+                  <div class="bar" style="height:28px;background:var(--critical)" title="3 Critical"></div>
+                </div>
+                <div class="bar-lbl">Juice Shop</div>
+              </div>
+              <div class="bar-group">
+                <div class="bar-stack">
+                  <div class="bar" style="height:14px;background:var(--high)" title="2 High"></div>
+                  <div class="bar" style="height:14px;background:var(--medium)" title="3 Med"></div>
+                </div>
+                <div class="bar-lbl">DVWA</div>
+              </div>
+              <div class="bar-group">
+                <div class="bar-stack">
+                  <div class="bar" style="height:10px;background:var(--critical);animation:growBar .8s ease" title="1 Critical so far"></div>
+                </div>
+                <div class="bar-lbl" style="color:var(--status-running)">wondr.id ⬤</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Vulnerability Classes Found</div>
+          <div class="chart-vuln-grid">
+            <div>
+              <div class="vuln-bar-row"><span class="vuln-bar-name">SQLi</span><div class="vuln-bar-track"><div class="vuln-bar-fill" style="width:75%;background:var(--critical)"></div></div><span class="vuln-bar-count">9</span></div>
+              <div class="vuln-bar-row"><span class="vuln-bar-name">IDOR</span><div class="vuln-bar-track"><div class="vuln-bar-fill" style="width:18%;background:var(--accent)"></div></div><span class="vuln-bar-count">2</span></div>
+              <div class="vuln-bar-row"><span class="vuln-bar-name">JWT</span><div class="vuln-bar-track"><div class="vuln-bar-fill" style="width:18%;background:var(--accent)"></div></div><span class="vuln-bar-count">2</span></div>
+              <div class="vuln-bar-row"><span class="vuln-bar-name">SSRF</span><div class="vuln-bar-track"><div class="vuln-bar-fill" style="width:18%;background:var(--high)"></div></div><span class="vuln-bar-count">2</span></div>
+            </div>
+            <div>
+              <div class="vuln-bar-row"><span class="vuln-bar-name">XSS</span><div class="vuln-bar-track"><div class="vuln-bar-fill" style="width:9%;background:var(--medium)"></div></div><span class="vuln-bar-count">1</span></div>
+              <div class="vuln-bar-row"><span class="vuln-bar-name">GraphQL</span><div class="vuln-bar-track"><div class="vuln-bar-fill" style="width:9%;background:var(--low)"></div></div><span class="vuln-bar-count">1</span></div>
+              <div class="vuln-bar-row"><span class="vuln-bar-name">CORS</span><div class="vuln-bar-track"><div class="vuln-bar-fill" style="width:9%;background:var(--low)"></div></div><span class="vuln-bar-count">1</span></div>
+              <div class="vuln-bar-row"><span class="vuln-bar-name">Race Cond.</span><div class="vuln-bar-track"><div class="vuln-bar-fill" style="width:9%;background:var(--medium)"></div></div><span class="vuln-bar-count">1</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: API VAULT -->
+    <div class="nav-page" id="page-vault">
+      <div class="vault-page">
+        <div class="vault-title">🔑 API Vault</div>
+        <div class="vault-sub">Manage API keys for external integrations. Keys are masked by default.</div>
+        <div class="vault-grid">
+          <div class="vault-card">
+            <span class="vault-icon">🛡</span>
+            <div>
+              <div class="vault-name">Burp Suite Pro MCP</div>
+              <div class="vault-key">Port: ●●●●9877  ·  SSE endpoint active</div>
+            </div>
+            <div class="vault-status ok">Connected</div>
+            <div class="vault-actions">
+              <button class="vault-btn" onclick="toastShow('success','Burp MCP','Connection test passed ✓')">Test</button>
+              <button class="vault-btn">Edit</button>
+            </div>
+          </div>
+          <div class="vault-card">
+            <span class="vault-icon">🧠</span>
+            <div>
+              <div class="vault-name">Ollama (Local LLM)</div>
+              <div class="vault-key">http://localhost:●●●●●  ·  pentra-ft:latest loaded</div>
+            </div>
+            <div class="vault-status ok">Connected</div>
+            <div class="vault-actions">
+              <button class="vault-btn" onclick="toastShow('success','Ollama','pentra-ft:latest responding ✓')">Test</button>
+              <button class="vault-btn">Edit</button>
+            </div>
+          </div>
+          <div class="vault-card">
+            <span class="vault-icon">🔭</span>
+            <div>
+              <div class="vault-name">Shodan API</div>
+              <div class="vault-key">●●●●●●●●●●●●ZGh4</div>
+            </div>
+            <div class="vault-status ok">Connected</div>
+            <div class="vault-actions">
+              <button class="vault-btn" onclick="toastShow('success','Shodan','API key valid ✓')">Test</button>
+              <button class="vault-btn">Reveal</button>
+              <button class="vault-btn">Edit</button>
+            </div>
+          </div>
+          <div class="vault-card">
+            <span class="vault-icon">🌐</span>
+            <div>
+              <div class="vault-name">CHAOS (ProjectDiscovery)</div>
+              <div class="vault-key">Not configured</div>
+            </div>
+            <div class="vault-status miss">Not set</div>
+            <div class="vault-actions">
+              <button class="vault-btn primary" onclick="toastShow('info','CHAOS','Add API key from cloud.projectdiscovery.io')">+ Add Key</button>
+            </div>
+          </div>
+          <div class="vault-card">
+            <span class="vault-icon">🤝</span>
+            <div>
+              <div class="vault-name">Burp Collaborator</div>
+              <div class="vault-key">●●●●●●●●.oastify.com</div>
+            </div>
+            <div class="vault-status ok">Active</div>
+            <div class="vault-actions">
+              <button class="vault-btn" onclick="toastShow('success','Collaborator','OOB listener active ✓')">Test OOB</button>
+              <button class="vault-btn">Edit</button>
+            </div>
+          </div>
+          <div class="vault-add" onclick="toastShow('info','API Vault','Add new key dialog would open here')">
+            <span style="font-size:20px">+</span>
+            <span>Add new API key / service</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: GF PATTERNS -->
+    <div class="nav-page" id="page-patterns">
+      <div class="gf-page">
+        <div class="gf-head">
+          <div>
+            <div class="gf-title-row">🔍 GF Patterns</div>
+            <div class="gf-sub">22 active patterns · Manage, test, and upload custom patterns</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-ghost btn-sm" onclick="showGFEditor()">+ Write Pattern</button>
+            <button class="btn btn-primary btn-sm" onclick="toastShow('info','Upload','Select .json pattern files to upload')">↑ Upload Patterns</button>
+          </div>
+        </div>
+        <div class="gf-upload-zone" onclick="toastShow('info','Upload','Drag & drop .json GF pattern files here')">
+          <div class="gf-upload-icon">📂</div>
+          <div class="gf-upload-text">Drag & drop GF pattern files here</div>
+          <div class="gf-upload-sub">Supports .json format · Multiple files at once</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <input style="flex:1;background:var(--bg-input);border:1px solid var(--border);border-radius:8px;padding:7px 12px;font-family:var(--font-ui);font-size:12px;color:var(--text-primary);outline:none" placeholder="Test URL against patterns…" id="gf-test-url" oninput="testGFUrl(this.value)">
+          <button class="btn btn-ghost btn-sm" onclick="testGFUrl(document.getElementById('gf-test-url').value)">Test</button>
+        </div>
+        <table class="gf-table">
+          <thead><tr>
+            <th class="gf-th">Pattern</th>
+            <th class="gf-th">Vuln Hint</th>
+            <th class="gf-th">Priority</th>
+            <th class="gf-th">Test Result</th>
+            <th class="gf-th">Active</th>
+          </tr></thead>
+          <tbody id="gf-tbody">
+            <tr class="gf-tr"><td class="gf-td name">sqli_int</td><td class="gf-td" style="color:var(--text-secondary)">Integer param → time-based blind</td><td class="gf-td"><span class="priority-dot p1">● P1</span></td><td class="gf-td" id="gf-r-sqli_int"><span class="gf-test-preview no">—</span></td><td class="gf-td"><button class="gf-toggle on" onclick="this.classList.toggle('on');this.classList.toggle('off')"></button></td></tr>
+            <tr class="gf-tr"><td class="gf-td name">idor</td><td class="gf-td" style="color:var(--text-secondary)">Direct object reference param</td><td class="gf-td"><span class="priority-dot p1">● P1</span></td><td class="gf-td" id="gf-r-idor"><span class="gf-test-preview no">—</span></td><td class="gf-td"><button class="gf-toggle on" onclick="this.classList.toggle('on');this.classList.toggle('off')"></button></td></tr>
+            <tr class="gf-tr"><td class="gf-td name">ssrf</td><td class="gf-td" style="color:var(--text-secondary)">URL/destination param</td><td class="gf-td"><span class="priority-dot p1">● P1</span></td><td class="gf-td" id="gf-r-ssrf"><span class="gf-test-preview no">—</span></td><td class="gf-td"><button class="gf-toggle on" onclick="this.classList.toggle('on');this.classList.toggle('off')"></button></td></tr>
+            <tr class="gf-tr"><td class="gf-td name">lfi</td><td class="gf-td" style="color:var(--text-secondary)">File/path parameter</td><td class="gf-td"><span class="priority-dot p1">● P1</span></td><td class="gf-td" id="gf-r-lfi"><span class="gf-test-preview no">—</span></td><td class="gf-td"><button class="gf-toggle on" onclick="this.classList.toggle('on');this.classList.toggle('off')"></button></td></tr>
+            <tr class="gf-tr"><td class="gf-td name">xss</td><td class="gf-td" style="color:var(--text-secondary)">Reflection parameter</td><td class="gf-td"><span class="priority-dot p2">● P2</span></td><td class="gf-td" id="gf-r-xss"><span class="gf-test-preview no">—</span></td><td class="gf-td"><button class="gf-toggle on" onclick="this.classList.toggle('on');this.classList.toggle('off')"></button></td></tr>
+            <tr class="gf-tr"><td class="gf-td name">interesting_ext</td><td class="gf-td" style="color:var(--text-secondary)">Backup/config file exposure</td><td class="gf-td"><span class="priority-dot p1">● P1</span></td><td class="gf-td" id="gf-r-interesting_ext"><span class="gf-test-preview no">—</span></td><td class="gf-td"><button class="gf-toggle on" onclick="this.classList.toggle('on');this.classList.toggle('off')"></button></td></tr>
+            <tr class="gf-tr"><td class="gf-td name">rce</td><td class="gf-td" style="color:var(--text-secondary)">Command execution param</td><td class="gf-td"><span class="priority-dot p1">● P1</span></td><td class="gf-td" id="gf-r-rce"><span class="gf-test-preview no">—</span></td><td class="gf-td"><button class="gf-toggle on" onclick="this.classList.toggle('on');this.classList.toggle('off')"></button></td></tr>
+            <tr class="gf-tr"><td class="gf-td name">open_redirect</td><td class="gf-td" style="color:var(--text-secondary)">Redirect URL starts with http</td><td class="gf-td"><span class="priority-dot p2">● P2</span></td><td class="gf-td" id="gf-r-open_redirect"><span class="gf-test-preview no">—</span></td><td class="gf-td"><button class="gf-toggle on" onclick="this.classList.toggle('on');this.classList.toggle('off')"></button></td></tr>
+          </tbody>
+        </table>
+        <div id="gf-editor-section" style="display:none;margin-top:20px">
+          <div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Pattern Editor</div>
+          <textarea class="gf-editor" placeholder='{"name":"custom_pattern","regex":"[\\?&](custom_param)=","vuln_hint":"Custom vuln hint","priority":2}'></textarea>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-primary btn-sm" onclick="toastShow('success','Pattern','Custom pattern saved')">Save Pattern</button>
+            <button class="btn btn-ghost btn-sm" onclick="document.getElementById('gf-editor-section').style.display='none'">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: SETTINGS -->
+    <div class="nav-page" id="page-settings">
+      <div style="overflow-y:auto;padding:28px 32px">
+        <div style="font-size:18px;font-weight:700;letter-spacing:-.3px;margin-bottom:4px">Settings</div>
+        <div style="font-size:13px;color:var(--text-muted);margin-bottom:24px">Platform preferences and mode configuration</div>
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;color:var(--text-muted);margin-bottom:12px">Operation Mode</div>
+        <div class="mode-row">
+          <div class="mode-info">
+            <div class="mode-name">🎯 AASE / Red Team Mode</div>
+            <div class="mode-desc">Full offensive features · Regulatory-focused reporting · OJK POJK compliance</div>
+          </div>
+          <label class="toggle-switch"><input type="checkbox" checked onchange="toastShow('info','Mode','AASE Mode '+( this.checked?'enabled':'disabled'))"><span class="toggle-slider"></span></label>
+        </div>
+        <div class="mode-row">
+          <div class="mode-info">
+            <div class="mode-name">🐛 Bug Bounty Mode</div>
+            <div class="mode-desc">H1 submission format · Bounty-focused features · HackerOne integration</div>
+          </div>
+          <label class="toggle-switch"><input type="checkbox" onchange="toastShow('info','Mode','Bug Bounty Mode '+(this.checked?'enabled':'disabled'))"><span class="toggle-slider"></span></label>
+        </div>
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;color:var(--text-muted);margin-bottom:12px;margin-top:24px">Notifications</div>
+        <div class="mode-row">
+          <div class="mode-info">
+            <div class="mode-name">🔔 In-app Notifications</div>
+            <div class="mode-desc">Show bell icon alerts for scan events, HITL approvals, findings</div>
+          </div>
+          <label class="toggle-switch"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+        </div>
+        <div class="mode-row">
+          <div class="mode-info">
+            <div class="mode-name">🍞 Toast Notifications</div>
+            <div class="mode-desc">Popup toasts for critical findings and engagement status changes</div>
+          </div>
+          <label class="toggle-switch"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+        </div>
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.7px;color:var(--text-muted);margin-bottom:12px;margin-top:24px">Smart Rescan</div>
+        <div class="mode-row">
+          <div class="mode-info">
+            <div class="mode-name">↻ Auto-import scan config</div>
+            <div class="mode-desc">When rescanning, automatically load preset, scope, auth, and path exclusions from previous run</div>
+          </div>
+          <label class="toggle-switch"><input type="checkbox" checked><span class="toggle-slider"></span></label>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: KB (placeholder) -->
+    <div class="nav-page" id="page-kb" style="align-items:center;justify-content:center">
+      <div style="text-align:center;color:var(--text-muted)">
+        <div style="font-size:36px;margin-bottom:12px">📚</div>
+        <div style="font-size:14px;color:var(--text-secondary)">Knowledge Base — 8,341 records</div>
+        <div style="font-size:12px;margin-top:4px">(Full KB browser in previous mockup)</div>
+      </div>
+    </div>
+
+  </div>
+</main>
+</div>
+
+<!-- SCAN WIZARD MODAL -->
+<div class="wizard-overlay" id="wizard" style="display:none" onclick="closeWizardOut(event)">
+<div class="wizard-modal" onclick="event.stopPropagation()">
+  <div class="wizard-header">
+    <span class="wizard-title">New Scan</span>
+    <span class="wizard-close" onclick="closeWizard()">✕</span>
+  </div>
+  <!-- Steps indicator -->
+  <div class="wizard-steps" id="wiz-steps">
+    <div class="wstep">
+      <div class="wstep-dot active" id="ws0">1</div>
+      <span class="wstep-label active" id="wl0">Target</span>
+    </div>
+    <div class="wstep-line" id="wline0"></div>
+    <div class="wstep">
+      <div class="wstep-dot pending" id="ws1">2</div>
+      <span class="wstep-label" id="wl1">Preset</span>
+    </div>
+    <div class="wstep-line" id="wline1"></div>
+    <div class="wstep">
+      <div class="wstep-dot pending" id="ws2">3</div>
+      <span class="wstep-label" id="wl2">Auth</span>
+    </div>
+    <div class="wstep-line" id="wline2"></div>
+    <div class="wstep">
+      <div class="wstep-dot pending" id="ws3">4</div>
+      <span class="wstep-label" id="wl3">Review</span>
+    </div>
+  </div>
+  <div class="wizard-body" id="wiz-body">
+    <!-- Step content injected by JS -->
+  </div>
+  <div class="wizard-footer">
+    <button class="btn btn-ghost" id="wiz-back" onclick="wizStep(-1)">← Back</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-ghost" onclick="closeWizard()">Cancel</button>
+      <button class="btn btn-primary" id="wiz-next" onclick="wizStep(1)">Next →</button>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- STOP ALL MODAL -->
+<div class="stop-modal" id="stop-modal">
+  <div class="stop-box">
+    <div class="stop-title">⏹ Stop All Scans</div>
+    <div class="stop-msg">This will immediately terminate all running engagements. This action cannot be undone and partial results will be saved.</div>
+    <div class="stop-list">
+      <div class="stop-eng"><span class="dot running"></span>wondr.id — AASE Recon (vuln_hunt phase, 14 min)</div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-ghost" onclick="closeStopAll()">Cancel</button>
+      <button class="btn" style="background:var(--critical);color:#fff" onclick="confirmStopAll()">⏹ Stop All</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST CONTAINER -->
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+// ── Navigation
+function switchNav(page, el) {
+  document.querySelectorAll('.nav-icon').forEach(i=>i.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.nav-page').forEach(p=>p.classList.remove('active'));
+  const pg = document.getElementById('page-'+page) || document.getElementById('page-engagements');
+  if(pg) pg.classList.add('active');
+  const labels = {engagements:'Engagement',surface:'Attack Surface',kb:'Knowledge Base',trends:'Trends',vault:'API Vault',patterns:'GF Patterns',settings:'Settings'};
+  document.getElementById('bc').textContent = labels[page] || page;
+}
+
+// ── Tabs
+function switchTab(id, el) {
+  document.querySelectorAll('.page-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  const t = document.getElementById('tab-'+id);
+  if(t) t.classList.add('active');
+}
+
+// ── Engagement selection + overview card
+function selectEng(el, name, status, meta, showOverview) {
+  document.querySelectorAll('.s-item').forEach(i=>i.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('bc').textContent = name;
+  const slot = document.getElementById('eng-overview-slot');
+  if(showOverview) {
+    slot.innerHTML = `
+    <div class="eng-overview" id="eng-ov">
+      <div class="eng-ov-header">
+        <span class="eng-ov-name">${name}</span>
+        <span class="eng-ov-close" onclick="document.getElementById('eng-overview-slot').innerHTML=''">✕</span>
+      </div>
+      <div class="donut-wrap">
+        <div class="donut">
+          <svg viewBox="0 0 100 100" width="64" height="64">
+            <circle cx="50" cy="50" r="45" fill="none" stroke="var(--border)" stroke-width="10"/>
+            <circle cx="50" cy="50" r="45" fill="none" stroke="var(--critical)" stroke-width="10" stroke-dasharray="283" stroke-dashoffset="200" stroke-linecap="round"/>
+            <circle cx="50" cy="50" r="45" fill="none" stroke="var(--medium)" stroke-width="10" stroke-dasharray="283" stroke-dashoffset="240" stroke-linecap="round" style="transform:rotate(109deg);transform-origin:50px 50px"/>
+          </svg>
+          <div class="donut-center"><span class="donut-total">1</span><span class="donut-lbl">found</span></div>
+        </div>
+        <div class="donut-legend">
+          <div class="donut-leg-item"><span class="donut-leg-dot" style="background:var(--critical)"></span>1 Critical</div>
+          <div class="donut-leg-item"><span class="donut-leg-dot" style="background:var(--medium)"></span>0 Medium</div>
+          <div class="donut-leg-item"><span class="donut-leg-dot" style="background:var(--border)"></span>In progress</div>
+        </div>
+      </div>
+      <div class="eng-ov-stats">
+        <div class="eng-ov-stat"><div class="eng-ov-stat-val ok">47</div><div class="eng-ov-stat-lbl">Subdomains</div></div>
+        <div class="eng-ov-stat"><div class="eng-ov-stat-val ok">127</div><div class="eng-ov-stat-lbl">Endpoints</div></div>
+      </div>
+      <div class="eng-ov-actions">
+        <button class="eng-ov-btn primary">View Feed</button>
+        <button class="eng-ov-btn" onclick="triggerRescan()">↻ Rescan</button>
+      </div>
+    </div>`;
+  } else {
+    slot.innerHTML = '';
+  }
+}
+
+// ── Notifications
+function toggleNotif() {
+  const p = document.getElementById('notif-panel');
+  p.classList.toggle('open');
+  if(p.classList.contains('open')) {
+    document.addEventListener('click', closeNotifOut, {once:true,capture:true});
+  }
+}
+function closeNotifOut(e) {
+  const p = document.getElementById('notif-panel');
+  if(!p.contains(e.target) && !document.getElementById('notif-btn').contains(e.target)) {
+    p.classList.remove('open');
+  }
+}
+function markAllRead() {
+  document.querySelectorAll('.notif-item.unread').forEach(i=>i.classList.remove('unread'));
+  document.getElementById('notif-badge').style.display='none';
+  toastShow('success','Notifications','All marked as read');
+}
+
+// ── Wizard
+let wizCurrentStep = 0;
+const wizData = {target:'',preset:'pentra-ft',auth:'none'};
+
+const wizStepContent = [
+  // Step 0: Target
+  ()=>`
+    <div class="w-label">Target Domain</div>
+    <input class="w-input" placeholder="wondr.id" value="${wizData.target}" oninput="wizData.target=this.value" id="w-domain">
+    <div class="w-label">In Scope</div>
+    <input class="w-input" placeholder="wondr.id, *.wondr.id" id="w-scope">
+    <div class="w-label">Path Exclusion <span style="font-weight:400;color:var(--text-muted)">(optional)</span></div>
+    <input class="w-input" placeholder="/css, /images, /static" id="w-excl" style="margin-bottom:4px">
+    <div style="font-size:10px;color:var(--text-muted);margin-bottom:14px">Supports exact paths and regex · e.g. <code style="font-family:var(--font-mono)">/static/(?:css|js)/</code></div>
+    <div class="w-label">Out of Scope <span style="font-weight:400;color:var(--text-muted)">(optional)</span></div>
+    <input class="w-input" placeholder="m.wondr.id, careers.wondr.id">
+  `,
+  // Step 1: Preset
+  ()=>`
+    <div class="w-label" style="margin-bottom:10px">Select Scan Preset</div>
+    <div class="preset-grid">
+      <div class="preset-card" onclick="selectPreset('quick',this)">
+        <div class="preset-name">⚡ Quick</div>
+        <div class="preset-desc">LLM-only scan, no active tools. Best for rapid assessment.</div>
+        <div class="preset-meta"><span class="preset-tag">LLM only</span></div>
+        <div class="preset-time">~5-8 min</div>
+      </div>
+      <div class="preset-card" onclick="selectPreset('fast',this)">
+        <div class="preset-name">🚀 Fast</div>
+        <div class="preset-desc">Nuclei + Burp scan, 5 concurrent tools.</div>
+        <div class="preset-meta"><span class="preset-tag">nuclei</span><span class="preset-tag">burp</span></div>
+        <div class="preset-time">~10-15 min</div>
+      </div>
+      <div class="preset-card" onclick="selectPreset('full',this)">
+        <div class="preset-name">🔬 Full</div>
+        <div class="preset-desc">All 13 tools, comprehensive coverage.</div>
+        <div class="preset-meta"><span class="preset-tag">all tools</span></div>
+        <div class="preset-time">~40-60 min</div>
+      </div>
+      <div class="preset-card" onclick="selectPreset('stealth',this)">
+        <div class="preset-name">🥷 Stealth</div>
+        <div class="preset-desc">Passive only, low noise, 1 RPS. For production targets.</div>
+        <div class="preset-meta"><span class="preset-tag">passive</span></div>
+        <div class="preset-time">~60-90 min</div>
+      </div>
+      <div class="preset-card" onclick="selectPreset('authenticated',this)">
+        <div class="preset-name">🔐 Authenticated</div>
+        <div class="preset-desc">All tools + IDOR testing with auth headers.</div>
+        <div class="preset-meta"><span class="preset-tag">all tools</span><span class="preset-tag">IDOR</span></div>
+        <div class="preset-time">~50-70 min</div>
+      </div>
+      <div class="preset-card selected" id="pc-pentra-ft" onclick="selectPreset('pentra-ft',this)">
+        <div class="preset-name">🤖 pentra-ft</div>
+        <div class="preset-desc">Domain-adapted LLM (89.1% acc). Proven +33% more findings vs baseline.</div>
+        <div class="preset-meta"><span class="preset-tag pentra">pentra-ft model</span><span class="preset-tag">nuclei</span></div>
+        <div class="preset-time">~15-20 min</div>
+      </div>
+    </div>
+  `,
+  // Step 2: Auth
+  ()=>`
+    <div class="w-label">Authentication Type</div>
+    <div class="auth-toggle-row">
+      <div class="auth-toggle active" id="at-none" onclick="selectAuth('none')">None</div>
+      <div class="auth-toggle" id="at-cookie" onclick="selectAuth('cookie')">Cookie</div>
+      <div class="auth-toggle" id="at-bearer" onclick="selectAuth('bearer')">Bearer Token</div>
+      <div class="auth-toggle" id="at-autologin" onclick="selectAuth('autologin')">Auto-login</div>
+    </div>
+    <div id="auth-fields">
+      <div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">
+        No authentication — unauthenticated scan
+      </div>
+    </div>
+  `,
+  // Step 3: Review
+  ()=>`
+    <div class="w-label" style="margin-bottom:12px">Review & Launch</div>
+    <div class="review-box">
+      <div class="review-row"><span class="review-key">Target</span><span class="review-val">${wizData.target||'(not set)'}</span></div>
+      <div class="review-row"><span class="review-key">Preset</span><span class="review-val">${wizData.preset}</span></div>
+      <div class="review-row"><span class="review-key">Authentication</span><span class="review-val">${wizData.auth}</span></div>
+      <div class="review-row"><span class="review-key">Path Exclusion</span><span class="review-val">—</span></div>
+      <div class="review-row"><span class="review-key">Model</span><span class="review-val">pentra-ft:latest</span></div>
+    </div>
+    <div style="background:rgba(45,110,224,.08);border:1px solid rgba(45,110,224,.2);border-radius:8px;padding:12px;font-size:12px;color:var(--text-secondary)">
+      ℹ Estimated duration: <strong style="color:var(--text-primary)">15-20 minutes</strong> with pentra-ft preset.
+      The agent will pause at HITL checkpoints for your approval.
+    </div>
+  `
+];
+
+function openWizard() {
+  wizCurrentStep = 0;
+  wizData.target = '';
+  document.getElementById('wizard').style.display='flex';
+  renderWizStep();
+}
+function closeWizard() {document.getElementById('wizard').style.display='none'}
+function closeWizardOut(e) {if(e.target===document.getElementById('wizard'))closeWizard()}
+
+function renderWizStep() {
+  document.getElementById('wiz-body').innerHTML = wizStepContent[wizCurrentStep]();
+  for(let i=0;i<4;i++) {
+    const dot = document.getElementById('ws'+i);
+    const lbl = document.getElementById('wl'+i);
+    dot.className = 'wstep-dot '+(i<wizCurrentStep?'done':i===wizCurrentStep?'active':'pending');
+    lbl.className = 'wstep-label '+(i<wizCurrentStep?'done':i===wizCurrentStep?'active':'');
+    if(i<3) {
+      document.getElementById('wline'+i).className = 'wstep-line'+(i<wizCurrentStep?' done':'');
+    }
+  }
+  document.getElementById('wiz-back').style.visibility = wizCurrentStep===0?'hidden':'visible';
+  document.getElementById('wiz-next').textContent = wizCurrentStep===3?'🚀 Launch Scan':'Next →';
+}
+
+function wizStep(dir) {
+  if(dir>0 && wizCurrentStep===3) {
+    closeWizard();
+    toastShow('success','Scan Started','wondr.id — pentra-ft preset — AASE Recon');
+    return;
+  }
+  wizCurrentStep = Math.max(0,Math.min(3,wizCurrentStep+dir));
+  renderWizStep();
+}
+
+function selectPreset(name, el) {
+  document.querySelectorAll('.preset-card').forEach(c=>c.classList.remove('selected'));
+  el.classList.add('selected');
+  wizData.preset = name;
+}
+
+function selectAuth(type) {
+  wizData.auth = type;
+  document.querySelectorAll('.auth-toggle').forEach(t=>t.classList.remove('active'));
+  document.getElementById('at-'+type).classList.add('active');
+  const fields = document.getElementById('auth-fields');
+  if(type==='cookie') {
+    fields.innerHTML='<div class="w-label">Cookie Value</div><input class="w-input" placeholder="session=abc123; csrf_token=xyz">';
+  } else if(type==='bearer') {
+    fields.innerHTML='<div class="w-label">Bearer Token</div><input class="w-input" placeholder="eyJhbGciOiJIUzI1NiJ9...">';
+  } else if(type==='autologin') {
+    fields.innerHTML=`
+      <div class="w-label">Login URL</div><input class="w-input" placeholder="https://target.com/login">
+      <div class="w-label">Username</div><input class="w-input" placeholder="admin">
+      <div class="w-label">Password</div><input class="w-input" type="password" placeholder="●●●●●●●●">
+    `;
+  } else {
+    fields.innerHTML='<div style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px">No authentication — unauthenticated scan</div>';
+  }
+}
+
+// ── Stop All
+function openStopAll() {document.getElementById('stop-modal').classList.add('open')}
+function closeStopAll() {document.getElementById('stop-modal').classList.remove('open')}
+function confirmStopAll() {
+  closeStopAll();
+  document.getElementById('global-status').className='status-pill idle';
+  document.getElementById('global-status').textContent='Stopped';
+  toastShow('warning','Scans Stopped','All running engagements have been terminated');
+}
+
+// ── Map detail
+function openMapDetail(e,host,type,vuln,waf,note) {
+  e.stopPropagation();
+  const p = document.getElementById('map-detail');
+  document.getElementById('mdp-host').textContent=host;
+  document.getElementById('mdp-type').textContent=type;
+  document.getElementById('mdp-waf').textContent=waf;
+  document.getElementById('mdp-vuln').textContent=note;
+  document.getElementById('mdp-note').textContent=vuln;
+  p.classList.add('open');
+}
+function closeMapDetail(e) {if(!document.getElementById('map-detail').contains(e.target))closeMapDetailBtn()}
+function closeMapDetailBtn() {document.getElementById('map-detail').classList.remove('open')}
+
+// ── Smart Rescan
+function triggerRescan() {
+  toastShow('info','Smart Rescan','Loading previous config: testaspnet · full preset · no auth…');
+  setTimeout(()=>toastShow('success','Rescan Started','testaspnet.vulnweb.com — same config as last run'),1500);
+}
+
+// ── GF Pattern test
+const GF_PATTERNS = {
+  sqli_int:/[\?&](id|cat|uid|pid|num|page|item|product)=\d+/i,
+  idor:/[\?&](id|user_id|uid|account_id|order_id|doc_id)=/i,
+  ssrf:/[\?&](url|uri|redirect|dest|webhook|callback|imageUrl)=/i,
+  lfi:/[\?&](file|path|page|template|include|load)=/i,
+  xss:/[\?&](search|q|query|name|input|message|comment)=/i,
+  interesting_ext:/\.(bak|backup|old|sql|env|config|log|zip)(\?.*)?$/i,
+  rce:/[\?&](cmd|exec|command|shell|ping|host)=/i,
+  open_redirect:/[\?&](redirect|url|return|next|goto)=https?/i,
+};
+function testGFUrl(url) {
+  if(!url) return;
+  Object.entries(GF_PATTERNS).forEach(([name,rx])=>{
+    const el = document.getElementById('gf-r-'+name);
+    if(!el) return;
+    const match = rx.test(url);
+    el.innerHTML = match
+      ? `<span class="gf-test-preview match">✓ MATCH</span>`
+      : `<span class="gf-test-preview no">no match</span>`;
+  });
+}
+function showGFEditor() {
+  const s = document.getElementById('gf-editor-section');
+  s.style.display = s.style.display==='none'?'block':'none';
+  if(s.style.display!=='none') s.scrollIntoView({behavior:'smooth'});
+}
+
+// ── Toast
+let toastTimers = {};
+function toastShow(type, title, msg) {
+  const icons = {success:'✓',warning:'⚠',critical:'🔴',info:'ℹ'};
+  const id = 'toast-'+Date.now();
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.id = id;
+  el.innerHTML=`<span class="toast-icon">${icons[type]||'ℹ'}</span><div class="toast-body"><div class="toast-title">${title}</div><div class="toast-msg">${msg}</div></div><span class="toast-close" onclick="removeToast('${id}')">✕</span>`;
+  document.getElementById('toast-container').appendChild(el);
+  toastTimers[id] = setTimeout(()=>removeToast(id),4000);
+}
+function removeToast(id) {
+  const el = document.getElementById(id);
+  if(el) {el.style.animation='toastIn .25s ease reverse';setTimeout(()=>el.remove(),250)}
+  clearTimeout(toastTimers[id]);
+}
+
+// ── Simulate live toast after 3s
+setTimeout(()=>toastShow('critical','CRITICAL Finding','SQL Injection confirmed — api.wondr.id/products'),3000);
+setTimeout(()=>toastShow('warning','HITL Approval','Recon phase awaiting your approval'),7000);
+</script>
+</body>
+</html>
