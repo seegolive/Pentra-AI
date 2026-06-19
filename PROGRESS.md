@@ -1,5 +1,5 @@
 # Pentra AI — Progress Report
-> Updated: 2026-06-19 | Tag: `v1.0.0` | Branch: `main` | Sprint 33 ✅ COMPLETE (Code Review Follow-Up — 4 PLAUSIBLE bugs fixed)
+> Updated: 2026-06-19 | Tag: `v1.0.0` | Branch: `main` | Sprint 34 ✅ COMPLETE (Report Endpoints — auth fix, settings fix, 9 tests)
 
 ---
 
@@ -24,13 +24,13 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 
 | Metrik | Nilai |
 |--------|-------|
-| **Test suite** | **496 passing** (225 pentra-tools + 156 pentra-agent + 25 pentra-knowledge + 27 apps/worker + 63 apps/api), 0 failed |
+| **Test suite** | **505 passing** (225 pentra-tools + 156 pentra-agent + 25 pentra-knowledge + 27 apps/worker + 72 apps/api), 0 failed |
 | **Playwright E2E** | **90 tests** (8 spec files), 0 failed |
 | **Test files** | 53 unit + 8 e2e spec files |
 | **KB records** | **8,341** (Live API as of 2026-06-15; HackerOne — sumber tunggal, lihat keputusan Sprint 29) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
 | **Git tag** | `v1.0.0` — `main` |
-| **Sprint aktif** | Sprint 33 ✅ COMPLETE — code-review follow-up: 4 PLAUSIBLE bugs fixed (undefined param guard, cross-worker cancel, rate limit scan tier, schedule persistence) |
+| **Sprint aktif** | Sprint 34 ✅ COMPLETE — report endpoints: auth added, settings attrs fixed, 9 new tests (72 API total) |
 | **LLM** | qwen2.5-coder:32b (default), qwen3:8b (fast), bge-m3 (embedding), **pentra-ft** (Qwen2.5-Coder-7B fine-tuned, 4.4GB Q4_K_M) |
 
 Live API: 8,341 records as of 2026-06-15.
@@ -902,3 +902,84 @@ Schedule UI:      Form state diambil dari server, persist ke DB setelah Save
 ```
 
 *Updated: 2026-06-19 — Sprint 33 complete: 4 PLAUSIBLE bugs dari code review Sprint 32 diperbaiki — undefined param guard, cross-worker cancel via DB status check, scan rate limit tier (5/min), monitoring schedule persistence (DB columns + Alembic + GET endpoint + useQuery hydration). 0 TypeScript errors, 496 tests passing.*
+
+---
+
+### Sprint 34 ✅ COMPLETE — Report Endpoints (3 bugs fixed + 9 tests)
+
+**Konteks:** `report_router.py` + `ReportViewer.tsx` sudah ada sejak Sprint 19 tapi endpoint memiliki 3 bug yang mencegah mereka berfungsi dengan benar.
+
+---
+
+#### Bug 1 — Auth missing pada kedua report endpoints
+
+| | Detail |
+|-|--------|
+| **File** | `apps/api/app/api/report_router.py` |
+| **Masalah** | `GET /engagements/{id}/report` dan `GET /engagements/{id}/report/h1-summary` tidak memerlukan autentikasi — siapapun (tanpa login) bisa mengunduh laporan pentest. Melanggar CLAUDE.md §16 Rule 4. |
+| **Fix** | Tambah `current_user: UserORM = Depends(get_current_user)` ke kedua endpoint. |
+
+---
+
+#### Bug 2 — `settings.OLLAMA_URL` AttributeError (uppercase vs lowercase)
+
+| | Detail |
+|-|--------|
+| **File** | `apps/api/app/api/report_router.py:173` |
+| **Masalah** | Kode menggunakan `settings.OLLAMA_URL` dan `settings.OLLAMA_MODEL_DEFAULT` tapi settings menggunakan lowercase field: `ollama_url` dan `ollama_model_default`. Setiap generate H1 Executive Summary akan crash dengan `AttributeError`. |
+| **Fix** | Ganti ke `get_api_settings()` (fungsi yang me-return singleton settings), akses `_s.ollama_url` dan `_s.ollama_model_default`. |
+
+---
+
+#### Report Generation Architecture (sudah ada sejak Sprint 19)
+
+```
+GET /api/v1/engagements/{id}/report?format=markdown|html|pdf|h1
+  └─ loads EngagementORM + FindingORM from DB
+  └─ builds ReportData (pentra-report package)
+  └─ renders via Jinja2 templates (report.md.j2, report.html.j2, report_h1.md.j2)
+  └─ PDF via weasyprint (if installed)
+  └─ H1: JSON array of per-finding submission objects
+
+GET /api/v1/engagements/{id}/report/h1-summary
+  └─ LLM executive summary via LLMClient.complete()
+  └─ Full H1-ready Markdown report with remediation, evidence, methodology
+```
+
+**Frontend (`ReportViewer.tsx`):**
+- Markdown preview (react-markdown + remarkGfm)
+- Raw view toggle
+- KPI cards (Critical/High/Medium/Total)
+- Copy to clipboard
+- Download: Markdown, HTML, PDF, H1, H1 Executive (5 format buttons)
+- Wired ke EngagementDetailPage tab "reports"
+
+---
+
+#### Tests Sprint 34 (9 baru, total API: 63 → 72)
+
+| Test | Coverage |
+|------|----------|
+| `test_get_report_markdown_returns_text` | Markdown render + finding title/severity present |
+| `test_get_report_html_returns_html_response` | HTMLResponse returned |
+| `test_get_report_h1_returns_json` | JSON array with correct fields |
+| `test_get_report_404_if_engagement_missing` | HTTPException 404 |
+| `test_get_report_empty_findings_renders_placeholder` | "No open findings" text |
+| `test_get_report_pdf_calls_weasyprint` | weasyprint.HTML().write_pdf() called; application/pdf header |
+| `test_get_h1_summary_returns_markdown_with_llm` | LLM.complete() called; report text returned |
+| `test_get_h1_summary_empty_findings_returns_placeholder` | "No findings" placeholder |
+| `test_get_h1_summary_404_if_engagement_missing` | HTTPException 404 |
+
+---
+
+#### Status Akhir Sprint 34
+
+```
+Unit tests:    72 API (9 baru), 505 total — 0 failed
+TypeScript:    0 errors
+Report UI:     Fully wired (ReportViewer ↔ report_router ↔ pentra-report)
+Auth:          Both report endpoints require JWT
+H1 Executive:  LLM executive summary via ollama_url + ollama_model_default (fixed)
+```
+
+*Updated: 2026-06-19 — Sprint 34 complete: report endpoints audit — auth added ke 2 endpoints, AttributeError settings lowercase fixed, 9 new tests (72 API total, 505 total). ReportViewer + report_router + pentra-report sekarang fully wired end-to-end.*

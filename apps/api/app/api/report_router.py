@@ -14,8 +14,9 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Res
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.deps import get_current_user
 from app.db.base import get_db
-from app.db.models import EngagementORM, FindingORM
+from app.db.models import EngagementORM, FindingORM, UserORM
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ async def get_report(
     engagement_id: UUID,
     format: str = Query(default="markdown", pattern="^(markdown|html|pdf|h1)$"),
     db: AsyncSession = Depends(get_db),
+    current_user: UserORM = Depends(get_current_user),
 ):
     """Generate a report for an engagement.
 
@@ -118,6 +120,7 @@ async def get_report(
 async def get_h1_summary_report(
     engagement_id: UUID,
     db: AsyncSession = Depends(get_db),
+    current_user: UserORM = Depends(get_current_user),
 ) -> PlainTextResponse:
     """Generate full H1-ready report with LLM executive summary (Task 19.5)."""
     try:
@@ -169,10 +172,11 @@ async def get_h1_summary_report(
 
     try:
         from pentra_agent.llm.client import LLMClient
-        from app.core.config import settings
+        from app.core.config import get_api_settings
+        _s = get_api_settings()
         llm = LLMClient(
-            base_url=str(settings.OLLAMA_URL) + "/v1",
-            model=eng.llm_model or settings.OLLAMA_MODEL_DEFAULT,
+            base_url=_s.ollama_url + "/v1",
+            model=eng.llm_model or _s.ollama_model_default,
         )
         report_md = await generate_h1_report(
             engagement=engagement_dict,
