@@ -18,8 +18,9 @@ import {
   Cpu,
   ListChecks,
   AlertCircle,
+  Square,
 } from "lucide-react";
-import { useEngagement, useStartEngagement, useApproveAction, useFindings, downloadEngagementExport, useUpdateEngagementMode, useWorkspaces, useMonitoringAlerts } from "../lib/api";
+import { useEngagement, useStartEngagement, useApproveAction, useFindings, downloadEngagementExport, useUpdateEngagementMode, useWorkspaces, useMonitoringAlerts, useStopEngagement } from "../lib/api";
 import { MonitoringPanel } from "../components/monitoring/MonitoringPanel";
 import { FindingsTable } from "../components/findings/FindingsTable";
 import { ReportViewer } from "../components/engagement/ReportViewer";
@@ -382,6 +383,7 @@ export default function EngagementDetailPage() {
   const { data: workspaces } = useWorkspaces();
   const workspace = workspaces?.find((w) => w.id === engagement?.workspace_id);
   const startMutation = useStartEngagement(engagementId!);
+  const stopMutation = useStopEngagement(engagementId!);
   const modeMutation = useUpdateEngagementMode(engagementId!);
   const { events, pendingApproval, connected, agentStatus, clearApproval } = useEngagementFeed(
     (engagement?.status === "active" || engagement?.status === "awaiting_approval") ? engagementId : undefined
@@ -417,6 +419,7 @@ export default function EngagementDetailPage() {
     paused: "text-yellow-400",
     completed: "text-blue-400",
     failed: "text-red-400",
+    cancelled: "text-slate-500",
   };
 
   return (
@@ -549,6 +552,20 @@ export default function EngagementDetailPage() {
                   <Play className="h-3.5 w-3.5" />
                 )}
                 Start Agent
+              </button>
+            )}
+            {(engagement.status === "active" || engagement.status === "awaiting_approval") && (
+              <button
+                onClick={() => stopMutation.mutate()}
+                disabled={stopMutation.isPending}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600/80 text-white rounded-md text-sm font-medium hover:bg-red-600 disabled:opacity-50 transition-colors"
+              >
+                {stopMutation.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Square className="h-3.5 w-3.5" />
+                )}
+                Stop
               </button>
             )}
           </div>

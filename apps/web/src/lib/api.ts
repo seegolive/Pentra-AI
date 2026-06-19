@@ -522,6 +522,18 @@ export function useMarkAllAlertsRead() {
   });
 }
 
+export function useScheduleMonitoring(engagementId: string) {
+  return useMutation<{ updated: boolean; enabled: boolean; interval_hours: number }, Error, { enabled: boolean; interval_hours: number }>({
+    mutationFn: async (body) => {
+      const res = await apiClient.post(
+        `/api/v1/engagements/${engagementId}/monitoring/schedule`,
+        body
+      );
+      return res.data;
+    },
+  });
+}
+
 export function useReconSnapshots(engagementId: string | undefined, limit = 10) {
   return useQuery<ReconSnapshot[]>({
     queryKey: ["recon-snapshots", engagementId, limit],

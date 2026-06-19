@@ -47,7 +47,7 @@ function isRouteActive(pathname: string, to: string) {
 
 type EngagementStatus =
   | "active" | "awaiting_approval" | "paused"
-  | "planning" | "completed" | "failed";
+  | "planning" | "completed" | "failed" | "cancelled";
 
 function StatusDot({ status }: { status: EngagementStatus }) {
   const colors: Record<EngagementStatus, string> = {
@@ -57,6 +57,7 @@ function StatusDot({ status }: { status: EngagementStatus }) {
     planning:           "var(--status-idle)",
     completed:          "var(--status-complete)",
     failed:             "var(--status-failed)",
+    cancelled:          "var(--status-idle)",
   };
   return (
     <span

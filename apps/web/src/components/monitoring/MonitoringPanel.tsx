@@ -13,11 +13,12 @@ import {
   useMarkAlertRead,
   useMarkAllAlertsRead,
   useReconSnapshots,
+  useScheduleMonitoring,
 } from "../../lib/api";
 import { AlertCard } from "./AlertCard";
 import { SnapshotDiff } from "./SnapshotDiff";
 
-type MonitoringView = "alerts" | "diff";
+type MonitoringView = "alerts" | "diff" | "schedule";
 type AlertFilter = "all" | "unread" | "new_subdomain" | "new_port" | "new_endpoint" | "removed_subdomain";
 
 interface MonitoringPanelProps {
@@ -27,6 +28,9 @@ interface MonitoringPanelProps {
 export function MonitoringPanel({ engagementId }: MonitoringPanelProps) {
   const [view, setView] = useState<MonitoringView>("alerts");
   const [filter, setFilter] = useState<AlertFilter>("all");
+  const [scheduleEnabled, setScheduleEnabled] = useState(true);
+  const [scheduleInterval, setScheduleInterval] = useState(24);
+  const scheduleMutation = useScheduleMonitoring(engagementId);
 
   const alertFilters = {
     is_read: filter === "unread" ? false : undefined,
@@ -92,6 +96,18 @@ export function MonitoringPanel({ engagementId }: MonitoringPanelProps) {
                 ({snapshots?.length})
               </span>
             )}
+          </button>
+          <button
+            onClick={() => setView("schedule")}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors",
+              view === "schedule"
+                ? "bg-primary/20 text-primary"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Activity className="h-3.5 w-3.5" />
+            Schedule
           </button>
         </div>
 
@@ -180,6 +196,67 @@ export function MonitoringPanel({ engagementId }: MonitoringPanelProps) {
               snapshots={snapshots ?? []}
             />
           )}
+        </div>
+      )}
+
+      {/* Schedule view */}
+      {view === "schedule" && (
+        <div className="flex-1 overflow-y-auto">
+          <div className="rounded-md border border-border bg-muted/30 p-5 space-y-5 max-w-sm">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground mb-1">Continuous Monitoring</h3>
+              <p className="text-xs text-muted-foreground">
+                Periodically re-run recon and compare results to detect surface changes.
+              </p>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-foreground">Enable monitoring</span>
+              <button
+                type="button"
+                onClick={() => setScheduleEnabled((v) => !v)}
+                className={cn(
+                  "relative inline-flex h-5 w-9 items-center rounded-full transition-colors",
+                  scheduleEnabled ? "bg-primary" : "bg-muted"
+                )}
+              >
+                <span
+                  className={cn(
+                    "inline-block h-4 w-4 rounded-full bg-white shadow transition-transform",
+                    scheduleEnabled ? "translate-x-4" : "translate-x-0.5"
+                  )}
+                />
+              </button>
+            </div>
+            <div className={cn("space-y-2", !scheduleEnabled && "opacity-40 pointer-events-none")}>
+              <label className="text-xs font-medium text-muted-foreground">
+                Check every
+              </label>
+              <select
+                value={scheduleInterval}
+                onChange={(e) => setScheduleInterval(Number(e.target.value))}
+                className="w-full bg-background border border-border rounded-md px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                {[6, 12, 24, 48, 72, 168].map((h) => (
+                  <option key={h} value={h}>
+                    {h < 24 ? `${h} hours` : `${h / 24} day${h / 24 > 1 ? "s" : ""}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              type="button"
+              disabled={scheduleMutation.isPending}
+              onClick={() => scheduleMutation.mutate({ enabled: scheduleEnabled, interval_hours: scheduleInterval })}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-xs font-medium rounded-md hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              {scheduleMutation.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Activity className="h-3.5 w-3.5" />
+              )}
+              {scheduleMutation.isSuccess ? "Saved!" : "Save Schedule"}
+            </button>
+          </div>
         </div>
       )}
     </div>

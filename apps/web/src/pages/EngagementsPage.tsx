@@ -48,6 +48,11 @@ const STATUS_CONFIG: Record<EngagementStatus, { label: string; icon: React.React
     icon: <AlertTriangle className="h-3.5 w-3.5" />,
     color: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20",
   },
+  cancelled: {
+    label: "Cancelled",
+    icon: <XCircle className="h-3.5 w-3.5" />,
+    color: "text-slate-500 bg-slate-500/10 border-slate-500/20",
+  },
 };
 
 function StatusBadge({ status }: { status: EngagementStatus }) {

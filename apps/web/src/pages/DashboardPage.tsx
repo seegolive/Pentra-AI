@@ -95,6 +95,16 @@ const STATUS_CONFIG = {
     color: "text-yellow-400 border-yellow-900",
     icon: Clock,
   },
+  awaiting_approval: {
+    label: "Awaiting",
+    color: "text-yellow-400 border-yellow-900",
+    icon: Clock,
+  },
+  cancelled: {
+    label: "Cancelled",
+    color: "text-slate-500 border-slate-700",
+    icon: AlertTriangle,
+  },
 } as const;
 
 // ── Engagement card ───────────────────────────────────────────────────────────
