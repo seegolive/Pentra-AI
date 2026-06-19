@@ -1,22 +1,22 @@
 # Pentra AI — Progress Report
-> Updated: 2026-06-19 | Tag: `v1.0.0` | Branch: `main` | Sprint 31 ✅ COMPLETE (Bug Fix + Auto-Approve + Burp Scope Fix)
+> Updated: 2026-06-19 | Tag: `v1.0.0` | Branch: `main` | Sprint 32 ✅ COMPLETE (Full-Stack Audit — Backend Endpoints + Frontend Feature Parity)
 
 ---
 
 ## 🎉 v1.0.0 MILESTONE
 
-Pentra AI mencapai **v1.0.0** — platform stabil dengan 422 unit tests (0 failed)
-di 4 package/app, 90 Playwright E2E tests, KB 8,341 records dari HackerOne,
+Pentra AI mencapai **v1.0.0** — platform stabil dengan 496 unit tests (0 failed)
+di 5 package/app, 90 Playwright E2E tests, KB 8,341 records dari HackerOne,
 dan fine-tuned LLM (pentra-ft) yang tervalidasi unggul pada target real
-(8 confirmed vs baseline 6 confirmed). Semua sprint backlog (18-29) + UI Polish + UI-2 + UI-3 selesai.
+(8 confirmed vs baseline 6 confirmed). Semua sprint backlog (18-32) + UI Polish + UI-2 + UI-3 selesai.
 
 ---
 
 ## Ringkasan Eksekutif
 
 Pentra AI adalah self-hosted AI Security Research Platform dengan LLM lokal (Ollama).
-Saat ini platform berjalan penuh dengan **422 unit tests + 90 Playwright E2E tests**, **8,341 records KB** (naik dari 2,758),
-dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JWT alg:none, SSRF, IDOR, subdomain takeover, second-order SQLi secara otomatis, **plus fine-tuned LLM (pentra-ft) yang dilatih pada 8,309 H1 disclosures dan tervalidasi tetap unggul pada target MSSQL/ASP.NET (8 confirmed vs baseline fair 6 confirmed)**. Frontend telah di-polish dengan UI Sprint 1-3: design system tokens, notification system, scan wizard, attack surface map (real data + subscan), API vault, GF patterns, trends charts.
+Saat ini platform berjalan penuh dengan **496 unit tests + 90 Playwright E2E tests**, **8,341 records KB** (naik dari 2,758),
+dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JWT alg:none, SSRF, IDOR, subdomain takeover, second-order SQLi secara otomatis, **plus fine-tuned LLM (pentra-ft) yang dilatih pada 8,309 H1 disclosures dan tervalidasi tetap unggul pada target MSSQL/ASP.NET (8 confirmed vs baseline fair 6 confirmed)**. Frontend telah di-polish dengan UI Sprint 1-3 + UI audit Sprint 32: design system tokens, notification system, scan wizard, attack surface map (real data + subscan), API vault, GF patterns, trends charts, monitoring schedule UI, stop button di engagement detail, dan semua status maps lengkap.
 
 ---
 
@@ -26,11 +26,11 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 |--------|-------|
 | **Test suite** | **496 passing** (225 pentra-tools + 156 pentra-agent + 25 pentra-knowledge + 27 apps/worker + 63 apps/api), 0 failed |
 | **Playwright E2E** | **90 tests** (8 spec files), 0 failed |
-| **Test files** | 47 unit + 8 e2e spec files |
+| **Test files** | 53 unit + 8 e2e spec files |
 | **KB records** | **8,341** (Live API as of 2026-06-15; HackerOne — sumber tunggal, lihat keputusan Sprint 29) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
 | **Git tag** | `v1.0.0` — `main` |
-| **Sprint aktif** | Sprint 31 ✅ COMPLETE — 4 bugs fixed, auto-approve Burp MCP, 3× 2nd-order SQLi confirmed (pupuk-indonesia.com) |
+| **Sprint aktif** | Sprint 32 ✅ COMPLETE — full-stack audit: 3 backend endpoints baru, 6 file frontend diperbaiki, 0 TypeScript errors |
 | **LLM** | qwen2.5-coder:32b (default), qwen3:8b (fast), bge-m3 (embedding), **pentra-ft** (Qwen2.5-Coder-7B fine-tuned, 4.4GB Q4_K_M) |
 
 Live API: 8,341 records as of 2026-06-15.
@@ -734,3 +734,106 @@ race=0 cors=0 jwt=0 2nd_sqli=3 biz=0 ssrf=0
 **JSON report:** `/tmp/pentra_scan_www_pupuk-indonesia_com_5bdaaed2.json`
 
 *Updated: 2026-06-19 — Sprint 31 complete: 4 bugs fixed (ResponseBaseline + SQLiProver + PayloadMutator log + waf_info scope), auto-approve Burp MCP integrated, E2E validated on real target (3× CRITICAL/HIGH 2nd-order SQLi confirmed). Commits: b342298, 1a2fc4c.*
+
+---
+
+### Sprint 32 ✅ COMPLETE — Full-Stack Audit (Backend API + Frontend Feature Parity)
+
+**Konteks:** Audit menyeluruh backend ↔ frontend setelah Sprint 31. Tujuan: pastikan semua endpoint API tersambung ke frontend, semua fitur/tombol berfungsi, semua data ditampilkan dengan benar.
+
+---
+
+#### Bagian 1 — Agent Bug Fixes (Minor Post-Sprint 31)
+
+| Fix | File | Detail | Commit |
+|-----|------|--------|--------|
+| JSON parse robustness | `pentra_agent/llm/client.py` | `complete_json()` diperluas dari 3 ke 6 strategi ekstraksi (strip fences → repair_json → 3 regex fallbacks → retry dengan prompt ketat + 3 regex lagi) | `2f53ebd` |
+| Ollama KB retry | `pentra_agent/nodes/vuln_hunt_node.py` | KB refresh dibungkus 3-attempt retry dengan exponential backoff (1s, 2s delays); Ollama 500 tidak lagi menyebabkan silent failure | `2f53ebd` |
+| Nuclei timeout handling | `pentra_agent/nodes/vuln_hunt_node.py` | `_nuclei_scan` mengembalikan `(list[dict], bool)` — bool = timed_out flag; aggregator log INFO saat 0 findings + timeout (sebelumnya log misleading) | `2f53ebd` |
+
+---
+
+#### Bagian 2 — Backend API Alignment
+
+Audit 51 endpoint backend vs semua frontend API calls. Ditemukan 3 endpoint hilang:
+
+| Endpoint | Status Sebelum | Fix | Commit |
+|----------|---------------|-----|--------|
+| `PATCH /api/v1/engagements/{id}/stop` | ❌ Tidak ada | Implementasi lengkap: cancel asyncio task, set status "cancelled", audit log, WS broadcast `agent_cancelled` | `6f8e1e0` |
+| `POST /api/v1/engagements/{id}/subscan` | ❌ Tidak ada | Implementasi: queue Celery task `app.tasks.agent.run_subscan`, panggil `vuln_hunt_node` dengan URL spesifik | `6f8e1e0` |
+| `GET /api/v1/engagements` (tanpa trailing slash) | ❌ 404 karena `redirect_slashes=False` | Tambah alias route `include_in_schema=False` + param `limit: int \| None` | `6f8e1e0` |
+
+**Perubahan backend lain:**
+- `apps/worker/app/tasks/agent.py`: tambah Celery task `run_subscan` — load engagement, publish WS events `subscan_started/complete/error`, panggil `vuln_hunt_node` langsung
+- `apps/api/app/api/router.py`: tambah `_active_tasks: dict[str, asyncio.Task]` registry untuk task cancellation
+
+---
+
+#### Bagian 3 — Frontend Type Fixes
+
+| Masalah | File | Fix | Commit |
+|---------|------|-----|--------|
+| `EngagementStatus` missing `"cancelled"` | `src/lib/types.ts` | Tambah `"cancelled"` ke union | `6b871f7` |
+| `FeedEventType` missing 8 event types | `src/lib/types.ts` | Tambah `agent_cancelled`, `agent_resumed`, `ENGAGEMENT_STARTED`, `AGENT_ERROR`, `AGENT_RESUMED`, `subscan_started`, `subscan_complete`, `subscan_error` | `6b871f7` |
+| React hooks violation — conditional hooks | `WorkerHealthPage.tsx`, `AdminPage.tsx`, `AdminUsersPage.tsx` | Pindahkan semua `useQuery`/`useMutation` ke ATAS guard `if (!is_admin) return <Navigate>`; tambah `enabled: false` | `6b871f7` |
+| `Th` component dibuat dalam render | `components/findings/FindingsTable.tsx` | Extract `Th` ke module scope dengan explicit props; tambah `sortField`, `sortDir`, `onSort` props | `6b871f7` |
+| `let cmp = 0` (no-useless-assignment) | `FindingsTable.tsx` (2 file) | `let cmp = 0` → `let cmp: number` | `6b871f7` |
+| `catch (err: any)` (no-explicit-any) | `EngagementsPage.tsx`, `LoginPage.tsx` | Typed Error cast | `6b871f7` |
+
+---
+
+#### Bagian 4 — Frontend Feature Gaps
+
+| Fitur | Status Sebelum | Fix | Commit |
+|-------|---------------|-----|--------|
+| **Stop button di EngagementDetailPage** | ❌ Tidak ada (hanya bisa via sidebar StopAllModal) | Tombol Stop muncul saat status `active` atau `awaiting_approval`; menggunakan `useStopEngagement` hook + Square icon | `7bb5d7d` |
+| **Monitoring Schedule UI** | ❌ Backend ada (`POST /monitoring/schedule`), hook tidak ada, UI tidak ada | Tambah tab "Schedule" di `MonitoringPanel` dengan toggle enable/disable + interval selector (6h/12h/24h/48h/72h/7d) + tombol Save | `7bb5d7d` |
+| **`useScheduleMonitoring` hook** | ❌ Tidak ada | Tambah ke `src/lib/api.ts` | `7bb5d7d` |
+| **Status `"cancelled"` di semua maps** | ❌ 4 file STATUS_CONFIG tidak punya entry `cancelled` | Tambah `cancelled` ke `EngagementsPage`, `DashboardPage`, `EngagementDetailPage`, `AppShell` | `7bb5d7d` |
+| **Status `"awaiting_approval"` di DashboardPage** | ❌ Hilang dari STATUS_CONFIG | Tambah entry dengan Clock icon + warna kuning | `7bb5d7d` |
+
+---
+
+#### Hasil Audit — Semua API Calls Frontend
+
+Semua 17 halaman + 20 komponen diaudit. Status akhir:
+
+| Kategori | Total | OK | Diperbaiki |
+|----------|-------|-----|-----------|
+| Backend endpoints | 51 | 48 | 3 baru ditambahkan |
+| Frontend hooks | ~35 | 34 | 1 baru (`useScheduleMonitoring`) |
+| TypeScript types | — | ✅ | 2 union types diperluas |
+| React hooks violations | 3 halaman | ✅ | Semua diperbaiki |
+| STATUS_CONFIG maps | 4 file | ✅ | Semua status lengkap |
+| TypeScript errors | 0 | ✅ | — |
+| API tests | 63 | ✅ | — |
+
+**Fitur yang by-design localStorage (tidak perlu backend):**
+- `ApiVaultPage.tsx` — localStorage-backed key store (by design, security tool, keys tidak boleh meninggalkan mesin)
+- `GFPatternsPage.tsx` — 12 default patterns + regex URL tester (stateless, by design)
+
+---
+
+#### Commits Sprint 32
+
+| Commit | Deskripsi |
+|--------|-----------|
+| `2f53ebd` | fix: minor issues post Sprint 31 — JSON parse, Ollama retry, nuclei skip on timeout |
+| `6f8e1e0` | fix(api): add missing /stop, /subscan endpoints + /engagements no-slash alias |
+| `6b871f7` | fix(web): frontend ↔ backend alignment — types, hooks, lint |
+| `7bb5d7d` | feat(web): complete frontend feature audit — stop button, schedule UI, status maps |
+
+---
+
+#### Status Akhir Sprint 32
+
+```
+Unit tests:       496 passing, 0 failed (semua package)
+Playwright E2E:   90 tests, 0 failed
+TypeScript:       0 errors (tsc --noEmit clean)
+Backend:          API + Worker berjalan di localhost:8001
+Frontend:         Vite dev server localhost:5173
+Semua endpoint:   Tersambung ke frontend (51/51 endpoint tercakup)
+```
+
+*Updated: 2026-06-19 — Sprint 32 complete: full-stack audit, 3 backend endpoints baru, frontend feature parity (stop button, monitoring schedule UI, complete status maps), 0 TypeScript errors, 496 tests passing. Commits: 2f53ebd, 6f8e1e0, 6b871f7, 7bb5d7d.*
