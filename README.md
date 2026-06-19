@@ -2,11 +2,13 @@
 
 > The first self-hosted AI Security Research Platform that thinks like a seasoned bug bounty hunter — not a vulnerability scanner.
 
-![Status](https://img.shields.io/badge/status-active_development-orange)
-![Phase](https://img.shields.io/badge/phase-1_knowledge_engine-blue)
-![License](https://img.shields.io/badge/license-private-red)
+![Status](https://img.shields.io/badge/status-v1.0.0_stable-brightgreen)
+![Tests](https://img.shields.io/badge/tests-531_passing-brightgreen)
+![E2E](https://img.shields.io/badge/playwright-90_e2e-brightgreen)
+![KB](https://img.shields.io/badge/knowledge_base-8%2C341_reports-blue)
+![LLM](https://img.shields.io/badge/LLM-local_ollama-purple)
 ![Python](https://img.shields.io/badge/python-3.11+-green)
-![LLM](https://img.shields.io/badge/LLM-ollama_local-purple)
+![License](https://img.shields.io/badge/license-private-red)
 
 ---
 
@@ -14,13 +16,27 @@
 
 Pentra AI is a **self-hosted AI Security Research Platform** built for penetration testers, bug bounty hunters, security researchers, and red teams. It combines:
 
-- **Local LLM inference** via Ollama (Qwen, DeepSeek, and any OpenAI-compatible model) — data never leaves your machine
-- **Knowledge from 50,000+ real HackerOne/Bugcrowd public disclosures** — RAG-powered technique suggestions based on what actually works
+- **Local LLM inference** via Ollama (Qwen2.5-Coder, DeepSeek-R1, pentra-ft fine-tune) — target data never leaves your machine
+- **Knowledge from 8,341 real HackerOne public disclosures** — RAG-powered technique suggestions based on what actually works
 - **Burp Suite Pro integration** via official PortSwigger MCP — deep web analysis as a first-class citizen
 - **LangGraph multi-agent orchestration** — stateful, resumable pentest sessions with human-in-the-loop approval
-- **Full web UI** — React dashboard with real-time live feed, finding management, knowledge browser, and report generation
+- **Full web UI** — React dashboard with real-time live feed, finding management, knowledge browser, attack surface map, and report generation
+- **Fine-tuned LLM (pentra-ft)** — Qwen2.5-Coder-7B trained on 8,309 H1 disclosures, validated superior to baseline on MSSQL/ASP.NET targets
 
-Pentra AI is not a vulnerability scanner. It is an **AI research companion** that helps you find the bugs that scanners miss.
+Pentra AI is not a vulnerability scanner. It is an **AI research companion** that finds the bugs scanners miss.
+
+---
+
+## Current Status — v1.0.0
+
+| Metric | Value |
+|--------|-------|
+| **Unit tests** | **531 passing** (225 pentra-tools + 156 pentra-agent + 25 pentra-knowledge + 27 apps/worker + 98 apps/api) |
+| **E2E tests (Playwright)** | **90 passing** across 8 spec files |
+| **Knowledge base** | **8,341 HackerOne reports** (embedded with BGE-M3, hybrid search) |
+| **Agent capabilities** | SQLi, XSS, CORS, GraphQL, race condition, JWT alg:none, SSRF, IDOR, subdomain takeover, second-order SQLi |
+| **Burp MCP** | Connected — proxy history analysis, active scan trigger, Collaborator |
+| **Fine-tuned LLM** | pentra-ft (Qwen2.5-Coder-7B Q4_K_M, 4.4GB) — 8 confirmed vs 6 baseline on real targets |
 
 ---
 
@@ -28,45 +44,52 @@ Pentra AI is not a vulnerability scanner. It is an **AI research companion** tha
 
 | Problem | How Pentra AI Solves It |
 |---------|------------------------|
-| Scanners miss IDOR, business logic, auth bypass | Knowledge Engine — learns from 50K+ real H1 reports, suggests techniques based on tech stack |
-| LLM tools lose context between steps | LangGraph stateful sessions — persist across pause/resume, cross-session memory |
-| 10+ tools with no coherent orchestration | Multi-agent pipeline — Recon → Vuln Hunt → Exploit Validation → Report, all connected |
-| Senior researcher knowledge not accessible | RAG-powered technique suggestion — "similar bugs found at Shopify, GitLab, Uber" |
-| Cloud AI = data leaves your machine | 100% local — Ollama LLM, self-hosted vector DB, MinIO storage |
+| Scanners miss IDOR, business logic, auth bypass | Knowledge Engine — RAG from 8,341 real H1 reports, suggests techniques per tech stack |
+| LLM tools lose context between steps | LangGraph stateful sessions — persist across pause/resume via PostgreSQL checkpoints |
+| 10+ tools with no coherent orchestration | Multi-agent pipeline — Recon → Triage → Vuln Hunt → Exploit Validation → Report |
+| Senior researcher knowledge not accessible | "Similar bugs found at Shopify, GitLab, Uber" — grounded in real disclosures |
+| Cloud AI = data leaves your machine | 100% local — Ollama LLM, self-hosted Qdrant, MinIO storage |
+| No context on known CVEs | Automatic CVE enrichment via NVD API — correlates findings with public vulnerabilities |
+| Manual surface tracking | Continuous monitoring — periodic recon snapshots with delta alerts |
 
 ---
 
-## Architecture Overview
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│              WEB UI (React + Vite)                  │
-│   Dashboard · Live Feed · Findings · KB · Reports   │
-└─────────────────────┬───────────────────────────────┘
-                      │ WebSocket + REST
-┌─────────────────────▼───────────────────────────────┐
-│              API GATEWAY (FastAPI)                  │
-└──────────┬──────────────────────────┬───────────────┘
-           │                          │
-┌──────────▼────────── ┐  ┌───────────▼───────────────┐
-│    AGENT ENGINE      │  │    KNOWLEDGE ENGINE       │
-│    (LangGraph)       │◄─┤    BGE-M3 + Qdrant        │
-│                      │  │    H1/Bugcrowd RAG        │
-│  Recon → Vuln Hunt   │  └───────────────────────────┘
-│  → Exploit → Report  │
-│  [HITL approval]     │
-└──────────┬───────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                  WEB UI (React 18 + Vite + Tailwind)           │
+│  Dashboard · Live Feed · Findings · KB Browser · Reports       │
+│  Attack Surface Map · Monitoring · API Vault · GF Patterns     │
+└─────────────────────────┬───────────────────────────────────────┘
+                          │ WebSocket + REST
+┌─────────────────────────▼───────────────────────────────────────┐
+│                  API GATEWAY (FastAPI async)                    │
+│  Engagements · Findings · Auth · Reports · Monitoring · H1     │
+└──────────┬───────────────────────────────┬──────────────────────┘
+           │                               │
+┌──────────▼──────────────┐  ┌────────────▼──────────────────────┐
+│    AGENT ENGINE         │  │    KNOWLEDGE ENGINE               │
+│    (LangGraph v1.2+)    │◄─┤    BGE-M3 + Qdrant Hybrid        │
+│                         │  │    8,341 H1 Reports (RAG)         │
+│  Plan → Recon → Triage  │  │    NVD CVE Enrichment             │
+│  → Vuln Hunt → Exploit  │  └───────────────────────────────────┘
+│  → Report               │
+│  [HITL at each phase]   │
+└──────────┬──────────────┘
            │
-┌──────────▼───────────────────────────────────────┐
-│              TOOL INTEGRATION LAYER              │
-│  Burp Suite Pro (MCP) · nmap · nuclei · ffuf     │
-│  subfinder · httpx · dalfox · sqlmap · katana    │
-└──────────────────────────────────────────────────┘
+┌──────────▼────────────────────────────────────────────────────┐
+│              TOOL INTEGRATION LAYER                           │
+│  Burp Suite Pro (MCP) · nmap · nuclei · ffuf · subfinder     │
+│  httpx · dalfox · sqlmap · katana · gf · JS crawler         │
+└──────────┬────────────────────────────────────────────────────┘
            │
-┌──────────▼───────────────────────────────────────┐
-│              LLM LAYER (Ollama)                  │
-│  Qwen2.5-Coder-32B · DeepSeek-R1-32B · BGE-M3    │
-└──────────────────────────────────────────────────┘
+┌──────────▼────────────────────────────────────────────────────┐
+│              LLM LAYER (Ollama — fully local)                 │
+│  qwen2.5-coder:32b (default) · deepseek-r1:32b (reasoning)   │
+│  qwen3:8b (fast/extraction) · bge-m3 (embedding)             │
+│  pentra-ft (fine-tuned Qwen2.5-Coder-7B on H1 dataset)       │
+└───────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -74,17 +97,17 @@ Pentra AI is not a vulnerability scanner. It is an **AI research companion** tha
 ## Repository Structure
 
 ```
-pentra-ai/                          ← Monorepo (Turborepo)
+pentra-ai/                          ← Monorepo (Turborepo + uv workspaces)
 ├── apps/
-│   ├── web/                        ← React + Vite frontend
-│   ├── api/                        ← FastAPI backend
-│   └── worker/                     ← Celery workers (tasks, scraping)
+│   ├── web/                        ← React + Vite frontend (Shadcn/ui)
+│   ├── api/                        ← FastAPI backend (async, SQLAlchemy 2)
+│   └── worker/                     ← Celery workers (tasks, H1 scraping, scheduling)
 ├── packages/
-│   ├── pentra-knowledge/           ← Knowledge Engine (H1 pipeline, RAG)
-│   ├── pentra-agent/               ← LangGraph agent orchestration
-│   ├── pentra-tools/               ← Tool wrappers (Burp, nmap, nuclei…)
-│   ├── pentra-scope/               ← Scope enforcer
-│   ├── pentra-report/              ← Report generator (MD, PDF, H1 format)
+│   ├── pentra-knowledge/           ← Knowledge Engine (H1 pipeline, BGE-M3, Qdrant RAG)
+│   ├── pentra-agent/               ← LangGraph agent orchestration (HITL, state, nodes)
+│   ├── pentra-tools/               ← Tool wrappers (Burp MCP, nmap, nuclei, ffuf, dalfox…)
+│   ├── pentra-scope/               ← Scope enforcer (all tool calls validated)
+│   ├── pentra-report/              ← Report generator (Markdown, HTML, PDF, H1 format)
 │   └── pentra-shared/              ← Shared Pydantic types & enums
 ├── infra/
 │   ├── docker/                     ← Dockerfiles per service
@@ -92,9 +115,10 @@ pentra-ai/                          ← Monorepo (Turborepo)
 ├── docs/
 │   └── PRD.md                      ← Full Product Requirements Document
 ├── scripts/
-│   ├── seed_knowledge.py           ← Import initial H1 dataset
+│   ├── seed_knowledge.py           ← Import H1 dataset
 │   └── setup.sh                    ← First-run setup
-└── CLAUDE.md                       ← AI coding instructions (Copilot/Claude Code)
+├── CLAUDE.md                       ← AI coding instructions (Claude Code)
+└── PROGRESS.md                     ← Sprint-by-sprint development log
 ```
 
 ---
@@ -103,18 +127,81 @@ pentra-ai/                          ← Monorepo (Turborepo)
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | React 18 + Vite 5 + Tailwind CSS + Shadcn/ui |
+| Frontend | React 18 + Vite 5 + Tailwind CSS 3 + Shadcn/ui |
 | Backend | FastAPI + Python 3.11+ + SQLAlchemy 2 (async) |
-| Agent Framework | LangGraph v1.2+ |
-| LLM Runtime | Ollama (OpenAI-compatible API) |
-| Embedding Model | BGE-M3 (hybrid: dense + sparse) |
-| Vector DB | Qdrant |
+| Agent Framework | LangGraph v1.2+ (StateGraph + AsyncPostgresSaver) |
+| LLM Runtime | Ollama (OpenAI-compatible local API) |
+| Fine-tuned LLM | pentra-ft — Qwen2.5-Coder-7B trained on 8,309 H1 disclosures |
+| Embedding Model | BGE-M3 (hybrid: dense 1024-dim + sparse SPLADE) |
+| Vector DB | Qdrant (hybrid search — dense + sparse) |
 | Task Queue | Celery + Redis |
-| Primary DB | PostgreSQL 16 |
+| Primary DB | PostgreSQL 16 (also LangGraph checkpoint store) |
 | Object Storage | MinIO (screenshots, evidence) |
-| Burp Integration | PortSwigger official MCP extension |
+| Burp Integration | PortSwigger official MCP extension (v2025+) |
 | Containerization | Docker Compose |
 | Package Manager | uv (Python) · pnpm (TypeScript) |
+| Build System | Turborepo |
+
+---
+
+## Features
+
+### Agent Pipeline
+
+The core of Pentra AI — a stateful LangGraph graph that runs the full pentest lifecycle:
+
+1. **Plan** — LLM analyzes scope, suggests attack phases, queries knowledge base
+2. **Recon** — subfinder, httpx, nmap, katana, JS crawler, tech detection
+3. **Triage** — two-stage verification (HTTP re-probe + LLM gate), deduplication
+4. **Vuln Hunt** — RAG-guided technique selection, nuclei, dalfox, sqlmap, gf, Burp
+5. **Exploit** — payload generation, CVE correlation, Burp Collaborator
+6. **Report** — Markdown, HTML, PDF, H1-format JSON, LLM executive summary
+
+Every phase has a **Human-in-the-Loop (HITL)** checkpoint in semi-auto mode. The graph state persists to PostgreSQL so you can pause, resume, or modify mid-engagement.
+
+### Knowledge Engine
+
+- **8,341 HackerOne public reports** indexed with BGE-M3 hybrid embeddings
+- **Hybrid search** — dense cosine similarity + sparse lexical (SPLADE-style)
+- **LLM-extracted fields** — `key_insight`, `attack_technique`, `indicators` per report
+- **CVE enrichment** — automatic NVD API correlation for known vulnerabilities
+- **H1 scope import** — `GET /api/v1/h1/programs/{handle}/scope` fetches live bug bounty scope
+
+### Security Tools
+
+| Tool | Purpose |
+|------|---------|
+| subfinder | Subdomain enumeration |
+| httpx | HTTP probing + tech detection |
+| nmap | Port scan + service fingerprint |
+| katana + JS crawler | Endpoint discovery + JS analysis |
+| nuclei | Template-based vuln scan |
+| dalfox | XSS detection + exploitation |
+| sqlmap | SQLi detection + exploitation |
+| ffuf | Directory/parameter fuzzing |
+| gf | Grep For patterns (secrets, params) |
+| Burp Suite Pro | Full web proxy + active scan + Collaborator |
+
+### Web UI Highlights
+
+- **Live Feed** — real-time WebSocket stream of agent events per engagement
+- **Attack Surface Map** — visual subdomain/port/tech stack with subscan trigger
+- **Finding Management** — severity badges, CVSS scores, HTTP request/response viewer
+- **Knowledge Browser** — search 8,341 H1 reports by tech stack, vuln class, keyword
+- **Report Viewer** — inline Markdown preview + download (MD, HTML, PDF, H1, H1 Executive)
+- **API Vault** — discovered API endpoints with parameter analysis
+- **GF Patterns** — grep-for secrets/params/endpoints viewer
+- **Monitoring Panel** — continuous monitoring alerts, snapshot diff (new/removed hosts), schedule config
+- **Scan Wizard** — step-by-step engagement creation with H1 scope import
+- **Notification System** — real-time alerts for new findings
+
+### Continuous Monitoring
+
+Set up periodic recon re-runs per engagement:
+- Configurable interval (6h, 12h, 24h, 48h, 72h, weekly)
+- Automatic delta detection (new subdomains, new ports, new endpoints, tech changes)
+- Alert feed with read/unread state
+- Snapshot diff viewer comparing any two recon runs
 
 ---
 
@@ -122,42 +209,40 @@ pentra-ai/                          ← Monorepo (Turborepo)
 
 ### Prerequisites
 
-| Requirement | Version | Notes |
-|-------------|---------|-------|
-| Docker + Docker Compose | Latest | For all services |
-| Ollama | Latest | Runs on host machine |
-| Burp Suite Professional | 2025.x+ | With MCP extension installed |
-| GPU (recommended) | RTX 3090+ (24GB VRAM) | For 32B models |
+| Requirement | Notes |
+|-------------|-------|
+| Docker + Docker Compose | All services except Ollama |
+| Ollama | Runs on host (GPU recommended) |
+| Burp Suite Professional 2025.x+ | With MCP Server extension from BApp Store |
+| NVIDIA GPU (recommended) | RTX 3090+ (24GB VRAM) for 32B models |
 
-### 1. Install Ollama and pull models
+### 1. Pull LLM models
 
 ```bash
-# Install Ollama: https://ollama.ai
 ollama pull bge-m3                  # Embedding model (required)
-ollama pull qwen2.5-coder:32b       # Default LLM
-ollama pull deepseek-r1:32b         # Reasoning LLM
-ollama pull qwen2.5-coder:7b        # Fast LLM (for bulk extraction)
+ollama pull qwen2.5-coder:32b       # Default reasoning LLM
+ollama pull deepseek-r1:32b         # Deep reasoning LLM
+ollama pull qwen3:8b                # Fast extraction LLM
 ```
 
-### 2. Install Burp Suite MCP Extension
+### 2. Install Burp MCP Extension
 
 1. Open Burp Suite Professional
-2. Go to **Extensions → BApp Store**
-3. Search for **"MCP Server"** (by PortSwigger)
-4. Install and enable — MCP server starts on `http://127.0.0.1:9876`
+2. **Extensions → BApp Store → "MCP Server"** (PortSwigger official)
+3. Install + enable → MCP server binds to `http://127.0.0.1:9876`
+4. Set `BURP_MCP_URL=http://172.31.192.1:9876` in `.env` (WSL2 host IP)
 
 ### 3. Clone and configure
 
 ```bash
-git clone https://github.com/your-org/pentra-ai.git
+git clone https://github.com/seegolive/pentra-ai.git
 cd pentra-ai
 
-# Copy environment config
 cp .env.example .env
-
-# Edit .env — minimum required changes:
-# POSTGRES_PASSWORD=your-strong-password
-# SECRET_KEY=your-32-char-secret-key
+# Edit .env — minimum required:
+#   POSTGRES_PASSWORD=strong-password
+#   SECRET_KEY=32-char-random-string
+#   BURP_MCP_URL=http://<your-host-ip>:9876
 ```
 
 ### 4. Start services
@@ -166,36 +251,30 @@ cp .env.example .env
 docker compose up -d
 ```
 
-Services started:
-- Web UI: `https://localhost`
-- API: `http://localhost:8000`
-- Qdrant UI: `http://localhost:6333/dashboard`
-- MinIO Console: `http://localhost:9001`
+| Service | URL |
+|---------|-----|
+| Web UI | `https://localhost` |
+| API | `http://localhost:8000` |
+| API Docs | `http://localhost:8000/docs` |
+| Qdrant Dashboard | `http://localhost:6333/dashboard` |
+| MinIO Console | `http://localhost:9001` |
 
 ### 5. Seed the Knowledge Base
 
 ```bash
-# Import initial HackerOne dataset (~7,000 public reports)
 docker compose exec api uv run python scripts/seed_knowledge.py
-
-# This will:
-# 1. Download reddelexc/hackerone-reports dataset
-# 2. Parse and structure all records
-# 3. Extract key_insight and attack_technique via LLM
-# 4. Generate BGE-M3 embeddings
-# 5. Index into Qdrant for hybrid search
-# ETA: ~2-4 hours depending on GPU
 ```
+
+Imports ~8,300 HackerOne public reports, extracts insights via LLM, generates BGE-M3 embeddings, and indexes into Qdrant. ETA: 2–4 hours with GPU.
 
 ### 6. Create your first engagement
 
-1. Open `https://localhost`
-2. Register admin account (first user = admin)
-3. Create **New Workspace** → **New Engagement**
-4. Define scope (domains, IP ranges)
-5. Select mode: **Semi-auto** (recommended) or **Agentic**
-6. Select LLM model
-7. Click **Launch**
+1. Open `https://localhost` → Register (first user = admin)
+2. **New Workspace → New Engagement**
+3. Define scope — paste domains/IPs, or use "Import H1 Scope" for bug bounty programs
+4. Select mode: **Semi-auto** (recommended) or **Agentic**
+5. Select LLM model
+6. Click **Launch**
 
 ---
 
@@ -203,27 +282,28 @@ docker compose exec api uv run python scripts/seed_knowledge.py
 
 ### Semi-Automatic (Recommended)
 
-Agent suggests each action and waits for your approval before executing. You stay in control at every step.
+Agent proposes each action and waits for your approval before executing.
 
 ```
-Agent: "Found Rails app on api.target.com
-        Based on 8 similar H1 reports, I suggest testing IDOR on /api/v1/users/{id}
-        Similar bugs: Shopify ($5,000) · GitLab ($3,000)"
+Agent → "Found Rails app on api.target.com
+         Based on 12 similar H1 reports, I suggest testing mass assignment on
+         POST /api/v1/users (H1 $4,200 Shopify, H1 $2,800 Airbnb)
+         Proposed: send modified request with extra fields"
 
-You: [Approve] → Agent executes → shows results → suggests next step
+You → [Approve] [Skip] [Modify]
 ```
 
 ### Fully Agentic
 
-Agent executes the full pentest pipeline autonomously. Scope enforcement and rate limiting are always active. Destructive actions (active exploitation) always pause for approval regardless of mode.
+Agent executes the full pipeline autonomously within scope. Rate limiting and scope enforcement always active. Destructive actions (active exploitation) always pause for approval regardless of mode.
 
 ---
 
 ## Hardware Requirements
 
-| Tier | Spec | Recommended For |
-|------|------|----------------|
-| Minimum | 16GB RAM, 8-core CPU | 7B model only, slow |
+| Tier | Spec | For |
+|------|------|-----|
+| Minimum | 16GB RAM, 8-core CPU | 7B model (pentra-ft / qwen3:8b) |
 | Recommended | 32GB RAM, RTX 3090 (24GB VRAM) | 32B Q4 — daily use |
 | Optimal | 64GB RAM, RTX 4090 (24GB VRAM) | 32B full precision |
 | High-end | 128GB RAM, 2× A100 | 70B model |
@@ -233,43 +313,73 @@ Agent executes the full pentest pipeline autonomously. Scope enforcement and rat
 ## Development
 
 ```bash
-# Install dependencies
-uv sync                          # Python (all packages)
-pnpm install                     # TypeScript (frontend)
+# Install all dependencies
+uv sync                            # Python (all packages)
+pnpm install                       # TypeScript (frontend)
 
 # Start dev servers
-turbo dev                        # All services with hot reload
+turbo dev                          # All services with hot reload
 
 # Individual services
 cd apps/api && uv run fastapi dev app/main.py --port 8000
-cd apps/web && pnpm dev
+cd apps/web && pnpm dev            # Vite on :5173
 
-# Run tests
-turbo test                       # All
-cd packages/pentra-knowledge && uv run pytest
+# Run all tests
+turbo test
+
+# Per-package tests
+cd apps/api && uv run pytest -q               # 98 tests
+cd packages/pentra-tools && uv run pytest -q  # 225 tests
+cd packages/pentra-agent && uv run pytest -q  # 156 tests
 
 # Database migrations
 cd apps/api && uv run alembic upgrade head
 cd apps/api && uv run alembic revision --autogenerate -m "description"
 
-# Linting & formatting
-turbo lint
-cd apps/api && uv run ruff check . && uv run ruff format .
+# Code quality
+cd apps/api && uv run ruff check . && uv run ruff format . && uv run mypy .
 cd apps/web && pnpm lint && pnpm type-check
 ```
 
 ---
 
-## Development Roadmap
+## Development Progress
 
-| Phase | Status | Goal |
-|-------|--------|------|
-| **Phase 1 — Knowledge Engine** | 🔄 Active | H1 pipeline, BGE-M3, Qdrant, RAG API, KB Browser |
-| **Phase 2 — Core Agent + Burp** | ⏳ Pending | LangGraph, Ollama, Burp MCP, scope enforcer |
-| **Phase 3 — Web UI** | ⏳ Pending | React dashboard, live feed, findings, reports |
-| **Phase 4 — Full MVP** | ⏳ Pending | Multi-agent, agentic mode, PDF reports, H1 integration |
+### Completed
 
-See `docs/PRD.md` for complete product requirements, architecture decisions, and detailed roadmap.
+| Phase | Description | Status |
+|-------|-------------|--------|
+| **Phase 1 — Knowledge Engine** | H1 pipeline, BGE-M3 embeddings, Qdrant hybrid search, RAG API, KB Browser UI | ✅ Complete |
+| **Phase 2 — Agent Engine** | LangGraph StateGraph, HITL approval, Burp MCP integration, scope enforcer, all tool wrappers, 17 sprint iterations | ✅ Complete |
+| **Phase 3 — Web UI** | React dashboard, live feed, findings, KB browser, reports, attack surface map, monitoring, API vault | ✅ Complete |
+| **Phase 4 — Full MVP** | Multi-agent, CVE correlation, fine-tuned LLM, PDF reports, H1 submission format, continuous monitoring | ✅ Complete |
+
+### Sprint History (Selected)
+
+| Sprint | Milestone |
+|--------|-----------|
+| Sprint 1–12 | Core knowledge engine, agent graph, tool wrappers, scope enforcer |
+| Sprint 13–17 | HITL, Burp MCP, DO-NOT-STOP routing, frontend BLOK 1–6 |
+| Sprint 18–19 | CVE enrichment, report generation (MD/HTML/PDF/H1), H1 scope import |
+| Sprint 20–24 | Attack surface map, monitoring panel, snapshot diff, alert system |
+| Sprint 25–29 | Workspace isolation, admin panel, rate limiting, pentra-ft fine-tuning |
+| Sprint 30–32 | UI polish, design system tokens, scan wizard, GF patterns, trends charts |
+| Sprint 33 | Code review follow-up: cross-worker cancel, rate limit tiers, schedule persistence |
+| Sprint 34 | Report endpoint security audit: auth added, settings attrs fixed |
+| Sprint 35 | NameError fix (monitoring router), 26 new tests for internal + monitoring endpoints |
+
+### Current Metrics
+
+```
+Unit tests:     531 (0 failed) — pentra-tools 225, pentra-agent 156,
+                                 apps/api 98, apps/worker 27, pentra-knowledge 25
+Playwright E2E: 90 (0 failed) — 8 spec files
+Knowledge base: 8,341 HackerOne reports (BGE-M3 embedded, Qdrant indexed)
+API endpoints:  Full CRUD for engagements, findings, KB, reports, monitoring
+Git tag:        v1.0.0 (main branch)
+```
+
+See `PROGRESS.md` for the complete sprint-by-sprint log.
 
 ---
 
@@ -278,10 +388,12 @@ See `docs/PRD.md` for complete product requirements, architecture decisions, and
 Pentra AI is built for **authorized security testing only**.
 
 - All LLM inference is local — target data never leaves your machine
-- Every agent action is validated against the defined engagement scope
-- Audit log is append-only — full traceability of all actions
-- Destructive actions always require explicit user approval
-- Kill switch available at any time from the UI
+- Every tool call is validated against the defined engagement scope before execution
+- Audit log is append-only — full traceability of all agent actions
+- Destructive actions (active exploitation) always require explicit user approval
+- Kill switch (`/stop`) halts all running agent tasks immediately
+- Rate limiting per client — scan-heavy endpoints capped at 5 req/min
+- Internal agent API uses shared-secret token, not exposed to end users
 
 **Only use Pentra AI against systems you own or have explicit written permission to test.**
 
@@ -289,13 +401,13 @@ Pentra AI is built for **authorized security testing only**.
 
 ## For AI Coding Assistants
 
-This repository includes full instructions for AI coding agents:
+This repository includes complete instructions for AI coding agents:
 
-- **`CLAUDE.md`** — loaded automatically by Claude Sonnet 4.6 (GitHub Copilot) and Claude Code
-- **`.github/copilot-instructions.md`** — always-on Copilot context
-- **`.github/instructions/*.instructions.md`** — path-specific instructions per package
+- **`CLAUDE.md`** — loaded automatically by Claude Code on every session
+- **`PROGRESS.md`** — complete sprint history and current development state
+- **`docs/PRD.md`** — full Product Requirements Document with decision log
 
-If you are an AI assistant reading this: start with `CLAUDE.md`, then `docs/PRD.md`.
+If you are an AI assistant reading this: start with `CLAUDE.md`, then `docs/PRD.md`, then `PROGRESS.md` for current context.
 
 ---
 
