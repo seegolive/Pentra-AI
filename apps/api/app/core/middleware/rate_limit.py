@@ -7,12 +7,14 @@ Default limits:
 - 200 requests / minute per user (API endpoints)
 - 10 requests / minute per user for payload generation (expensive LLM call)
 - 5 requests / minute per user for KB inject endpoints
+- 5 requests / minute per user for scan endpoints (subscan / start)
 
 Configuration (via environment variables)::
 
     REDIS_URL=redis://localhost:6379/0
     RATE_LIMIT_DEFAULT=200          # requests per minute
     RATE_LIMIT_EXPENSIVE=10         # for /payloads/generate and /knowledge/inject/*
+    RATE_LIMIT_SCAN=5               # for /engagements/*/subscan and /engagements/*/start
 """
 
 from __future__ import annotations
@@ -29,6 +31,8 @@ _EXPENSIVE_PREFIXES = (
     "/api/v1/payloads/generate",
     "/api/v1/knowledge/inject/",
 )
+# Heavy scan endpoints: subscan triggers real tool execution; start launches the full agent
+_SCAN_SUFFIXES = ("/subscan", "/start")
 _WINDOW_SECONDS = 60
 
 
@@ -44,11 +48,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         redis_url: str,
         default_limit: int = 200,
         expensive_limit: int = 10,
+        scan_limit: int = 5,
     ) -> None:
         super().__init__(app)
         self._redis_url = redis_url
         self._default_limit = default_limit
         self._expensive_limit = expensive_limit
+        self._scan_limit = scan_limit
         self._redis = None  # lazily initialised
 
     async def _get_redis(self):
@@ -71,10 +77,13 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # Identify caller: extract user_id from JWT or fall back to IP
         key_id = _extract_user_key(request)
 
-        # Choose limit based on endpoint
-        limit = self._default_limit
-        if any(path.startswith(prefix) for prefix in _EXPENSIVE_PREFIXES):
+        # Choose limit based on endpoint — most specific match wins
+        if any(path.endswith(suffix) for suffix in _SCAN_SUFFIXES):
+            limit = self._scan_limit
+        elif any(path.startswith(prefix) for prefix in _EXPENSIVE_PREFIXES):
             limit = self._expensive_limit
+        else:
+            limit = self._default_limit
 
         redis = await self._get_redis()
         if redis is None:
@@ -142,12 +151,15 @@ async def _sliding_window_check(
     """
     now = time.time()
     window_start = now - window
-    # Bucket key per user per endpoint prefix
+    # Bucket key per user per endpoint class
     bucket = "all"
-    for prefix in _EXPENSIVE_PREFIXES:
-        if path.startswith(prefix):
-            bucket = prefix.replace("/", "_")
-            break
+    if any(path.endswith(suffix) for suffix in _SCAN_SUFFIXES):
+        bucket = "scan"
+    else:
+        for prefix in _EXPENSIVE_PREFIXES:
+            if path.startswith(prefix):
+                bucket = prefix.replace("/", "_")
+                break
     redis_key = f"rl:{key_id}:{bucket}"
 
     try:

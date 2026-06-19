@@ -1115,6 +1115,11 @@ async def engagement_feed(
 
 # ── Internal helper ───────────────────────────────────────────────────────────
 
+
+class _EngagementCancelled(Exception):
+    """Raised inside _run_agent when DB shows status='cancelled' from another worker/process."""
+
+
 async def _run_agent(eng: EngagementORM) -> None:
     """Background task: run the LangGraph agent and stream events to WebSocket."""
     import json
@@ -1168,7 +1173,15 @@ async def _run_agent(eng: EngagementORM) -> None:
         "timestamp": _ts(),
     })
 
+    _chk_engine = None
     try:
+        # One shared session factory for cross-worker cancellation checks (one query per node)
+        from sqlalchemy.ext.asyncio import AsyncSession as _AS, create_async_engine as _cae
+        from sqlalchemy.orm import sessionmaker as _sm_chk
+        from app.core.config import get_api_settings as _get_s
+        _chk_engine = _cae(_get_s().database_url, echo=False, pool_size=1, max_overflow=0)
+        _chk_session = _sm_chk(_chk_engine, class_=_AS, expire_on_commit=False)
+
         # Stream events from the graph using astream_events
         graph = agent_service.graph
         config = {"configurable": {"thread_id": engagement_id}}
@@ -1193,6 +1206,12 @@ async def _run_agent(eng: EngagementORM) -> None:
                     "message": msg,
                     "timestamp": _ts(),
                 })
+                # Check DB status at each node boundary — handles cross-worker cancellation
+                # where task.cancel() in stop_engagement can't reach us (different process)
+                async with _chk_session() as _cs:
+                    _ce = await _cs.get(EngagementORM, engagement_id)
+                    if _ce and _ce.status == "cancelled":
+                        raise _EngagementCancelled()
         # After astream_events loop — check if the graph is paused at an interrupt
         config = {"configurable": {"thread_id": engagement_id}}
         graph_state = await graph.aget_state(config)
@@ -1249,6 +1268,13 @@ async def _run_agent(eng: EngagementORM) -> None:
                 "timestamp": _ts(),
             })
 
+    except _EngagementCancelled:
+        # Cancelled by user — DB status already set by stop_engagement; just notify the feed
+        await ws_manager.broadcast(engagement_id, {
+            "type": "agent_cancelled",
+            "message": "⛔ Engagement cancelled",
+            "timestamp": _ts(),
+        })
     except Exception as exc:  # noqa: BLE001
         import logging as _log
         _log.getLogger(__name__).error("[_run_agent] %s: %s", type(exc).__name__, exc, exc_info=True)
@@ -1272,6 +1298,9 @@ async def _run_agent(eng: EngagementORM) -> None:
             "message": f"❌ Agent error: {exc}",
             "timestamp": _ts(),
         })
+    finally:
+        if _chk_engine is not None:
+            await _chk_engine.dispose()
 
 
 async def _resume_agent(engagement_id: str, user_decision: str) -> None:

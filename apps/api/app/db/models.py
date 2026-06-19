@@ -80,6 +80,9 @@ class EngagementORM(Base):
     started_at: Mapped[datetime | None] = mapped_column(nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
+    monitoring_enabled: Mapped[bool] = mapped_column(nullable=False, default=False, comment="Whether continuous monitoring is enabled for this engagement")
+    monitoring_interval_hours: Mapped[int] = mapped_column(nullable=False, default=24, comment="How often to run recon snapshot (hours)")
+
     workspace: Mapped["WorkspaceORM"] = relationship(back_populates="engagements")
     findings: Mapped[list["FindingORM"]] = relationship(back_populates="engagement")
     audit_logs: Mapped[list["AuditLogORM"]] = relationship(back_populates="engagement")

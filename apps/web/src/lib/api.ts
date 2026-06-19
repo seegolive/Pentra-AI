@@ -522,7 +522,21 @@ export function useMarkAllAlertsRead() {
   });
 }
 
+export function useMonitoringSchedule(engagementId: string) {
+  return useQuery<{ enabled: boolean; interval_hours: number }>({
+    queryKey: ["monitoring-schedule", engagementId],
+    queryFn: async () => {
+      const res = await apiClient.get(
+        `/api/v1/engagements/${engagementId}/monitoring/schedule`
+      );
+      return res.data;
+    },
+    enabled: !!engagementId,
+  });
+}
+
 export function useScheduleMonitoring(engagementId: string) {
+  const qc = useQueryClient();
   return useMutation<{ updated: boolean; enabled: boolean; interval_hours: number }, Error, { enabled: boolean; interval_hours: number }>({
     mutationFn: async (body) => {
       const res = await apiClient.post(
@@ -530,6 +544,9 @@ export function useScheduleMonitoring(engagementId: string) {
         body
       );
       return res.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["monitoring-schedule", engagementId] });
     },
   });
 }

@@ -1,5 +1,5 @@
 # Pentra AI — Progress Report
-> Updated: 2026-06-19 | Tag: `v1.0.0` | Branch: `main` | Sprint 32 ✅ COMPLETE (Full-Stack Audit — Backend Endpoints + Frontend Feature Parity)
+> Updated: 2026-06-19 | Tag: `v1.0.0` | Branch: `main` | Sprint 33 ✅ COMPLETE (Code Review Follow-Up — 4 PLAUSIBLE bugs fixed)
 
 ---
 
@@ -30,7 +30,7 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 | **KB records** | **8,341** (Live API as of 2026-06-15; HackerOne — sumber tunggal, lihat keputusan Sprint 29) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
 | **Git tag** | `v1.0.0` — `main` |
-| **Sprint aktif** | Sprint 32 ✅ COMPLETE — full-stack audit: 3 backend endpoints baru, 6 file frontend diperbaiki, 0 TypeScript errors |
+| **Sprint aktif** | Sprint 33 ✅ COMPLETE — code-review follow-up: 4 PLAUSIBLE bugs fixed (undefined param guard, cross-worker cancel, rate limit scan tier, schedule persistence) |
 | **LLM** | qwen2.5-coder:32b (default), qwen3:8b (fast), bge-m3 (embedding), **pentra-ft** (Qwen2.5-Coder-7B fine-tuned, 4.4GB Q4_K_M) |
 
 Live API: 8,341 records as of 2026-06-15.
@@ -837,3 +837,68 @@ Semua endpoint:   Tersambung ke frontend (51/51 endpoint tercakup)
 ```
 
 *Updated: 2026-06-19 — Sprint 32 complete: full-stack audit, 3 backend endpoints baru, frontend feature parity (stop button, monitoring schedule UI, complete status maps), 0 TypeScript errors, 496 tests passing. Commits: 2f53ebd, 6f8e1e0, 6b871f7, 7bb5d7d.*
+
+---
+
+### Sprint 33 ✅ COMPLETE — Code Review Follow-Up (4 PLAUSIBLE bugs fixed)
+
+**Konteks:** Sprint 32 menghasilkan code review dengan 8 finder angles. 6 bug CONFIRMED sudah diperbaiki di Sprint 32. Sprint 33 menyelesaikan 4 bug PLAUSIBLE yang tertinggal.
+
+---
+
+#### Bug A — `engagementId!` non-null assertion (Frontend)
+
+| | Detail |
+|-|--------|
+| **File** | `apps/web/src/pages/EngagementDetailPage.tsx:385-387` |
+| **Masalah** | `useStartEngagement(engagementId!)`, `useStopEngagement(engagementId!)`, `useUpdateEngagementMode(engagementId!)` — operator `!` menyembunyikan `undefined` dari TypeScript. Jika route dikonfigurasi salah, mutate() mengirim `PATCH /engagements/undefined/stop` → 404 silent. |
+| **Fix** | Ganti `engagementId!` → `engagementId ?? ""` di ketiga hook. Mutation hanya terpanggil saat tombol diklik, dan tombol Stop hanya render saat `engagement.status === "active"` (yang butuh `engagementId` valid) — sehingga `""` sebagai fallback tidak pernah mencapai API. |
+
+---
+
+#### Bug B — `_active_tasks` process-local dict (Backend)
+
+| | Detail |
+|-|--------|
+| **File** | `apps/api/app/api/router.py:1119-1303` |
+| **Masalah** | `_active_tasks` adalah dict in-process. Deployment multi-worker (`uvicorn --workers 2+`): `/stop` bisa hit worker berbeda dari `/start` → `task.cancel()` tidak menemukan task → agent terus berjalan meski sudah di-cancel dari UI. |
+| **Fix** | Tambah `_EngagementCancelled` exception class. Di dalam loop `astream_events`, setiap `on_chain_end` event (1 per node, ~5-7 total per scan) cek DB status. Jika `eng.status == "cancelled"` (di-set oleh worker manapun), raise `_EngagementCancelled`. Ditangkap oleh handler terpisah (bukan `except Exception` = "failed"), broadcast `agent_cancelled` ke live feed. `_chk_engine` (pool_size=1) dibuat SEKALI sebelum loop, dispose di `finally`. |
+
+---
+
+#### Bug C — `/subscan` dan `/start` tidak di-rate-limit ketat (Backend)
+
+| | Detail |
+|-|--------|
+| **File** | `apps/api/app/core/middleware/rate_limit.py` |
+| **Masalah** | `/subscan` dan `/start` masuk ke bucket `all` (200 req/min default). Keduanya me-launch tool execution berat (nuclei, nmap, LLM) dan bisa menyebabkan resource exhaustion jika di-spam. |
+| **Fix** | Tambah tier baru `_SCAN_SUFFIXES = ("/subscan", "/start")` dengan `scan_limit = 5 req/min`. Match berdasarkan path suffix (lebih presisi dari prefix). Bucket Redis terpisah `rl:{user}:scan`. Middleware `RateLimitMiddleware` mendapat parameter `scan_limit: int = 5`. |
+
+---
+
+#### Bug D — `scheduleEnabled` hardcoded + backend tidak persist (Full-stack)
+
+| | Detail |
+|-|--------|
+| **Files** | `apps/api/app/db/models.py`, `monitoring_router.py`, `apps/web/src/lib/api.ts`, `MonitoringPanel.tsx` |
+| **Masalah** | (1) Form monitoring schedule selalu render `enabled=true, interval=24` tanpa membaca state server. (2) `POST /monitoring/schedule` hanya echo-back body tanpa menyimpan ke DB. Setelah page refresh, semua setting hilang. |
+| **Fix** | Multi-file: |
+| | • **DB**: Tambah `monitoring_enabled: bool` + `monitoring_interval_hours: int` ke `EngagementORM` |
+| | • **Migration**: Alembic `6b96c038171c` — `ADD COLUMN monitoring_enabled BOOLEAN DEFAULT false`, `ADD COLUMN monitoring_interval_hours INTEGER DEFAULT 24` (applied) |
+| | • **Backend**: `POST /monitoring/schedule` sekarang persist ke DB. Tambah `GET /monitoring/schedule` endpoint baru. |
+| | • **Frontend**: Tambah `useMonitoringSchedule` (`useQuery`) ke `api.ts`; `useScheduleMonitoring` (mutation) kini invalidate query setelah sukses. `MonitoringPanel` hydrate form state dari server via `useEffect` — form menampilkan state aktual, bukan hardcoded default. |
+
+---
+
+#### Status Akhir Sprint 33
+
+```
+Unit tests:       63 API (0 regresi), 496 total — 0 failed
+TypeScript:       0 errors (tsc --noEmit clean)
+Alembic:          6b96c038171c applied — monitoring columns live di DB
+Rate limiting:    /subscan + /start → 5 req/min (turun dari 200)
+Cross-worker:     _run_agent cek DB status per node — cancel bekerja lintas process
+Schedule UI:      Form state diambil dari server, persist ke DB setelah Save
+```
+
+*Updated: 2026-06-19 — Sprint 33 complete: 4 PLAUSIBLE bugs dari code review Sprint 32 diperbaiki — undefined param guard, cross-worker cancel via DB status check, scan rate limit tier (5/min), monitoring schedule persistence (DB columns + Alembic + GET endpoint + useQuery hydration). 0 TypeScript errors, 496 tests passing.*

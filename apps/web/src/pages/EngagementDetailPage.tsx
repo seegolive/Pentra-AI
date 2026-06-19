@@ -382,9 +382,9 @@ export default function EngagementDetailPage() {
   const { data: engagement, isLoading } = useEngagement(engagementId);
   const { data: workspaces } = useWorkspaces();
   const workspace = workspaces?.find((w) => w.id === engagement?.workspace_id);
-  const startMutation = useStartEngagement(engagementId!);
-  const stopMutation = useStopEngagement(engagementId!);
-  const modeMutation = useUpdateEngagementMode(engagementId!);
+  const startMutation = useStartEngagement(engagementId ?? "");
+  const stopMutation = useStopEngagement(engagementId ?? "");
+  const modeMutation = useUpdateEngagementMode(engagementId ?? "");
   const { events, pendingApproval, connected, agentStatus, clearApproval } = useEngagementFeed(
     (engagement?.status === "active" || engagement?.status === "awaiting_approval") ? engagementId : undefined
   );

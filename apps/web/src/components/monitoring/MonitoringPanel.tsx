@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Activity,
   Bell,
@@ -12,6 +12,7 @@ import {
   useMonitoringAlerts,
   useMarkAlertRead,
   useMarkAllAlertsRead,
+  useMonitoringSchedule,
   useReconSnapshots,
   useScheduleMonitoring,
 } from "../../lib/api";
@@ -28,9 +29,18 @@ interface MonitoringPanelProps {
 export function MonitoringPanel({ engagementId }: MonitoringPanelProps) {
   const [view, setView] = useState<MonitoringView>("alerts");
   const [filter, setFilter] = useState<AlertFilter>("all");
-  const [scheduleEnabled, setScheduleEnabled] = useState(true);
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [scheduleInterval, setScheduleInterval] = useState(24);
+  const { data: scheduleData } = useMonitoringSchedule(engagementId);
   const scheduleMutation = useScheduleMonitoring(engagementId);
+
+  // Hydrate local form state from server once data loads
+  useEffect(() => {
+    if (scheduleData) {
+      setScheduleEnabled(scheduleData.enabled);
+      setScheduleInterval(scheduleData.interval_hours);
+    }
+  }, [scheduleData]);
 
   const alertFilters = {
     is_read: filter === "unread" ? false : undefined,

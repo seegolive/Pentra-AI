@@ -236,6 +236,24 @@ class MonitoringScheduleRequest(BaseModel):
     interval_hours: int = 24
 
 
+@router.get(
+    "/engagements/{engagement_id}/monitoring/schedule",
+    summary="Get monitoring schedule",
+    description="Return the current monitoring schedule settings for an engagement.",
+)
+async def get_monitoring_schedule(
+    engagement_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserORM = Depends(get_current_user),
+) -> dict:
+    """Return saved monitoring schedule for an engagement."""
+    eng = await _get_engagement_or_404(engagement_id, db, current_user)
+    return {
+        "enabled": eng.monitoring_enabled,
+        "interval_hours": eng.monitoring_interval_hours,
+    }
+
+
 @router.post(
     "/engagements/{engagement_id}/monitoring/schedule",
     summary="Set monitoring schedule",
@@ -247,7 +265,13 @@ async def set_monitoring_schedule(
     db: AsyncSession = Depends(get_db),
     current_user: UserORM = Depends(get_current_user),
 ) -> dict:
-    """Set monitoring schedule for an engagement."""
-    await _get_engagement_or_404(engagement_id, db, current_user)
-    # Schedule is stored externally (Celery beat). Return acknowledgment.
-    return {"updated": True, "enabled": body.enabled, "interval_hours": body.interval_hours}
+    """Persist monitoring schedule for an engagement."""
+    eng = await _get_engagement_or_404(engagement_id, db, current_user)
+    eng.monitoring_enabled = body.enabled
+    eng.monitoring_interval_hours = body.interval_hours
+    await db.commit()
+    return {
+        "updated": True,
+        "enabled": eng.monitoring_enabled,
+        "interval_hours": eng.monitoring_interval_hours,
+    }
