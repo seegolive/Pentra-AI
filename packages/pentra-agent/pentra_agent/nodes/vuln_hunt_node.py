@@ -341,22 +341,39 @@ async def vuln_hunt_node(state: PentraState) -> dict:
 
             from app.db.base import _get_session_factory
 
-            async with _get_session_factory()() as db:
-                # Build a targeted query: specific classes + tech context
-                vc_str = ", ".join(vuln_classes[:4])
-                tech_str = " ".join(tech_stack[:3]) if tech_stack else ""
-                rag_query = (
-                    f"{vc_str} exploitation bypass technique"
-                    + (f" on {tech_str}" if tech_str else "")
-                )
-                records = await hybrid_search(
-                    query=rag_query,
-                    db=db,
-                    vuln_class=vuln_classes if vuln_classes else None,
-                    top_k=8,
-                    min_quality_score=0.0,   # 0.0: don't gate on quality_score
-                )
-            updated_knowledge = [r.model_dump() for r in records]
+            vc_str = ", ".join(vuln_classes[:4])
+            tech_str = " ".join(tech_stack[:3]) if tech_stack else ""
+            rag_query = (
+                f"{vc_str} exploitation bypass technique"
+                + (f" on {tech_str}" if tech_str else "")
+            )
+
+            # Retry with exponential backoff — Ollama embeddings returns 500 under
+            # memory pressure (e.g. while 32b model is loaded concurrently).
+            _kb_records: list = []
+            for _attempt in range(3):
+                try:
+                    async with _get_session_factory()() as db:
+                        _kb_records = await hybrid_search(
+                            query=rag_query,
+                            db=db,
+                            vuln_class=vuln_classes if vuln_classes else None,
+                            top_k=8,
+                            min_quality_score=0.0,
+                        )
+                    break  # success
+                except Exception as _kb_exc:
+                    if _attempt < 2:
+                        _delay = 2 ** _attempt  # 1s, 2s
+                        log.warning(
+                            "[vuln_hunt_node] KB refresh attempt %d/3 failed (%s) — retry in %ds",
+                            _attempt + 1, _kb_exc, _delay,
+                        )
+                        await asyncio.sleep(_delay)
+                    else:
+                        raise
+
+            updated_knowledge = [r.model_dump() for r in _kb_records]
             log.info(
                 "[vuln_hunt_node] KB refresh: query=%r → %d records",
                 rag_query[:80], len(updated_knowledge),
@@ -561,12 +578,17 @@ async def _run_nuclei(
     # Task 20.3: raised HTTP timeout from 180s → 300s to accommodate:
     #   30s per-request × 5 concurrent × ~8 targets × ~20 key templates = ~240s worst case
     # Network scan timeout unchanged at 120s (no time-based templates).
-    http_findings, net_findings = await asyncio.gather(
+    (http_findings, http_timed_out), (net_findings, net_timed_out) = await asyncio.gather(
         _nuclei_scan(nuclei_bin, url_targets, protocol_types=None, timeout=300, extra_tags=_extra_tags),
         _nuclei_scan(nuclei_bin, network_targets, protocol_types=["tcp", "javascript"], timeout=120),
     )
     findings = http_findings + net_findings
     log.info("[vuln_hunt_node] nuclei: http=%d net=%d total=%d", len(http_findings), len(net_findings), len(findings))
+    if len(findings) == 0 and (http_timed_out or net_timed_out):
+        log.info(
+            "[nuclei] 0 findings + timeout (%s) — no templates matched this target, treated as skipped",
+            f"http_timeout={http_timed_out} net_timeout={net_timed_out}",
+        )
     return findings
 
 
@@ -576,10 +598,10 @@ async def _nuclei_scan(
     protocol_types: list[str] | None,
     timeout: int = 300,
     extra_tags: list[str] | None = None,
-) -> list[dict]:
-    """Internal helper: run one nuclei pass and return parsed findings."""
+) -> tuple[list[dict], bool]:
+    """Internal helper: run one nuclei pass and return (findings, timed_out)."""
     if not targets:
-        return []
+        return [], False
 
     import tempfile
 
@@ -646,7 +668,7 @@ async def _nuclei_scan(
             except ProcessLookupError:
                 pass
             await proc.wait()
-            return []
+            return [], True  # (findings, timed_out=True)
         if stderr:
             log.info("[vuln_hunt_node] nuclei stderr (%s): %s", protocol_types, stderr[:500].decode(errors="replace"))
         findings = _parse_nuclei_jsonl(stdout.decode())
@@ -664,13 +686,13 @@ async def _nuclei_scan(
                 "[vuln_hunt_node] _nuclei_scan(%s) → %d findings (exit=%s)",
                 protocol_types, len(findings), proc.returncode,
             )
-        return findings
+        return findings, False  # (findings, timed_out=False)
     except FileNotFoundError:
         log.warning("[vuln_hunt_node] nuclei not found — skipping")
-        return []
+        return [], False
     except Exception as exc:
         log.warning("[vuln_hunt_node] nuclei scan error (%s): %s", protocol_types, exc)
-        return []
+        return [], False
     finally:
         import os
         try:

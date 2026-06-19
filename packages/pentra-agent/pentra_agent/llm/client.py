@@ -266,7 +266,10 @@ class LLMClient:
 
         Strips markdown fences, attempts JSON repair for truncated output,
         then retries once with a stricter prompt if still unparseable.
+        Falls back to regex extraction when LLM prepends/appends non-JSON text.
         """
+        import re as _re
+
         raw = await self.complete(system, user, json_output=True)
         log.debug("[llm] raw response (%.600s)", raw)  # PentAGI-style observability
 
@@ -282,12 +285,41 @@ class LLMClient:
             except json.JSONDecodeError:
                 pass
 
+        # Regex extraction: handles "Here is the JSON: {...}" pattern
+        for _pat in (r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', r'\{.*?\}', r'\{.*\}'):
+            _m = _re.search(_pat, raw, _re.DOTALL)
+            if _m:
+                try:
+                    return json.loads(_m.group())
+                except json.JSONDecodeError:
+                    continue
+
         # One retry with a tighter constraint
         retry_system = system + "\n\nCRITICAL: Return ONLY raw JSON, nothing else. No explanations."
         raw = await self.complete(retry_system, user, json_output=True)
         raw = self._strip_fences(raw)
         repaired = self._repair_json(raw)
-        return json.loads(repaired)
+
+        try:
+            return json.loads(repaired)
+        except json.JSONDecodeError:
+            pass
+
+        # Last resort regex extraction on retry output
+        for _pat in (r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', r'\{.*?\}', r'\{.*\}'):
+            _m = _re.search(_pat, repaired, _re.DOTALL)
+            if _m:
+                try:
+                    result = json.loads(_m.group())
+                    log.debug("[llm] complete_json: recovered via regex extraction")
+                    return result
+                except json.JSONDecodeError:
+                    continue
+
+        raise json.JSONDecodeError(
+            "LLM did not return parseable JSON after repair + retry + regex extraction",
+            repaired, 0
+        )
 
     # ── Expert Personas ───────────────────────────────────────────────────────
     # Three specialised system prompts. Each method picks the persona that best

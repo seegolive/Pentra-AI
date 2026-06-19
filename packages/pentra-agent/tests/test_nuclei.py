@@ -44,7 +44,7 @@ async def test_nuclei_https_fallback_to_http():
 
     async def _fake_nuclei_scan(nuclei_bin, targets, protocol_types, timeout, extra_tags=None):
         captured_calls.append({"targets": list(targets), "protocol_types": protocol_types})
-        return []
+        return [], False
 
     with (
         patch("asyncio.open_connection", side_effect=_fake_open_connection),
@@ -88,7 +88,7 @@ async def test_nuclei_tags_include_iis_asp_for_aspnet_target():
 
     async def _fake_nuclei_scan(nuclei_bin, targets, protocol_types, timeout, extra_tags=None):
         captured_calls.append({"extra_tags": list(extra_tags or []), "protocol_types": protocol_types})
-        return []
+        return [], False
 
     with (
         patch(
@@ -148,5 +148,7 @@ async def test_nuclei_scan_timeout_kills_process():
             nuclei_bin, targets, protocol_types=None, timeout=1
         )
 
-    assert result == [], "Should return empty list on timeout"
+    findings, timed_out = result
+    assert findings == [], "Should return empty list on timeout"
+    assert timed_out is True, "timed_out flag should be True on asyncio.TimeoutError"
     mock_proc.kill.assert_called_once(), "proc.kill() must be called on timeout"
