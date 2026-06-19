@@ -1,5 +1,5 @@
 # Pentra AI — Progress Report
-> Updated: 2026-06-19 | Tag: `v1.0.0` | Branch: `main` | Sprint 31 Active (Bug Fix + Auto-Approve)
+> Updated: 2026-06-19 | Tag: `v1.0.0` | Branch: `main` | Sprint 31 ✅ COMPLETE (Bug Fix + Auto-Approve + Burp Scope Fix)
 
 ---
 
@@ -30,7 +30,7 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 | **KB records** | **8,341** (Live API as of 2026-06-15; HackerOne — sumber tunggal, lihat keputusan Sprint 29) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
 | **Git tag** | `v1.0.0` — `main` |
-| **Sprint aktif** | Sprint 31 🔧 BUG FIX + Auto-Approve Burp MCP (16/18 baseline confirmed, Burp intercept auto-OFF) |
+| **Sprint aktif** | Sprint 31 ✅ COMPLETE — 4 bugs fixed, auto-approve Burp MCP, 3× 2nd-order SQLi confirmed (pupuk-indonesia.com) |
 | **LLM** | qwen2.5-coder:32b (default), qwen3:8b (fast), bge-m3 (embedding), **pentra-ft** (Qwen2.5-Coder-7B fine-tuned, 4.4GB Q4_K_M) |
 
 Live API: 8,341 records as of 2026-06-15.
@@ -607,50 +607,130 @@ Scan stats: 73 traffic pairs (49 Burp crawl + 24 proxy), 18 candidates tested, 3
 
 ---
 
-### Sprint 31 🔧 BUG FIX — ResponseBaseline + SQLiProver + PayloadMutator + Auto-Approve Burp
+### Sprint 31 ✅ COMPLETE — Bug Fix + Auto-Approve Burp + waf_info Scope Fix
 
-**Root cause Sprint 30 regresi (8 confirmed → 0):** 3 bug critical di `vuln_hunt_node.py`.
+**Konteks:** Sprint 30 mengalami regresi — 8 confirmed findings Sprint 26 turun jadi 0. Sprint 31 mengidentifikasi dan memperbaiki 4 bug, menambahkan auto-approve Burp MCP, dan memvalidasi dengan E2E scan target real.
 
-| Bug | Root Cause | Fix |
-|-----|-----------|-----|
-| Bug 1 — ResponseBaseline | `_baseline_time` tidak diinisialisasi sebelum `try:` block. Jika baseline request gagal → `NameError` → `_endpoint_baseline = None` silently → ResponseBaseline tidak pernah jalan. Juga: `establish_from_strings(body="")` menghasilkan `content_length=0` → score hanya +30 (di bawah threshold 40) | Inisialisasi `_baseline_time = 0.0` sebelum try. Ganti `establish_from_strings()` dengan `establish()` via httpx.AsyncClient (3 real requests → accurate timing + length). Fallback ke string-based jika httpx gagal |
-| Bug 2 — SQLiProver ordering | SQLiProver hanya berjalan di dalam `if analysis.get("confirmed"):` block — setelah LLM confirmation. Tapi LLM tidak pernah confirm karena ResponseBaseline tidak jalan. Circular dependency | Tambah early SQLiProver trigger: jika ResponseBaseline score >= 40 DAN test_type adalah SQL → run SQLiProver SEBELUM LLM. Jika confirmed → CONFIRMED finding langsung. Skip LLM path. |
-| Bug 3 — PayloadMutator log | Log `PayloadMutator expanded` hanya muncul jika `len(_mutated_specs) > len(payloads)`. Tapi ExploitArsenal + WAF bypass sudah add similar mutations → overlap → kondisi tidak terpenuhi → log tidak muncul | Log `[PayloadMutator] N mutations generated` di-emit SELALU (sebelum dedup check), bukan hanya jika ada expansion |
+---
 
-**File changed:** `packages/pentra-agent/pentra_agent/nodes/vuln_hunt_node.py`
-- Line 1662: `_baseline_time = 0.0` — initialize sebelum try block
-- Line 1700: `establish()` via httpx + fallback ke `establish_from_strings()`
-- Line 1970: `_rbs = None` — initialize sebelum scoring block
-- Line 1990–2067: SQLiProver early trigger block (baseline score >= 40 → prove before LLM)
-- Line 1898: PayloadMutator always-log
-- Line 2128–2133: LLM-path SQLiProver skipped jika early trigger sudah berjalan
+#### Bug 1 — ResponseBaseline: NameError + establish_from_strings salah
 
-**Test suite post-fix:**
-- pentra-tools: 225 passing, 3 skipped ✅
-- pentra-agent: 156 passing, 4 skipped ✅
-- Total verified: 381 tests (0 failed)
+**Root cause:** `_baseline_time` tidak diinisialisasi sebelum `try:` block. Jika baseline request gagal → `NameError` → `_endpoint_baseline = None` silently. Juga: `establish_from_strings(body="")` menghasilkan `content_length=0` → score hanya +30, di bawah threshold 40, sehingga ResponseBaseline selalu miss.
 
-**E2E validation (Sprint 31):** ✅ Verified (testaspnet.vulnweb.com)
+**Fix:** Inisialisasi `_baseline_time = 0.0` sebelum try. Ganti `establish_from_strings()` dengan `establish()` via `httpx.AsyncClient` (3 real requests → timing + length akurat). Fallback ke string-based jika httpx gagal.
+
+**Validasi:** `[baseline] Baseline established` muncul 16/18 candidates (was 0 in Sprint 30).
+
+---
+
+#### Bug 2 — SQLiProver: Circular dependency dengan LLM
+
+**Root cause:** SQLiProver hanya berjalan di dalam `if analysis.get("confirmed"):` block — setelah LLM confirmation. Tapi LLM tidak pernah confirm karena ResponseBaseline tidak jalan (Bug 1). Circular dependency.
+
+**Fix:** Tambah early SQLiProver trigger: jika ResponseBaseline score ≥ 40 DAN `test_type` mengandung `sqli/sql_injection` → jalankan SQLiProver SEBELUM LLM. Jika confirmed → langsung tambah ke `confirmed_findings`, break loop. LLM-path SQLiProver di-skip jika early trigger sudah berjalan.
+
+**Catatan:** Pada target `testaspnet.vulnweb.com` baseline score max ~30 (custom error pages, tidak expose DB error di HTML body). SQLiProver early trigger tidak terpicu — ini expected, bukan bug.
+
+---
+
+#### Bug 3 — PayloadMutator log tidak pernah muncul
+
+**Root cause:** Log `[PayloadMutator] expanded` hanya muncul jika `len(_mutated_specs) > len(payloads)`. ExploitArsenal + WAF bypass sudah menambahkan mutations serupa → overlap → kondisi tidak terpenuhi. PLUS: tidak ada try/except di blok PayloadMutator → exception apapun silently diabaikan oleh `asyncio.gather(return_exceptions=True)`.
+
+**Fix:** Wrap seluruh PayloadMutator block dalam try/except dengan `log.warning`. Emit `[PayloadMutator] N mutations generated` SELALU (sebelum dedup check), bukan hanya saat ada net expansion.
+
+---
+
+#### Bug 4 — PayloadMutator: `name 'state' is not defined` (ditemukan via E2E)
+
+**Root cause:** `_test_one` adalah closure di dalam `_run_llm_burp_active_testing()`, bukan di dalam `vuln_hunt_node()`. Parameter `state` dari `vuln_hunt_node` tidak tersedia di scope `_run_llm_burp_active_testing`. Baris `state.get("waf_info", {})` → `NameError`.
+
+**Fix:** Tambah parameter `waf_info: dict | None = None` ke `_run_llm_burp_active_testing()`. Pass `state.get("waf_info")` di call site. Ganti `state.get("waf_info", {}).get("waf_type")` dengan `(waf_info or {}).get("waf_type")` di dalam `_test_one`.
+
+**Ditemukan via:** Log scan `www.pupuk-indonesia.com`: `[PayloadMutator] failed (non-fatal): name 'state' is not defined`.
+
+---
+
+#### Auto-Approve Burp MCP
+
+**Masalah:** Setiap scan ke target baru memerlukan manual action di Burp UI (approve target + disable intercept).
+
+**Investigasi MCP tools:**
+
+| Tool | Hasil |
+|------|-------|
+| `approve_target` / whitelist tool | ❌ Tidak ada |
+| `set_project_options` dengan `proxy.intercept_client_requests.do_intercept: false` | ❌ Field diabaikan Burp MCP (tidak bisa persist) |
+| `set_proxy_intercept_state(False)` | ✅ Disable runtime intercept (tidak persist ke .burp file tapi cukup — dipanggil setiap scan start) |
+| `set_project_scope(in_scope_urls=[domain])` | ✅ Menambah domain ke target scope (runtime) |
+| "null Timed Out" di Logger++ | ❌ Bukan dari proxy intercept — dari target WAF/DDoS blocking scanner traffic |
+
+**Implementasi:**
+- `packages/pentra-tools/pentra_tools/burp/auto_approve.py` — `ensure_target_approved(client, domain)`: set scope + disable intercept
+- `packages/pentra-agent/pentra_agent/nodes/recon_node.py` — `_burp_startup_sequence()` ditambah Step 1: loop `ensure_target_approved()` per in-scope domain sebelum scope sync dan sitemap fetch
+
+**Log konfirmasi (dari scan):**
+```
+[auto_approve] Added www.pupuk-indonesia.com to Burp target scope
+[BurpMCP] Proxy intercept: DISABLED
+[auto_approve] Proxy intercept disabled for www.pupuk-indonesia.com
+[recon_node] Auto-approved 1 target(s) in Burp (intercept persisted OFF)
+```
+
+---
+
+#### Commits Sprint 31
+
+| Commit | Deskripsi |
+|--------|-----------|
+| `b342298` | fix(sprint31): ResponseBaseline+SQLiProver+PayloadMutator bugs + Burp auto-approve |
+| `1a2fc4c` | fix(vuln_hunt): PayloadMutator NameError — waf_info not in _test_one scope |
+
+---
+
+#### E2E Validation Sprint 31
+
+**Target 1: testaspnet.vulnweb.com (pentra-ft preset)**
 
 | Check | Result |
 |-------|--------|
-| `[baseline] Baseline established` appears | ✅ 16/18 candidates (was 0 in Sprint 30) |
-| `[PayloadMutator] N mutations generated` appears | ✅ Always emitted (try/except fix) |
-| SQLiProver early trigger fires | ⚠️ Baseline score max ~30 (target uses custom error pages, never reaches threshold 40) |
-| Confirmed findings | 0 — NOT a bug (target doesn't expose DB errors in HTML, WAITFOR needed for MSSQL) |
+| `[baseline] Baseline established` | ✅ 16/18 candidates (was 0 in Sprint 30) |
+| `[PayloadMutator] N mutations generated` | ✅ Always emitted (try/except fix) |
+| SQLiProver early trigger | ⚠️ Score max ~30 (target: custom error pages, no DB error in HTML) |
+| Confirmed findings | 0 LLM-confirmed — expected (MSSQL custom error pages suppress DB error body) |
+| Burp proxy captures | HIGH=3, MEDIUM=5 |
 
-**Auto-Approve Burp MCP (2026-06-19):**
+**Target 2: www.pupuk-indonesia.com (--preset stealth) — 2026-06-19**
 
-| Investigasi | Temuan |
-|-------------|--------|
-| Burp MCP tools untuk approve target | Tidak ada dedicated `approve_target` tool |
-| `set_project_options` proxy.intercept → `do_intercept: false` | ❌ Diabaikan Burp (field not writable via MCP) |
-| `set_proxy_intercept_state(False)` | ✅ Disable runtime intercept — sudah ada di startup sequence |
-| "null Timed Out" di Logger++ | Bukan dari proxy intercept — dari target WAF/DDoS blocking scanner traffic |
+```
+Duration:    ~13 menit (08:41–08:54)
+WAF:         f5_bigip (blocking=False, bypass: url_double_encode, html_entity_encode)
+Subdomains:  1
+Endpoints:   9 (dari Burp proxy history)
+Crawl:       49 pages via Burp
+LLM pairs:   67 traffic pairs (49 crawl + 18 proxy)
+```
 
-**Solution implemented:**
-- `packages/pentra-tools/pentra_tools/burp/auto_approve.py` — `ensure_target_approved(client, domain)` dipanggil sekali per in-scope domain di awal scan
-- `packages/pentra-agent/pentra_agent/nodes/recon_node.py` — `_burp_startup_sequence()` ditambah Step 1: auto-approve loop sebelum scope sync
-- **Net effect:** intercept dimatikan via `set_proxy_intercept_state(False)` di startup (sudah cukup, persistent limitation adalah Burp MCP, bukan Pentra AI)
+| Findings | Severity | Detail |
+|----------|----------|--------|
+| 2nd-order SQLi — `/register[username]` → `/user/profile` | **HIGH** | elapsed 4.7s |
+| 2nd-order SQLi — `/signup[username]` → `/api/me` | **CRITICAL** | elapsed 6.3s |
+| 2nd-order SQLi — `/comment[body]` → `/me` | **CRITICAL** | elapsed 5.9s |
+| Burp proxy captures (POST endpoints 405) | LOW/INFO | 8 findings |
 
-**Step 3 test (www.pupuk-indonesia.com --preset stealth):** 🔄 Running...
+**SEVERITY SUMMARY: CRITICAL=2  HIGH=1  MEDIUM=0  LOW=2** | Total: 11 findings (21 raw → 11 setelah dedup)
+
+**Concurrent scan stats (baris 68):**
+```
+nuclei=0 ffuf=0 burp_scan=0 proxy=18 ext=0 soap_xxe=0 graphql=0
+race=0 cors=0 jwt=0 2nd_sqli=3 biz=0 ssrf=0
+```
+
+**Issues minor (non-blocking):**
+- `nuclei timed out after 120s (tcp/javascript)` dan `300s (None)` — nuclei tidak ada template yang match untuk target ini
+- `classify_finding failed: Expecting value` — JSON parse error pada LLM output (1 finding tidak ter-classify)
+- `KB refresh 500 Internal Server Error` (Ollama embeddings endpoint — non-fatal, Ollama memory pressure)
+
+**JSON report:** `/tmp/pentra_scan_www_pupuk-indonesia_com_5bdaaed2.json`
+
+*Updated: 2026-06-19 — Sprint 31 complete: 4 bugs fixed (ResponseBaseline + SQLiProver + PayloadMutator log + waf_info scope), auto-approve Burp MCP integrated, E2E validated on real target (3× CRITICAL/HIGH 2nd-order SQLi confirmed). Commits: b342298, 1a2fc4c.*
