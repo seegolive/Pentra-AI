@@ -494,13 +494,33 @@ async def _burp_startup_sequence(
 ) -> dict:
     """Run Burp Pro setup for a new engagement session.
 
-    1. Sync in/out-of-scope URLs to Burp project scope.
-    2. Disable proxy intercept so automated requests flow through unblocked.
-    3. Pause task engine (will be resumed when active scan is triggered).
+    1. Auto-approve each in-scope target (persist do_intercept=false + scope in .burp file).
+    2. Sync in/out-of-scope URLs to Burp project scope (runtime scope object).
+    3. Disable proxy intercept runtime state.
 
     Returns a status dict for logging.  Never raises — failures are non-fatal.
     """
+    from pentra_tools.burp.auto_approve import ensure_target_approved
+
     status: dict = {}
+
+    # ── Step 1: Auto-approve each in-scope domain (persists to .burp project file) ──
+    # Fixes "null Timed Out" in Logger++ caused by:
+    #   - proxy.intercept_client_requests.do_intercept = true (persists across restarts)
+    #   - Target domain not pre-approved in Burp scope
+    approved_count = 0
+    for domain in in_scope:
+        try:
+            ok = await ensure_target_approved(client, domain)
+            if ok:
+                approved_count += 1
+        except Exception as exc:
+            log.warning("[recon_node] auto_approve failed for %s (non-fatal): %s", domain, exc)
+    status["auto_approved"] = approved_count
+    if approved_count:
+        log.info("[recon_node] Auto-approved %d target(s) in Burp (intercept persisted OFF)", approved_count)
+
+    # ── Step 2: Sync scope to Burp project scope (runtime scope object) ──────────
     try:
         await client.set_project_scope(
             in_scope_urls=in_scope,
@@ -512,6 +532,7 @@ async def _burp_startup_sequence(
         log.warning("[recon_node] Burp scope sync failed (non-fatal): %s", exc)
         status["scope_synced"] = False
 
+    # ── Step 3: Disable proxy intercept at runtime (belt-and-suspenders) ─────────
     try:
         await client.set_proxy_intercept_state(enabled=False)
         status["intercept_disabled"] = True

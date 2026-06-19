@@ -1659,6 +1659,7 @@ async def _run_llm_burp_active_testing(
     
             # Get original response for baseline
             import time as _time
+            _baseline_time = 0.0  # always initialised — prevents NameError if request fails
             try:
                 _t0 = _time.monotonic()
                 if burp_available and client:
@@ -1676,22 +1677,44 @@ async def _run_llm_burp_active_testing(
             except Exception as exc:
                 log.debug("[llm_burp] baseline request failed for %s: %s", cand_url, exc)
                 original_response = ""
+                _baseline_time = 0.0
 
-            # ── ResponseBaseline: establish per-endpoint behavioral baseline ───
+            # ── Bug Fix 1: ResponseBaseline — use establish() via httpx for proper baseline ──
+            # establish_from_strings() on an empty body gave content_length=0, making
+            # score_from_strings() return only +30 (below threshold=40). Use establish()
+            # which makes 3 real requests so timing/length data is accurate.
             _endpoint_baseline = None
             if _RESPONSE_BASELINE_AVAILABLE and _ResponseBaseline is not None:
                 try:
+                    import httpx as _httpx_bl
                     _endpoint_baseline = _ResponseBaseline()
-                    _endpoint_baseline.establish_from_strings(
-                        url=cand_url,
-                        param=param_name,
-                        body=original_response,
-                        status_code=200,
-                        elapsed_ms=_baseline_time * 1000,
-                    )
+                    async with _httpx_bl.AsyncClient(
+                        verify=False, follow_redirects=True, timeout=10.0
+                    ) as _bl_client:
+                        await _endpoint_baseline.establish(
+                            _bl_client,
+                            cand_url,
+                            param_name,
+                            normal_value=str(original_value) if original_value else "1",
+                        )
+                    log.info("[baseline] Baseline established for %s:%s", cand_url, param_name)
                 except Exception as _rbe:
-                    log.debug("[vuln_hunt] ResponseBaseline establish failed (non-fatal): %s", _rbe)
-                    _endpoint_baseline = None
+                    log.warning("[baseline] ResponseBaseline establish failed (non-fatal): %s — using string fallback", _rbe)
+                    # Fallback: use string-based baseline if httpx fails
+                    try:
+                        _endpoint_baseline = _ResponseBaseline()
+                        _endpoint_baseline.establish_from_strings(
+                            url=cand_url,
+                            param=param_name,
+                            body=original_response,
+                            status_code=200,
+                            elapsed_ms=_baseline_time * 1000 if _baseline_time > 0 else 500.0,
+                        )
+                        log.info("[baseline] String-fallback baseline for %s:%s (len=%d)",
+                                 cand_url, param_name, len(original_response))
+                    except Exception as _rbe2:
+                        log.warning("[baseline] Fallback also failed (non-fatal): %s", _rbe2)
+                        _endpoint_baseline = None
 
             # ── Task 18.13: Incremental skip gate ────────────────────────────
             # Skip endpoint if response fingerprint matches cached value — unchanged.
@@ -1847,32 +1870,43 @@ async def _run_llm_burp_active_testing(
                     payloads = list(payloads) + _bypass_additions
     
             # ── PayloadMutator: generate WAF-bypass variants per payload ─────────
+            # Bug Fix 3: log always fires (before dedup check) so visibility is guaranteed.
             if _PAYLOAD_MUTATOR is not None:
-                _waf_type = state.get("waf_info", {}).get("waf_type") if isinstance(state, dict) else None
-                _mutated_specs: list[dict] = []
-                for _ps in (payloads or []):
-                    _base = str(_ps.get("injected_value", _ps.get("payload", "")))
-                    _ttype = _ps.get("test_type", "")
-                    if not _base or _ps.get("uses_collaborator") or "time" in _ttype:
+                try:
+                    _waf_type = state.get("waf_info", {}).get("waf_type") if isinstance(state, dict) else None
+                    _mutated_specs: list[dict] = []
+                    _mutation_count = 0
+                    for _ps in (payloads or []):
+                        _base = str(_ps.get("injected_value", _ps.get("payload", "")))
+                        _ttype = _ps.get("test_type", "")
+                        if not _base or _ps.get("uses_collaborator") or "time" in _ttype:
+                            _mutated_specs.append(_ps)
+                            continue
+                        _mr = _PAYLOAD_MUTATOR.mutate(_base, waf_type=_waf_type)
                         _mutated_specs.append(_ps)
-                        continue
-                    _mr = _PAYLOAD_MUTATOR.mutate(_base, waf_type=_waf_type)
-                    _mutated_specs.append(_ps)
-                    for _variant in _mr.mutations[:3]:   # cap at 3 extra variants per payload
-                        if _variant != _base:
-                            _mutated_specs.append({
-                                **_ps,
-                                "injected_value": _variant,
-                                "payload": _variant,
-                                "test_type": _ttype + "_mutated",
-                                "detection_hint": f"PayloadMutator variant (WAF={_waf_type}). " + _ps.get("detection_hint", ""),
-                            })
-                if len(_mutated_specs) > len(payloads or []):
+                        for _variant in _mr.mutations[:3]:   # cap at 3 extra variants per payload
+                            if _variant != _base:
+                                _mutated_specs.append({
+                                    **_ps,
+                                    "injected_value": _variant,
+                                    "payload": _variant,
+                                    "test_type": _ttype + "_mutated",
+                                    "detection_hint": f"PayloadMutator variant (WAF={_waf_type}). " + _ps.get("detection_hint", ""),
+                                })
+                                _mutation_count += 1
+                    # Always log — shows PayloadMutator is active even if dedup removes overlap
                     log.info(
-                        "[llm_burp] PayloadMutator expanded %d → %d payloads for %s[%s]",
-                        len(payloads or []), len(_mutated_specs), param_name, param_location,
+                        "[PayloadMutator] %d mutations generated for %s[%s] (WAF: %s)",
+                        _mutation_count, param_name, param_location, _waf_type or "none",
                     )
-                    payloads = _mutated_specs
+                    if len(_mutated_specs) > len(payloads or []):
+                        log.info(
+                            "[PayloadMutator] expanded %d → %d payloads for %s[%s]",
+                            len(payloads or []), len(_mutated_specs), param_name, param_location,
+                        )
+                        payloads = _mutated_specs
+                except Exception as _pm_exc:
+                    log.warning("[PayloadMutator] failed (non-fatal): %s", _pm_exc)
 
             log.info("[llm_burp] Testing %d payloads on %s[%s]", len(payloads), param_name, param_location)
 
@@ -1936,6 +1970,7 @@ async def _run_llm_burp_active_testing(
                 )
 
                 # ResponseBaseline: multi-dimensional behavioral scoring supplement
+                _rbs = None
                 if _endpoint_baseline is not None:
                     try:
                         _rbs = _endpoint_baseline.score_from_strings(
@@ -1955,12 +1990,91 @@ async def _run_llm_burp_active_testing(
                     except Exception as _rbe:
                         log.debug("[vuln_hunt] ResponseBaseline scoring failed (non-fatal): %s", _rbe)
 
+                # ── Bug Fix 2: SQLiProver early trigger ────────────────────────────────
+                # Run SQLiProver when ResponseBaseline detects anomaly (score >= 40) on a
+                # SQLi test payload — BEFORE LLM decision so proof gates confirmation.
+                _is_sqli_test = any(
+                    kw in test_type.lower() for kw in ("sqli", "sql_injection", "sql")
+                ) or any(
+                    kw in (tt.lower()) for tt in test_types for kw in ("sqli", "sql_injection", "sql")
+                )
+                if (
+                    _rbs is not None and _rbs.confirmed
+                    and _is_sqli_test
+                    and _SQLI_PROVER_AVAILABLE and _SQLiProver is not None
+                ):
+                    try:
+                        import httpx as _httpx_sp
+                        _db_type_sp = None
+                        if tech_stack:
+                            _ts_lower_sp = [t.lower() for t in tech_stack]
+                            if any("mssql" in t or "asp" in t or "sqlserver" in t for t in _ts_lower_sp):
+                                _db_type_sp = "mssql"
+                            elif any("mysql" in t or "php" in t for t in _ts_lower_sp):
+                                _db_type_sp = "mysql"
+                            elif any("postgres" in t for t in _ts_lower_sp):
+                                _db_type_sp = "postgresql"
+                        async with _httpx_sp.AsyncClient(
+                            verify=False, follow_redirects=True, timeout=12.0
+                        ) as _sp_client:
+                            _sp_instance = _SQLiProver(timeout=10.0)
+                            _early_proof = await _sp_instance.prove(
+                                _sp_client, cand_url, param_name,
+                                db_type=_db_type_sp,
+                                original_value=str(original_value) if original_value else "1",
+                            )
+                        log.info(
+                            "[SQLiProver] proof_type=%s confidence=%d confirmed=%s for %s[%s]",
+                            _early_proof.proof_type, _early_proof.confidence,
+                            _early_proof.confirmed, cand_url, param_name,
+                        )
+                        if _early_proof.confirmed:
+                            # ResponseBaseline + SQLiProver both confirmed → CONFIRMED finding
+                            _sp_finding = {
+                                "title": f"SQL Injection in {param_name} (SQLiProver verified)",
+                                "description": (
+                                    f"SQLiProver confirmed via {_early_proof.proof_type}.\n"
+                                    f"Evidence: {_early_proof.evidence}\n"
+                                    f"Payload: {test_payload!r}\n"
+                                    f"Parameter: {param_name} ({param_location})\n"
+                                    f"Anomaly score: {_rbs.score}/100 — {', '.join(_rbs.evidence)}"
+                                ),
+                                "severity": normalize_severity("high"),
+                                "target_url": cand_url,
+                                "vuln_class": "SQL Injection",
+                                "source": "sqli_prover",
+                                "param_name": param_name,
+                                "param_location": param_location,
+                                "payload": test_payload,
+                                "proof_type": _early_proof.proof_type,
+                                "proof_evidence": _early_proof.evidence,
+                                "proof_confidence": _early_proof.confidence,
+                                "proof_confirmed": True,
+                                "proof_requests": _early_proof.request_count,
+                                "baseline_anomaly_score": _rbs.score,
+                            }
+                            confirmed_findings.append(_sp_finding)
+                            memory.mark_confirmed(cand_url, param_name, _sp_finding)
+                            log.info(
+                                "[SQLiProver] CONFIRMED SQLi at %s[%s] — breaking",
+                                cand_url, param_name,
+                            )
+                            break  # one confirmed finding per candidate
+                        else:
+                            # Anomaly found but prover inconclusive → CANDIDATE (don't confirm)
+                            anomalies = list(anomalies) + [
+                                f"SQLIPROVER_CANDIDATE: {_early_proof.proof_type} inconclusive "
+                                f"(conf={_early_proof.confidence})"
+                            ]
+                    except Exception as _sp_exc:
+                        log.debug("[SQLiProver] early trigger failed (non-fatal): %s", _sp_exc)
+
                 if anomalies:
                     log.info("[llm_burp] Anomalies detected for %s[%s]: %s", cand_url, param_name, anomalies)
                     detection_hint = (
                         detection_hint + "\n\nANOMALY SIGNALS:\n" + "\n".join(f"- {a}" for a in anomalies)
                     ).strip()
-    
+
                 # Fix 2 — Fast-path LFI confirmation.
                 # When PATH_INCLUSION anomaly fires on an LFI-candidate param, probe
                 # deeper traversal payloads directly rather than relying solely on LLM
@@ -2009,10 +2123,17 @@ async def _run_llm_burp_active_testing(
                     vuln_class = analysis.get("vuln_class", test_type.upper())
                     severity = normalize_severity(analysis.get("severity", "medium"))
 
-                    # ── SQLiProver: proof-based verification for SQLi ──────────
+                    # ── SQLiProver: proof-based verification for SQLi (LLM-confirm path) ──
+                    # This path only runs if early SQLiProver (Bug Fix 2) did NOT already
+                    # confirm via ResponseBaseline — i.e., when anomaly score was < 40.
                     _proof_metadata: dict = {}
                     _is_sqli = any(kw in (vuln_class or "").lower() for kw in ("sqli", "sql_injection", "sql"))
-                    if _SQLI_PROVER_AVAILABLE and _SQLiProver is not None and _is_sqli:
+                    # Skip if early trigger already handled this (avoids double-run)
+                    _early_proof_ran = (
+                        _rbs is not None and _rbs.confirmed and _is_sqli_test
+                        and _SQLI_PROVER_AVAILABLE and _SQLiProver is not None
+                    )
+                    if _SQLI_PROVER_AVAILABLE and _SQLiProver is not None and _is_sqli and not _early_proof_ran:
                         try:
                             import httpx as _httpx_prover
                             _db_type = None
@@ -2032,6 +2153,11 @@ async def _run_llm_burp_active_testing(
                                     _prover_client, cand_url, param_name,
                                     db_type=_db_type, original_value=original_value,
                                 )
+                            log.info(
+                                "[SQLiProver] proof_type=%s confidence=%d confirmed=%s for %s[%s]",
+                                _proof.proof_type, _proof.confidence, _proof.confirmed,
+                                cand_url, param_name,
+                            )
                             _proof_metadata = {
                                 "proof_type": _proof.proof_type,
                                 "proof_evidence": _proof.evidence,
@@ -2041,17 +2167,17 @@ async def _run_llm_burp_active_testing(
                             }
                             if not _proof.confirmed:
                                 log.info(
-                                    "[sqli_prover] LLM confirmed but prover inconclusive (%s) — downgrading to CANDIDATE for %s[%s]",
+                                    "[SQLiProver] LLM confirmed but prover inconclusive (%s) — downgrading to CANDIDATE for %s[%s]",
                                     _proof.proof_type, cand_url, param_name,
                                 )
                                 _proof_metadata["status"] = "CANDIDATE"
                             else:
                                 log.info(
-                                    "[sqli_prover] PROOF OK (%s, conf=%d) for %s[%s]",
+                                    "[SQLiProver] PROOF OK (%s, conf=%d) for %s[%s]",
                                     _proof.proof_type, _proof.confidence, cand_url, param_name,
                                 )
                         except Exception as _pe:
-                            log.debug("[sqli_prover] proof attempt failed (non-fatal): %s", _pe)
+                            log.debug("[SQLiProver] proof attempt failed (non-fatal): %s", _pe)
 
                     log.info(
                         "[llm_burp] CONFIRMED [%s] %s param=%r payload=%r",
