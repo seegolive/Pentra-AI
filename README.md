@@ -57,39 +57,76 @@ Pentra AI is not a vulnerability scanner. It is an **AI research companion** tha
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                  WEB UI (React 18 + Vite + Tailwind)           │
-│  Dashboard · Live Feed · Findings · KB Browser · Reports       │
-│  Attack Surface Map · Monitoring · API Vault · GF Patterns     │
-└─────────────────────────┬───────────────────────────────────────┘
-                          │ WebSocket + REST
-┌─────────────────────────▼───────────────────────────────────────┐
-│                  API GATEWAY (FastAPI async)                    │
-│  Engagements · Findings · Auth · Reports · Monitoring · H1     │
-└──────────┬───────────────────────────────┬──────────────────────┘
-           │                               │
-┌──────────▼──────────────┐  ┌────────────▼──────────────────────┐
-│    AGENT ENGINE         │  │    KNOWLEDGE ENGINE               │
-│    (LangGraph v1.2+)    │◄─┤    BGE-M3 + Qdrant Hybrid        │
-│                         │  │    8,341 H1 Reports (RAG)         │
-│  Plan → Recon → Triage  │  │    NVD CVE Enrichment             │
-│  → Vuln Hunt → Exploit  │  └───────────────────────────────────┘
-│  → Report               │
-│  [HITL at each phase]   │
-└──────────┬──────────────┘
-           │
-┌──────────▼────────────────────────────────────────────────────┐
-│              TOOL INTEGRATION LAYER                           │
-│  Burp Suite Pro (MCP) · nmap · nuclei · ffuf · subfinder     │
-│  httpx · dalfox · sqlmap · katana · gf · JS crawler         │
-└──────────┬────────────────────────────────────────────────────┘
-           │
-┌──────────▼────────────────────────────────────────────────────┐
-│              LLM LAYER (Ollama — fully local)                 │
-│  qwen2.5-coder:32b (default) · deepseek-r1:32b (reasoning)   │
-│  qwen3:8b (fast/extraction) · bge-m3 (embedding)             │
-│  pentra-ft (fine-tuned Qwen2.5-Coder-7B on H1 dataset)       │
-└───────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                  WEB UI (React 18 + Vite + Tailwind + Shadcn/ui)    │
+│  Dashboard · Live Feed · Findings · KB Browser · Reports            │
+│  Attack Surface Map · Monitoring · API Vault · GF Patterns          │
+│  Scan Wizard · Notification System · Admin Panel                    │
+└──────────────────────────────┬───────────────────────────────────────┘
+                               │ REST + WebSocket
+┌──────────────────────────────▼───────────────────────────────────────┐
+│                  API GATEWAY (FastAPI async)                         │
+│  auth · setup · engagement · findings · knowledge · monitoring       │
+│  report · h1 · admin · worker_health · internal (agent ↔ api)       │
+└────────┬─────────────────────────────────────┬────────────────────────┘
+         │ Celery tasks (Redis broker)          │ SQLAlchemy async
+         │                                      │
+┌────────▼────────────────┐      ┌──────────────▼────────────────────┐
+│  CELERY WORKER          │      │  PERSISTENCE LAYER                │
+│  (apps/worker)          │      │  PostgreSQL 16                    │
+│  H1 scraper · KB embed  │      │    Engagements · Findings         │
+│  Scan scheduler         │      │    KB records · Audit log         │
+│  Monitoring snapshots   │      │    LangGraph checkpoints          │
+└────────┬────────────────┘      │  Redis — Celery broker/backend    │
+         │                       │  MinIO — screenshots · evidence   │
+         │                       └───────────────────────────────────┘
+         │
+┌────────▼──────────────────────────────────────────────────────────┐
+│  AGENT ENGINE (pentra-agent — LangGraph v1.2+)                   │
+│                                                                   │
+│  Nodes (StateGraph):                                             │
+│    plan_node → recon_node → crawler_node → osint_node            │
+│    → triage_node → vuln_hunt_node → report_node                  │
+│                                                                   │
+│  HITL interrupts: plan · recon · triage · vuln_hunt · report     │
+│  Memory: per-engagement learnings (PostgreSQL)                   │
+│  Arsenal: playbooks · scan_presets · incremental scanning        │
+└────────┬───────────────────────────────┬──────────────────────────┘
+         │                               │
+┌────────▼──────────────┐   ┌───────────▼──────────────────────────┐
+│  TOOL LAYER           │   │  KNOWLEDGE ENGINE (pentra-knowledge) │
+│  (pentra-tools)       │   │  BGE-M3 + Qdrant (hybrid search)     │
+│                       │   │  8,341 H1 Reports indexed            │
+│  Recon:               │   │  NVD CVE enrichment                  │
+│   subfinder · httpx   │   │  H1 program scope sync               │
+│   nmap · katana       │   └──────────────────────────────────────┘
+│   WAF profiler        │
+│   rate limit detect   │   ┌──────────────────────────────────────┐
+│   takeover detect     │   │  PAYLOAD ENGINE (pentra-payload)     │
+│  Vuln:                │   │  Context-aware payload generation    │
+│   nuclei · dalfox     │   │  Mutation engine                     │
+│   sqlmap · ffuf       │   │  Auth bypass · SQLi · XSS payloads  │
+│   gf patterns         │   └──────────────────────────────────────┘
+│   cors/jwt/ssrf/      │
+│   graphql/race-cond/  │
+│   business-logic      │
+│  Burp Suite Pro (MCP):│
+│   proxy history       │
+│   active scan         │
+│   Collaborator OOB    │
+│  Crawlers:            │
+│   JS crawler          │
+│   screenshot capture  │
+└────────┬──────────────┘
+         │
+┌────────▼──────────────────────────────────────────────────────────┐
+│  LLM LAYER (Ollama — fully local, no data leaves machine)        │
+│  qwen2.5-coder:32b   — default reasoning + payload generation    │
+│  deepseek-r1:32b     — deep reasoning (plan, triage)             │
+│  qwen3:8b            — fast extraction (bulk KB processing)      │
+│  bge-m3              — hybrid embedding (dense 1024 + sparse)    │
+│  pentra-ft           — fine-tuned Qwen2.5-Coder-7B on 8,309 H1  │
+└───────────────────────────────────────────────────────────────────┘
 ```
 
 ---
