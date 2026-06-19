@@ -1,5 +1,5 @@
 # Pentra AI — Progress Report
-> Updated: 2026-06-19 | Tag: `v1.0.0` | Branch: `main` | Sprint 34 ✅ COMPLETE (Report Endpoints — auth fix, settings fix, 9 tests)
+> Updated: 2026-06-19 | Tag: `v1.0.0` | Branch: `main` | Sprint 35 ✅ COMPLETE (NameError fix + 26 new tests: internal + monitoring routers)
 
 ---
 
@@ -15,7 +15,7 @@ dan fine-tuned LLM (pentra-ft) yang tervalidasi unggul pada target real
 ## Ringkasan Eksekutif
 
 Pentra AI adalah self-hosted AI Security Research Platform dengan LLM lokal (Ollama).
-Saat ini platform berjalan penuh dengan **496 unit tests + 90 Playwright E2E tests**, **8,341 records KB** (naik dari 2,758),
+Saat ini platform berjalan penuh dengan **531 unit tests + 90 Playwright E2E tests**, **8,341 records KB** (naik dari 2,758),
 dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JWT alg:none, SSRF, IDOR, subdomain takeover, second-order SQLi secara otomatis, **plus fine-tuned LLM (pentra-ft) yang dilatih pada 8,309 H1 disclosures dan tervalidasi tetap unggul pada target MSSQL/ASP.NET (8 confirmed vs baseline fair 6 confirmed)**. Frontend telah di-polish dengan UI Sprint 1-3 + UI audit Sprint 32: design system tokens, notification system, scan wizard, attack surface map (real data + subscan), API vault, GF patterns, trends charts, monitoring schedule UI, stop button di engagement detail, dan semua status maps lengkap.
 
 ---
@@ -24,13 +24,13 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 
 | Metrik | Nilai |
 |--------|-------|
-| **Test suite** | **505 passing** (225 pentra-tools + 156 pentra-agent + 25 pentra-knowledge + 27 apps/worker + 72 apps/api), 0 failed |
+| **Test suite** | **531 passing** (225 pentra-tools + 156 pentra-agent + 25 pentra-knowledge + 27 apps/worker + 98 apps/api), 0 failed |
 | **Playwright E2E** | **90 tests** (8 spec files), 0 failed |
-| **Test files** | 53 unit + 8 e2e spec files |
+| **Test files** | 56 unit + 8 e2e spec files |
 | **KB records** | **8,341** (Live API as of 2026-06-15; HackerOne — sumber tunggal, lihat keputusan Sprint 29) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
 | **Git tag** | `v1.0.0` — `main` |
-| **Sprint aktif** | Sprint 34 ✅ COMPLETE — report endpoints: auth added, settings attrs fixed, 9 new tests (72 API total) |
+| **Sprint aktif** | Sprint 35 ✅ COMPLETE — NameError fix (monitoring_router `update` import) + 26 new tests (internal + monitoring routers, 98 API total) |
 | **LLM** | qwen2.5-coder:32b (default), qwen3:8b (fast), bge-m3 (embedding), **pentra-ft** (Qwen2.5-Coder-7B fine-tuned, 4.4GB Q4_K_M) |
 
 Live API: 8,341 records as of 2026-06-15.
@@ -983,3 +983,72 @@ H1 Executive:  LLM executive summary via ollama_url + ollama_model_default (fixe
 ```
 
 *Updated: 2026-06-19 — Sprint 34 complete: report endpoints audit — auth added ke 2 endpoints, AttributeError settings lowercase fixed, 9 new tests (72 API total, 505 total). ReportViewer + report_router + pentra-report sekarang fully wired end-to-end.*
+
+---
+
+### Sprint 35 ✅ COMPLETE — Internal + Monitoring Routers (1 bug fixed + 26 tests)
+
+**Konteks:** Code review pass pada dua router yang belum punya test coverage — `internal_router.py` (endpoint Celery agent) dan `monitoring_router.py` (alerts, snapshots, schedule).
+
+---
+
+#### Bug 1 — `NameError: name 'update' is not defined` di `mark_all_alerts_read`
+
+| | Detail |
+|-|--------|
+| **File** | `apps/api/app/api/monitoring_router.py:16` |
+| **Masalah** | `mark_all_alerts_read()` memanggil `update(MonitoringAlertORM)` tapi hanya `select` yang di-import dari SQLAlchemy. Setiap call ke `POST /monitoring/alerts/read-all` akan crash dengan `NameError` di runtime. |
+| **Fix** | Ubah `from sqlalchemy import select` → `from sqlalchemy import select, update`. |
+
+---
+
+#### Tests Sprint 35 — internal_router.py (10 baru)
+
+| Test | Coverage |
+|------|----------|
+| `test_verify_internal_token_valid` | Valid token → no exception |
+| `test_verify_internal_token_wrong_raises_403` | Wrong token → 403 |
+| `test_verify_internal_token_not_configured_raises_503` | No token env → 503 |
+| `test_bulk_create_findings_creates_all` | 2 findings → created=2, skipped=0 |
+| `test_bulk_create_findings_skips_duplicates` | title+url duplicate → skipped=1 |
+| `test_bulk_create_findings_empty_list` | 0 findings → commit still called |
+| `test_bulk_create_findings_404_if_engagement_missing` | Missing engagement → 404 |
+| `test_bulk_create_findings_invalid_uuid_raises_400` | Bad UUID string → 400 |
+| `test_bulk_create_findings_severity_lowercased` | "CRITICAL" → stored as "critical" |
+| `test_bulk_create_findings_deduplication_within_batch` | 2 identical in same batch → 1 created |
+
+---
+
+#### Tests Sprint 35 — monitoring_router.py (16 baru)
+
+| Test | Coverage |
+|------|----------|
+| `test_list_alerts_returns_all` | 2 alerts returned |
+| `test_list_alerts_returns_empty` | Empty list OK |
+| `test_list_alerts_404_if_no_engagement` | 404 on missing engagement |
+| `test_mark_alert_read_sets_is_read` | is_read flipped True; commit called |
+| `test_mark_alert_read_404_if_alert_missing` | Alert not found → 404 |
+| `test_mark_all_alerts_read_returns_ok` | {"status":"ok"} + commit |
+| `test_list_snapshots_returns_results` | 2 snapshots returned |
+| `test_list_snapshots_empty` | Empty list OK |
+| `test_snapshot_diff_detects_new_subdomain` | "new.target.com" in new_subdomains |
+| `test_snapshot_diff_detects_removed_subdomain` | "old.target.com" in removed_subdomains |
+| `test_snapshot_diff_detects_new_port` | port 8080 in new_ports["api.target.com"] |
+| `test_snapshot_diff_404_if_snapshot_a_missing` | 404 on missing snap_a |
+| `test_get_monitoring_schedule_returns_defaults` | enabled=False, interval=24 |
+| `test_get_monitoring_schedule_returns_custom` | enabled=True, interval=48 |
+| `test_set_monitoring_schedule_persists` | enabled+interval written, commit called |
+| `test_set_monitoring_schedule_disable` | enabled=False after disable |
+
+---
+
+#### Status Akhir Sprint 35
+
+```
+API tests:     72 → 98 (+26), 0 failed
+Total tests:   505 → 531, 0 failed
+Test files:    7 → 10 (api/tests/)
+Bug fixed:     NameError on mark_all_alerts_read (missing update import)
+```
+
+*Updated: 2026-06-19 — Sprint 35 complete: NameError fix di monitoring_router (update import missing), 10 tests untuk internal_router (auth + bulk findings), 16 tests untuk monitoring_router (alerts, snapshots, diff, schedule). 531 total tests passing.*
