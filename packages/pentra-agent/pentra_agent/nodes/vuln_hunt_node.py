@@ -285,6 +285,7 @@ async def vuln_hunt_node(state: PentraState) -> dict:
                 pentest_plan=state.get("pentest_plan", ""),
                 kb_context=_prescan_kb,
                 auth_credentials=state.get("auth_credentials"),
+                waf_info=state.get("waf_info"),
             ),
             _passive_csrf_check(domain, state["scope"]) if _RUN_CSRF_CHECK else _noop_list(),
         )
@@ -1272,6 +1273,7 @@ async def _run_llm_burp_active_testing(
     pentest_plan: str = "",
     kb_context: list[dict] | None = None,
     auth_credentials: dict | None = None,
+    waf_info: dict | None = None,
 ) -> list[dict]:
     """LLM-driven active exploit testing — Burp optional, always runs.
 
@@ -1873,7 +1875,7 @@ async def _run_llm_burp_active_testing(
             # Bug Fix 3: log always fires (before dedup check) so visibility is guaranteed.
             if _PAYLOAD_MUTATOR is not None:
                 try:
-                    _waf_type = state.get("waf_info", {}).get("waf_type") if isinstance(state, dict) else None
+                    _waf_type = (waf_info or {}).get("waf_type")
                     _mutated_specs: list[dict] = []
                     _mutation_count = 0
                     for _ps in (payloads or []):
