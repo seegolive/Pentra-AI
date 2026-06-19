@@ -58,39 +58,39 @@ Pentra AI is not a vulnerability scanner. It is an **AI research companion** tha
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│                  WEB UI (React 18 + Vite + Tailwind + Shadcn/ui)    │
-│  Dashboard · Live Feed · Findings · KB Browser · Reports            │
-│  Attack Surface Map · Monitoring · API Vault · GF Patterns          │
-│  Scan Wizard · Notification System · Admin Panel                    │
+│                  WEB UI (React 18 + Vite + Tailwind + Shadcn/ui)     │
+│  Dashboard · Live Feed · Findings · KB Browser · Reports             │
+│  Attack Surface Map · Monitoring · API Vault · GF Patterns           │
+│  Scan Wizard · Notification System · Admin Panel                     │
 └──────────────────────────────┬───────────────────────────────────────┘
                                │ REST + WebSocket
 ┌──────────────────────────────▼───────────────────────────────────────┐
 │                  API GATEWAY (FastAPI async)                         │
 │  auth · setup · engagement · findings · knowledge · monitoring       │
-│  report · h1 · admin · worker_health · internal (agent ↔ api)       │
-└────────┬─────────────────────────────────────┬────────────────────────┘
-         │ Celery tasks (Redis broker)          │ SQLAlchemy async
-         │                                      │
-┌────────▼────────────────┐      ┌──────────────▼────────────────────┐
-│  CELERY WORKER          │      │  PERSISTENCE LAYER                │
-│  (apps/worker)          │      │  PostgreSQL 16                    │
-│  H1 scraper · KB embed  │      │    Engagements · Findings         │
-│  Scan scheduler         │      │    KB records · Audit log         │
-│  Monitoring snapshots   │      │    LangGraph checkpoints          │
-└────────┬────────────────┘      │  Redis — Celery broker/backend    │
-         │                       │  MinIO — screenshots · evidence   │
-         │                       └───────────────────────────────────┘
+│  report · h1 · admin · worker_health · internal (agent ↔ api)        │
+└────────┬─────────────────────────────────────┬───────────────────────┘
+         │ Celery tasks (Redis broker)         │ SQLAlchemy async
+         │                                     │
+┌────────▼────────────────┐      ┌─────────────▼────────────────────┐
+│  CELERY WORKER          │      │  PERSISTENCE LAYER               │
+│  (apps/worker)          │      │  PostgreSQL 16                   │
+│  H1 scraper · KB embed  │      │    Engagements · Findings        │
+│  Scan scheduler         │      │    KB records · Audit log        │
+│  Monitoring snapshots   │      │    LangGraph checkpoints         │
+└────────┬────────────────┘      │  Redis — Celery broker/backend   │
+         │                       │  MinIO — screenshots · evidence  │
+         │                       └──────────────────────────────────┘
          │
 ┌────────▼──────────────────────────────────────────────────────────┐
-│  AGENT ENGINE (pentra-agent — LangGraph v1.2+)                   │
+│  AGENT ENGINE (pentra-agent — LangGraph v1.2+)                    │
 │                                                                   │
-│  Nodes (StateGraph):                                             │
-│    plan_node → recon_node → crawler_node → osint_node            │
-│    → triage_node → vuln_hunt_node → report_node                  │
+│  Nodes (StateGraph):                                              │
+│    plan_node → recon_node → crawler_node → osint_node             │
+│    → triage_node → vuln_hunt_node → report_node                   │
 │                                                                   │
-│  HITL interrupts: plan · recon · triage · vuln_hunt · report     │
-│  Memory: per-engagement learnings (PostgreSQL)                   │
-│  Arsenal: playbooks · scan_presets · incremental scanning        │
+│  HITL interrupts: plan · recon · triage · vuln_hunt · report      │
+│  Memory: per-engagement learnings (PostgreSQL)                    │
+│  Arsenal: playbooks · scan_presets · incremental scanning         │
 └────────┬───────────────────────────────┬──────────────────────────┘
          │                               │
 ┌────────▼──────────────┐   ┌───────────▼──────────────────────────┐
@@ -105,7 +105,7 @@ Pentra AI is not a vulnerability scanner. It is an **AI research companion** tha
 │   takeover detect     │   │  PAYLOAD ENGINE (pentra-payload)     │
 │  Vuln:                │   │  Context-aware payload generation    │
 │   nuclei · dalfox     │   │  Mutation engine                     │
-│   sqlmap · ffuf       │   │  Auth bypass · SQLi · XSS payloads  │
+│   sqlmap · ffuf       │   │  Auth bypass · SQLi · XSS payloads   │
 │   gf patterns         │   └──────────────────────────────────────┘
 │   cors/jwt/ssrf/      │
 │   graphql/race-cond/  │
@@ -120,12 +120,12 @@ Pentra AI is not a vulnerability scanner. It is an **AI research companion** tha
 └────────┬──────────────┘
          │
 ┌────────▼──────────────────────────────────────────────────────────┐
-│  LLM LAYER (Ollama — fully local, no data leaves machine)        │
-│  qwen2.5-coder:32b   — default reasoning + payload generation    │
-│  deepseek-r1:32b     — deep reasoning (plan, triage)             │
-│  qwen3:8b            — fast extraction (bulk KB processing)      │
-│  bge-m3              — hybrid embedding (dense 1024 + sparse)    │
-│  pentra-ft           — fine-tuned Qwen2.5-Coder-7B on 8,309 H1  │
+│  LLM LAYER (Ollama — fully local, no data leaves machine)         │
+│  qwen2.5-coder:32b   — default reasoning + payload generation     │
+│  deepseek-r1:32b     — deep reasoning (plan, triage)              │
+│  qwen3:8b            — fast extraction (bulk KB processing)       │
+│  bge-m3              — hybrid embedding (dense 1024 + sparse)     │
+│  pentra-ft           — fine-tuned Qwen2.5-Coder-7B on 8,309 H1    │
 └───────────────────────────────────────────────────────────────────┘
 ```
 
