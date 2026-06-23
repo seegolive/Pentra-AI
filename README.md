@@ -3,7 +3,7 @@
 > The first self-hosted AI Security Research Platform that thinks like a seasoned bug bounty hunter — not a vulnerability scanner.
 
 ![Status](https://img.shields.io/badge/status-v1.0.0_stable-brightgreen)
-![Tests](https://img.shields.io/badge/tests-531_passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-556_passing-brightgreen)
 ![E2E](https://img.shields.io/badge/playwright-90_e2e-brightgreen)
 ![KB](https://img.shields.io/badge/knowledge_base-8%2C341_reports-blue)
 ![LLM](https://img.shields.io/badge/LLM-local_ollama-purple)
@@ -31,7 +31,7 @@ Pentra AI is not a vulnerability scanner. It is an **AI research companion** tha
 
 | Metric | Value |
 |--------|-------|
-| **Unit tests** | **531 passing** (225 pentra-tools + 156 pentra-agent + 25 pentra-knowledge + 27 apps/worker + 98 apps/api) |
+| **Unit tests** | **556 passing** (225 pentra-tools + 156 pentra-agent + 25 pentra-knowledge + 27 apps/worker + 123 apps/api) |
 | **E2E tests (Playwright)** | **90 passing** across 8 spec files |
 | **Knowledge base** | **8,341 HackerOne reports** (embedded with BGE-M3, hybrid search) |
 | **Agent capabilities** | SQLi, XSS, CORS, GraphQL, race condition, JWT alg:none, SSRF, IDOR, subdomain takeover, second-order SQLi |
