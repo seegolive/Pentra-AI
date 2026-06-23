@@ -73,6 +73,15 @@ _RUN_CSRF_CHECK: bool = os.getenv("PENTRA_RUN_CSRF_CHECK", "true").lower() == "t
 _CRAWL_PAGES: int = int(os.getenv("PENTRA_CRAWL_PAGES", "49"))
 _NUCLEI_TIMEOUT_S: int = int(os.getenv("PENTRA_NUCLEI_TIMEOUT", "300"))  # raised Task 20.3
 
+# ── Per-subdomain sequential scan (Sprint 45) ─────────────────────────────────
+# When enabled, vuln_hunt iterates through subdomains one by one:
+#   passive scan → inter-subdomain delay → active scan → delay → next subdomain.
+# This avoids traffic bursts and allows per-host rate-limit + WAF profiling.
+_SUBDOMAIN_SEQUENTIAL: bool = os.getenv("PENTRA_SUBDOMAIN_SEQUENTIAL", "false").lower() == "true"
+_INTER_SUBDOMAIN_DELAY: float = float(os.getenv("PENTRA_INTER_SUBDOMAIN_DELAY", "5"))
+_PASSIVE_TAGS = "exposure,misconfig,default-login,disclosure,info,config,panel"
+_ACTIVE_TAGS = "cve,vuln,sqli,xss,lfi,rce,injection,ssti,ssrf"
+
 
 # ── Burp MCP config helpers ───────────────────────────────────────────────────
 
@@ -174,64 +183,81 @@ async def vuln_hunt_node(state: PentraState) -> dict:
 
     raw_findings: list[dict] = []
 
-    # ── 1–4.5. Run all passive/scan tools CONCURRENTLY ────────────────────────
-    # Each tool is I/O-bound (network/subprocess) and independent — running them
-    # in parallel cuts wall-clock time from ~sum(all timeouts) to ~max(longest).
-    # Task 18.11: preset flags gate individual tools on/off.
+    if _SUBDOMAIN_SEQUENTIAL:
+        # ── Sequential per-subdomain mode (PENTRA_SUBDOMAIN_SEQUENTIAL=true) ──
+        # Scans one subdomain at a time: passive → sleep → active → sleep → next.
+        # Prevents traffic bursts, allows per-host rate-limit + WAF profiling.
+        log.info(
+            "[vuln_hunt_node] SEQUENTIAL mode: %d endpoints → per-subdomain scan "
+            "(inter_delay=%.1fs)",
+            len(endpoints), _INTER_SUBDOMAIN_DELAY,
+        )
+        raw_findings = await _sequential_subdomain_scan(
+            domain=domain,
+            endpoints=endpoints,
+            scope=state["scope"],
+            tech_stack=tech_stack,
+            auth_credentials=state.get("auth_credentials"),
+            inter_delay_s=_INTER_SUBDOMAIN_DELAY,
+            request_jitter_ms=state.get("request_jitter_ms", 0),
+        )
+    else:
+        # ── 1–4.5. Run all passive/scan tools CONCURRENTLY (default) ─────────
+        # Each tool is I/O-bound (network/subprocess) and independent — running them
+        # in parallel cuts wall-clock time from ~sum(all timeouts) to ~max(longest).
+        # Task 18.11: preset flags gate individual tools on/off.
+        log.info(
+            "[vuln_hunt_node] Launching tools concurrently "
+            "[nuclei=%s ffuf=%s burp_scan=%s soap_xxe=%s csrf=%s]",
+            _RUN_NUCLEI, _RUN_FFUF, _RUN_BURP_SCAN, _RUN_SOAP_XXE, _RUN_CSRF_CHECK,
+        )
+        (
+            nuclei_results,
+            ffuf_results,
+            burp_scan_results,
+            burp_proxy_results,
+            burp_extended,
+            soap_xxe_results,
+            graphql_results,
+            race_condition_results,
+            cors_results,
+            jwt_results,
+            second_order_results,
+            biz_logic_results,
+            ssrf_results,
+        ) = await asyncio.gather(
+            _run_nuclei(endpoints, state["scope"], tech_stack=state.get("tech_stack", [])) if _RUN_NUCLEI else _noop_list(),
+            _run_ffuf(endpoints[:5]) if _RUN_FFUF else _noop_list(),
+            _run_burp_active_scan(endpoints[:10], state["scope"]) if _RUN_BURP_SCAN else _noop_list(),
+            _get_burp_proxy_findings(domain, state["scope"]),
+            _run_burp_extended_checks(domain, state["scope"], endpoints),
+            _run_soap_xxe_scan(domain, state["scope"], state.get("auth_credentials")) if _RUN_SOAP_XXE else _noop_list(),
+            _run_graphql_scan(domain, state["scope"], state.get("auth_credentials")),
+            _run_race_condition_scan(endpoints, state["scope"], state.get("auth_credentials")),
+            _run_cors_scan(endpoints, state["scope"], state.get("auth_credentials")),
+            _run_jwt_scan(domain, state["scope"], state.get("auth_credentials"), state),
+            _run_second_order_sqli_scan(domain, state["scope"], state.get("auth_credentials")),
+            _run_business_logic_scan(domain, state["scope"], state.get("auth_credentials")),
+            _run_ssrf_scan(endpoints, state["scope"], state.get("auth_credentials")),
+            return_exceptions=False,
+        )
+        raw_findings.extend(nuclei_results)
+        raw_findings.extend(ffuf_results)
+        raw_findings.extend(burp_scan_results)
+        raw_findings.extend(burp_proxy_results)
+        raw_findings.extend(burp_extended)
+        raw_findings.extend(soap_xxe_results)
+        raw_findings.extend(graphql_results)
+        raw_findings.extend(race_condition_results)
+        raw_findings.extend(cors_results)
+        raw_findings.extend(jwt_results)
+        raw_findings.extend(second_order_results)
+        raw_findings.extend(biz_logic_results)
+        raw_findings.extend(ssrf_results)
     log.info(
-        "[vuln_hunt_node] Launching tools concurrently "
-        "[nuclei=%s ffuf=%s burp_scan=%s soap_xxe=%s csrf=%s]",
-        _RUN_NUCLEI, _RUN_FFUF, _RUN_BURP_SCAN, _RUN_SOAP_XXE, _RUN_CSRF_CHECK,
-    )
-    (
-        nuclei_results,
-        ffuf_results,
-        burp_scan_results,
-        burp_proxy_results,
-        burp_extended,
-        soap_xxe_results,
-        graphql_results,
-        race_condition_results,
-        cors_results,
-        jwt_results,
-        second_order_results,
-        biz_logic_results,
-        ssrf_results,
-    ) = await asyncio.gather(
-        _run_nuclei(endpoints, state["scope"], tech_stack=state.get("tech_stack", [])) if _RUN_NUCLEI else _noop_list(),
-        _run_ffuf(endpoints[:5]) if _RUN_FFUF else _noop_list(),
-        _run_burp_active_scan(endpoints[:10], state["scope"]) if _RUN_BURP_SCAN else _noop_list(),
-        _get_burp_proxy_findings(domain, state["scope"]),
-        _run_burp_extended_checks(domain, state["scope"], endpoints),
-        _run_soap_xxe_scan(domain, state["scope"], state.get("auth_credentials")) if _RUN_SOAP_XXE else _noop_list(),
-        _run_graphql_scan(domain, state["scope"], state.get("auth_credentials")),
-        _run_race_condition_scan(endpoints, state["scope"], state.get("auth_credentials")),
-        _run_cors_scan(endpoints, state["scope"], state.get("auth_credentials")),
-        _run_jwt_scan(domain, state["scope"], state.get("auth_credentials"), state),
-        _run_second_order_sqli_scan(domain, state["scope"], state.get("auth_credentials")),
-        _run_business_logic_scan(domain, state["scope"], state.get("auth_credentials")),
-        _run_ssrf_scan(endpoints, state["scope"], state.get("auth_credentials")),
-        return_exceptions=False,
-    )
-    raw_findings.extend(nuclei_results)
-    raw_findings.extend(ffuf_results)
-    raw_findings.extend(burp_scan_results)
-    raw_findings.extend(burp_proxy_results)
-    raw_findings.extend(burp_extended)
-    raw_findings.extend(soap_xxe_results)
-    raw_findings.extend(graphql_results)
-    raw_findings.extend(race_condition_results)
-    raw_findings.extend(cors_results)
-    raw_findings.extend(jwt_results)
-    raw_findings.extend(second_order_results)
-    raw_findings.extend(biz_logic_results)
-    raw_findings.extend(ssrf_results)
-    log.info(
-        "[vuln_hunt_node] Concurrent scan done: nuclei=%d ffuf=%d burp_scan=%d proxy=%d ext=%d soap_xxe=%d graphql=%d race=%d cors=%d jwt=%d 2nd_sqli=%d biz=%d ssrf=%d",
-        len(nuclei_results), len(ffuf_results), len(burp_scan_results),
-        len(burp_proxy_results), len(burp_extended), len(soap_xxe_results),
-        len(graphql_results), len(race_condition_results), len(cors_results), len(jwt_results),
-        len(second_order_results), len(biz_logic_results), len(ssrf_results),
+        "[vuln_hunt_node] Scan done (mode=%s): %d raw findings total",
+        "sequential" if _SUBDOMAIN_SEQUENTIAL else "concurrent",
+        len(raw_findings),
     )
 
     # ── 5. Collaborator payload (expose in tool_outputs for LLM) ─────────────
@@ -497,6 +523,7 @@ async def _run_nuclei(
     endpoints: list[dict],
     scope: dict,
     tech_stack: list[str] | None = None,
+    tags_override: str | None = None,
 ) -> list[dict]:
     """Run nuclei with non-destructive templates on in-scope endpoints.
 
@@ -582,7 +609,7 @@ async def _run_nuclei(
     #   30s per-request × 5 concurrent × ~8 targets × ~20 key templates = ~240s worst case
     # Network scan timeout unchanged at 120s (no time-based templates).
     (http_findings, http_timed_out), (net_findings, net_timed_out) = await asyncio.gather(
-        _nuclei_scan(nuclei_bin, url_targets, protocol_types=None, timeout=300, extra_tags=_extra_tags),
+        _nuclei_scan(nuclei_bin, url_targets, protocol_types=None, timeout=300, extra_tags=_extra_tags, tags_base=tags_override),
         _nuclei_scan(nuclei_bin, network_targets, protocol_types=["tcp", "javascript"], timeout=120),
     )
     findings = http_findings + net_findings
@@ -601,14 +628,20 @@ async def _nuclei_scan(
     protocol_types: list[str] | None,
     timeout: int = 300,
     extra_tags: list[str] | None = None,
+    tags_base: str | None = None,
 ) -> tuple[list[dict], bool]:
-    """Internal helper: run one nuclei pass and return (findings, timed_out)."""
+    """Internal helper: run one nuclei pass and return (findings, timed_out).
+
+    Args:
+        tags_base: Override the default tag set (used by per-subdomain sequential
+                   scanner to separate passive vs active passes).
+    """
     if not targets:
         return [], False
 
     import tempfile
 
-    _BASE_TAGS = (
+    _BASE_TAGS = tags_base or (
         # Core vulnerability classes — high yield templates only.
         # Task 20.3 fix: removed tags already covered by our own tools
         # (jwt→jwt_tester, takeover→takeover_detector, cors→cors_tester,
@@ -3911,3 +3944,216 @@ async def _run_ssrf_scan(
     except Exception as exc:
         log.debug("[vuln_hunt_node] SSRF scan failed (non-fatal): %s", exc)
         return []
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Sprint 45 — Per-subdomain sequential scanner
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _group_endpoints_by_host(endpoints: list[dict]) -> dict[str, list[dict]]:
+    """Group endpoint dicts by their hostname. Entries without a parseable URL are dropped."""
+    from urllib.parse import urlparse
+    groups: dict[str, list[dict]] = {}
+    for ep in endpoints:
+        host = urlparse(ep.get("url", "")).hostname or ""
+        if host:
+            groups.setdefault(host, []).append(ep)
+    return groups
+
+
+def _prioritize_hosts(groups: dict[str, list[dict]]) -> list[str]:
+    """Sort hosts — most interesting (API, admin, most params) first."""
+    def _score(host: str) -> int:
+        eps = groups[host]
+        param_count = sum(len(e.get("params", [])) for e in eps)
+        has_api   = any("api" in (e.get("url", "")).lower() for e in eps)
+        has_admin = any("admin" in host.lower() or "admin" in (e.get("url", "")).lower() for e in eps)
+        has_auth  = any(kw in host.lower() for kw in ("auth", "login", "sso", "oauth"))
+        return len(eps) * 2 + param_count * 3 + (10 if has_api else 0) + (10 if has_admin else 0) + (8 if has_auth else 0)
+    return sorted(groups.keys(), key=_score, reverse=True)
+
+
+async def _probe_host_limits(host: str) -> tuple[dict, dict]:
+    """Per-host rate-limit and WAF probe. Both run concurrently. Never raises."""
+    rl_info:  dict = {"safe_rps": 20, "delay_ms": 0,  "is_limited": False, "notes": []}
+    waf_info: dict = {"waf_type": None, "is_blocking": False, "bypass_strategies": [], "safe_rps": 20}
+
+    primary_url = f"https://{host}/"
+
+    async def _rl() -> None:
+        if not _RL_AVAILABLE:
+            return
+        try:
+            rl = await probe_rate_limit(primary_url, probe_count=4, probe_interval=0.2)
+            rl_info.update({
+                "safe_rps": rl.safe_rps,
+                "delay_ms": rl.recommended_delay_ms,
+                "is_limited": rl.is_rate_limited,
+                "notes": rl.notes,
+            })
+            if rl.is_rate_limited:
+                log.info("[per_subdomain] %s is rate-limited — safe_rps=%d delay=%dms", host, rl.safe_rps, rl.recommended_delay_ms)
+        except Exception as exc:
+            log.debug("[per_subdomain] RL probe failed for %s (non-fatal): %s", host, exc)
+
+    async def _waf() -> None:
+        try:
+            from pentra_tools.recon.waf_profiler import profile_waf
+            waf = await profile_waf(primary_url)
+            waf_info.update({
+                "waf_type": waf.waf_type,
+                "is_blocking": waf.is_blocking,
+                "bypass_strategies": waf.bypass_strategies,
+                "safe_rps": waf.block_threshold_rps,
+            })
+            if waf.waf_detected:
+                log.info("[per_subdomain] WAF on %s: %s (blocking=%s) → %s", host, waf.waf_type, waf.is_blocking, waf.bypass_strategies[:2])
+        except Exception as exc:
+            log.debug("[per_subdomain] WAF probe failed for %s (non-fatal): %s", host, exc)
+
+    await asyncio.gather(_rl(), _waf())
+    return rl_info, waf_info
+
+
+async def _passive_host_scan(
+    host: str,
+    host_endpoints: list[dict],
+    scope: dict,
+    tech_stack: list[str],
+) -> list[dict]:
+    """Passive phase: nuclei non-intrusive templates only (exposure/misconfig/disclosure)."""
+    log.info("[per_subdomain] [%s] PASSIVE — %d endpoints", host, len(host_endpoints))
+    findings: list[dict] = []
+    try:
+        if _RUN_NUCLEI:
+            passive = await _run_nuclei(
+                host_endpoints,
+                scope,
+                tech_stack=tech_stack,
+                tags_override=_PASSIVE_TAGS,
+            )
+            findings.extend(passive)
+            log.info("[per_subdomain] [%s] passive nuclei → %d findings", host, len(passive))
+    except Exception as exc:
+        log.warning("[per_subdomain] [%s] passive scan error (non-fatal): %s", host, exc)
+    return findings
+
+
+async def _active_host_scan(
+    host: str,
+    host_endpoints: list[dict],
+    scope: dict,
+    tech_stack: list[str],
+    auth_credentials: dict | None,
+    rl_info: dict,
+    waf_info: dict,
+) -> list[dict]:
+    """Active phase: nuclei vuln templates + ffuf + targeted scanners — all run in parallel."""
+    log.info(
+        "[per_subdomain] [%s] ACTIVE — %d endpoints | safe_rps=%d | waf=%s",
+        host, len(host_endpoints), rl_info.get("safe_rps", 20), waf_info.get("waf_type") or "none",
+    )
+    findings: list[dict] = []
+    try:
+        results = await asyncio.gather(
+            _run_nuclei(host_endpoints, scope, tech_stack=tech_stack, tags_override=_ACTIVE_TAGS) if _RUN_NUCLEI else _noop_list(),
+            _run_ffuf(host_endpoints[:3]) if _RUN_FFUF else _noop_list(),
+            _run_cors_scan(host_endpoints, scope, auth_credentials),
+            _run_csrf_host(host, host_endpoints, scope),
+            _run_ssrf_scan(host_endpoints, scope, auth_credentials),
+            return_exceptions=True,
+        )
+        for batch in results:
+            if isinstance(batch, Exception):
+                log.debug("[per_subdomain] [%s] active tool error (non-fatal): %s", host, batch)
+            else:
+                findings.extend(batch)
+        log.info("[per_subdomain] [%s] active scan → %d findings", host, len(findings))
+    except Exception as exc:
+        log.warning("[per_subdomain] [%s] active scan error (non-fatal): %s", host, exc)
+    return findings
+
+
+async def _run_csrf_host(host: str, endpoints: list[dict], scope: dict) -> list[dict]:
+    """CSRF passive check scoped to a single host."""
+    if not _RUN_CSRF_CHECK:
+        return []
+    try:
+        from urllib.parse import urlparse
+        return await _passive_csrf_check(host, scope)
+    except Exception as exc:
+        log.debug("[per_subdomain] CSRF check failed for %s: %s", host, exc)
+        return []
+
+
+async def _sequential_subdomain_scan(
+    domain: str,
+    endpoints: list[dict],
+    scope: dict,
+    tech_stack: list[str],
+    auth_credentials: dict | None,
+    inter_delay_s: float,
+    request_jitter_ms: int,
+) -> list[dict]:
+    """Iterate subdomains one-by-one: passive → sleep → active → sleep → next subdomain.
+
+    Flow per host:
+      1. Per-host rate-limit + WAF probe (concurrent, ~2s)
+      2. Passive nuclei (exposure/misconfig/disclosure — non-intrusive)
+      3. Sleep max(inter_delay_s, host_delay_from_rl) — polite pause
+      4. Active nuclei + ffuf + CORS + CSRF + SSRF (parallel within host)
+      5. Sleep inter_delay_s before next host (skip after last host)
+    """
+    groups = _group_endpoints_by_host(endpoints)
+    if not groups:
+        log.warning("[per_subdomain] No endpoint groups — fallback to full endpoint list")
+        return []
+
+    hosts = _prioritize_hosts(groups)
+    log.info("[per_subdomain] %d subdomain(s) to scan in order: %s", len(hosts), hosts[:10])
+
+    all_findings: list[dict] = []
+    jitter_s = request_jitter_ms / 1000.0
+
+    for idx, host in enumerate(hosts):
+        host_endpoints = groups[host]
+        log.info(
+            "[per_subdomain] ══ %d/%d  %s  (%d endpoints) ══",
+            idx + 1, len(hosts), host, len(host_endpoints),
+        )
+
+        # ── Step 1: Per-host rate-limit + WAF probe ──────────────────────────
+        rl_info, waf_info = await _probe_host_limits(host)
+
+        # Compute effective delay — respect host's rate limit recommendation
+        host_delay = max(inter_delay_s, rl_info.get("delay_ms", 0) / 1000.0)
+        if jitter_s > 0:
+            import random
+            host_delay += random.uniform(0, jitter_s)
+
+        # ── Step 2: Passive scan ─────────────────────────────────────────────
+        passive_findings = await _passive_host_scan(host, host_endpoints, scope, tech_stack)
+        all_findings.extend(passive_findings)
+
+        # ── Step 3: Polite pause before active phase ─────────────────────────
+        log.info("[per_subdomain] [%s] passive done (%d findings) — sleeping %.1fs before active", host, len(passive_findings), host_delay)
+        await asyncio.sleep(host_delay)
+
+        # ── Step 4: Active scan ──────────────────────────────────────────────
+        active_findings = await _active_host_scan(
+            host, host_endpoints, scope, tech_stack, auth_credentials, rl_info, waf_info
+        )
+        all_findings.extend(active_findings)
+
+        # ── Step 5: Inter-subdomain delay (skip after last host) ─────────────
+        if idx < len(hosts) - 1:
+            log.info(
+                "[per_subdomain] [%s] active done (%d findings) — sleeping %.1fs before next subdomain",
+                host, len(active_findings), host_delay,
+            )
+            await asyncio.sleep(host_delay)
+        else:
+            log.info("[per_subdomain] [%s] active done (%d findings) — last subdomain, no delay", host, len(active_findings))
+
+    log.info("[per_subdomain] All %d subdomain(s) scanned — %d total raw findings", len(hosts), len(all_findings))
+    return all_findings

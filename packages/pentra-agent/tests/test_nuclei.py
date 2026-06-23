@@ -42,7 +42,7 @@ async def test_nuclei_https_fallback_to_http():
     # Collect all calls so we can assert on the HTTP-targets (first) call.
     captured_calls: list[dict] = []
 
-    async def _fake_nuclei_scan(nuclei_bin, targets, protocol_types, timeout, extra_tags=None):
+    async def _fake_nuclei_scan(nuclei_bin, targets, protocol_types, timeout, extra_tags=None, tags_base=None):
         captured_calls.append({"targets": list(targets), "protocol_types": protocol_types})
         return [], False
 
@@ -86,7 +86,7 @@ async def test_nuclei_tags_include_iis_asp_for_aspnet_target():
     # Collect both _nuclei_scan calls (HTTP + network); assert on the HTTP call.
     captured_calls: list[dict] = []
 
-    async def _fake_nuclei_scan(nuclei_bin, targets, protocol_types, timeout, extra_tags=None):
+    async def _fake_nuclei_scan(nuclei_bin, targets, protocol_types, timeout, extra_tags=None, tags_base=None):
         captured_calls.append({"extra_tags": list(extra_tags or []), "protocol_types": protocol_types})
         return [], False
 
