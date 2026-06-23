@@ -12,6 +12,7 @@ Sources:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 
@@ -68,6 +69,25 @@ async def osint_node(state: PentraState) -> dict:
     else:
         log.debug("[osint_node] SHODAN_API_KEY not set — skipping Shodan")
 
+    # ── 4. Security dorking (optional — dependency may be absent) ───────────
+    dorking = await _run_dorking(domain)
+    if dorking:
+        results["dorking"] = dorking
+        log.info(
+            "[osint_node] Dorking: %d high-risk URLs",
+            len(dorking.get("high_risk_urls", [])),
+        )
+
+    # ── 5. Email OSINT + optional breach check ─────────────────────────────
+    email_osint = await _run_email_osint(domain)
+    if email_osint:
+        results["email_osint"] = email_osint
+        log.info(
+            "[osint_node] Email OSINT: %d emails, %d critical",
+            len(email_osint.get("emails", [])),
+            len(email_osint.get("critical_emails", [])),
+        )
+
     # ── Summary message ──────────────────────────────────────────────────────
     summary_parts = [f"OSINT complete for {domain}:"]
 
@@ -89,6 +109,19 @@ async def osint_node(state: PentraState) -> dict:
         )
         if h1_program.get("bounty_range"):
             summary_parts.append(f"  Bounty: {h1_program['bounty_range']}")
+
+    if dorking:
+        high_risk = dorking.get("high_risk_urls", [])
+        summary_parts.append(f"- Dorking: {len(high_risk)} high-risk URLs")
+        if high_risk:
+            summary_parts.append(f"  Examples: {', '.join(high_risk[:3])}")
+
+    if email_osint:
+        emails = email_osint.get("emails", [])
+        critical = email_osint.get("critical_emails", [])
+        summary_parts.append(f"- Email OSINT: {len(emails)} email(s) found")
+        if critical:
+            summary_parts.append(f"  Critical breached emails: {', '.join(critical[:3])}")
 
     if not results:
         summary_parts.append("- No significant OSINT data found (passive only)")
@@ -221,3 +254,68 @@ async def _query_shodan(domain: str, api_key: str) -> dict | None:
     except Exception as exc:
         log.debug("[osint_node] Shodan query failed: %s", exc)
         return None
+
+
+async def _run_dorking(domain: str) -> dict:
+    """Run passive security dorking when the optional dependency is available."""
+    try:
+        from pentra_tools.osint.dorking import DorkScanner
+
+        scanner = DorkScanner(delay_between_dorks=2.0, max_results_per_dork=5)
+        result = await asyncio.wait_for(scanner.run_dorks(domain), timeout=120.0)
+        if result.total_results == 0 and not result.high_risk_urls:
+            return {}
+        return {
+            "high_risk_urls": result.high_risk_urls,
+            "login_pages": result.login_pages,
+            "admin_panels": result.admin_panels,
+            "sensitive_files": result.sensitive_files,
+            "api_endpoints": result.api_endpoints,
+            "total_results": result.total_results,
+        }
+    except asyncio.TimeoutError:
+        log.warning("[osint_node] dorking timed out after 120s")
+        return {}
+    except Exception as exc:
+        log.warning("[osint_node] dorking failed (non-fatal): %s", exc)
+        return {}
+
+
+async def _run_email_osint(domain: str) -> dict:
+    """Run email enumeration and optional HIBP breach checks."""
+    try:
+        from pentra_tools.osint.email_osint import EmailOSINT
+
+        hunter_key = os.getenv("HUNTER_API_KEY")
+        hibp_key = os.getenv("HIBP_API_KEY")
+        result = await asyncio.wait_for(
+            EmailOSINT().run(
+                domain,
+                hunter_api_key=hunter_key,
+                hibp_api_key=hibp_key,
+                check_breaches=bool(hibp_key),
+            ),
+            timeout=120.0,
+        )
+        if not result.emails and not result.critical_emails:
+            return {}
+        return {
+            "emails": result.emails,
+            "critical_emails": result.critical_emails,
+            "breach_results": {
+                email: {
+                    "breached": breach.breached,
+                    "breach_count": breach.breach_count,
+                    "breaches": breach.breaches,
+                    "has_passwords": breach.has_passwords,
+                    "severity": breach.severity,
+                }
+                for email, breach in result.breach_results.items()
+            },
+        }
+    except asyncio.TimeoutError:
+        log.warning("[osint_node] email OSINT timed out after 120s")
+        return {}
+    except Exception as exc:
+        log.warning("[osint_node] email OSINT failed (non-fatal): %s", exc)
+        return {}

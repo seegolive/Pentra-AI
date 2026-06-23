@@ -37,6 +37,7 @@ except ImportError:
 
 from pentra_scope import ScopeEnforcer
 from pentra_scope.errors import ScopeViolationError
+from urllib.parse import parse_qs, urlparse
 
 log = logging.getLogger(__name__)
 
@@ -182,6 +183,24 @@ async def recon_node(state: PentraState) -> dict:
     for t in burp_tech:
         if t not in tech_stack:
             tech_stack.append(t)
+
+    # ── Wayback URL mining (historical endpoints) ──────────────────────────
+    wayback_urls = await _run_wayback(domain, in_scope=in_scope)
+    if wayback_urls:
+        existing_keys = {(e["url"], e.get("method", "GET")) for e in endpoints}
+        added = 0
+        for ep in _urls_to_endpoints(wayback_urls):
+            key = (ep["url"], ep.get("method", "GET"))
+            if key not in existing_keys:
+                endpoints.append(ep)
+                existing_keys.add(key)
+                added += 1
+        log.info(
+            "[recon_node] Wayback merged %d/%d historical endpoint(s); total=%d",
+            added,
+            len(wayback_urls),
+            len(endpoints),
+        )
 
     # ── Smart dedup (18.2) then GF prioritization (18.1) ─────────────────────
     try:
@@ -384,6 +403,54 @@ async def _run_nmap(subdomains: list[dict]) -> list[dict]:
     except Exception as exc:
         log.warning("[recon_node] nmap error: %s", exc)
         return []
+
+
+async def _run_wayback(domain: str, in_scope: list[str]) -> list[str]:
+    """Run historical URL mining with graceful timeout/fallback behavior."""
+    try:
+        from pentra_tools.crawlers.wayback_crawler import WaybackCrawler
+
+        result = await asyncio.wait_for(
+            WaybackCrawler().get_urls(domain, limit=500),
+            timeout=35.0,
+        )
+        scoped_urls = [
+            url for url in result.urls
+            if _is_in_scope(urlparse(url).hostname or "", in_scope)
+        ]
+        if result.urls:
+            log.info(
+                "[wayback] Found %d historical URLs (%d scoped, %d unique params)",
+                len(result.urls),
+                len(scoped_urls),
+                len(result.unique_params),
+            )
+        if result.error:
+            log.info("[wayback] skipped with error: %s", result.error)
+        return scoped_urls
+    except asyncio.TimeoutError:
+        log.warning("[wayback] Timed out — skipping")
+        return []
+    except Exception as exc:
+        log.warning("[wayback] Failed — skipping: %s", exc)
+        return []
+
+
+def _urls_to_endpoints(urls: list[str]) -> list[dict]:
+    """Convert discovered URLs into endpoint dicts used by vuln_hunt_node."""
+    endpoints: list[dict] = []
+    for url in urls:
+        parsed = urlparse(url)
+        params = sorted(parse_qs(parsed.query).keys())
+        endpoints.append(
+            {
+                "url": url,
+                "method": "GET",
+                "params": params,
+                "source": "wayback",
+            }
+        )
+    return endpoints
 
 
 def _parse_nmap_xml(xml: str) -> list[dict]:

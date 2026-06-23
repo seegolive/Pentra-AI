@@ -15,6 +15,7 @@ import asyncio
 import json
 import logging
 import os
+from dataclasses import asdict
 
 from langchain_core.messages import AIMessage
 
@@ -183,13 +184,17 @@ async def vuln_hunt_node(state: PentraState) -> dict:
 
     raw_findings: list[dict] = []
 
-    if _SUBDOMAIN_SEQUENTIAL:
-        # ── Sequential per-subdomain mode (PENTRA_SUBDOMAIN_SEQUENTIAL=true) ──
+    # Sequential mode: per-engagement flag overrides OR env var enables globally
+    _use_sequential = state.get("scan_sequential", False) or _SUBDOMAIN_SEQUENTIAL
+
+    if _use_sequential:
+        # ── Sequential per-subdomain mode ─────────────────────────────────────
         # Scans one subdomain at a time: passive → sleep → active → sleep → next.
         # Prevents traffic bursts, allows per-host rate-limit + WAF profiling.
         log.info(
-            "[vuln_hunt_node] SEQUENTIAL mode: %d endpoints → per-subdomain scan "
-            "(inter_delay=%.1fs)",
+            "[vuln_hunt_node] SEQUENTIAL mode (per_engagement=%s env=%s): "
+            "%d endpoints (inter_delay=%.1fs)",
+            state.get("scan_sequential", False), _SUBDOMAIN_SEQUENTIAL,
             len(endpoints), _INTER_SUBDOMAIN_DELAY,
         )
         raw_findings = await _sequential_subdomain_scan(
@@ -225,6 +230,8 @@ async def vuln_hunt_node(state: PentraState) -> dict:
             second_order_results,
             biz_logic_results,
             ssrf_results,
+            crlf_results,
+            dalfox_results,
         ) = await asyncio.gather(
             _run_nuclei(endpoints, state["scope"], tech_stack=state.get("tech_stack", [])) if _RUN_NUCLEI else _noop_list(),
             _run_ffuf(endpoints[:5]) if _RUN_FFUF else _noop_list(),
@@ -239,6 +246,8 @@ async def vuln_hunt_node(state: PentraState) -> dict:
             _run_second_order_sqli_scan(domain, state["scope"], state.get("auth_credentials")),
             _run_business_logic_scan(domain, state["scope"], state.get("auth_credentials")),
             _run_ssrf_scan(endpoints, state["scope"], state.get("auth_credentials")),
+            _run_crlfuzz_scan(endpoints),
+            _run_dalfox_scan(endpoints),
             return_exceptions=False,
         )
         raw_findings.extend(nuclei_results)
@@ -254,9 +263,11 @@ async def vuln_hunt_node(state: PentraState) -> dict:
         raw_findings.extend(second_order_results)
         raw_findings.extend(biz_logic_results)
         raw_findings.extend(ssrf_results)
+        raw_findings.extend(crlf_results)
+        raw_findings.extend(dalfox_results)
     log.info(
         "[vuln_hunt_node] Scan done (mode=%s): %d raw findings total",
-        "sequential" if _SUBDOMAIN_SEQUENTIAL else "concurrent",
+        "sequential" if _use_sequential else "concurrent",
         len(raw_findings),
     )
 
@@ -906,6 +917,51 @@ async def _run_ffuf(endpoints: list[dict]) -> list[dict]:
             log.debug("[vuln_hunt_node] ffuf error for %s: %s", url, exc)
 
     return findings
+
+
+async def _run_crlfuzz_scan(endpoints: list[dict]) -> list[dict]:
+    """Run CRLFuzz against a small prioritized endpoint slice."""
+    try:
+        from pentra_tools.scanners.crlfuzz_scanner import CRLFuzzScanner
+
+        urls = [ep["url"] for ep in endpoints if ep.get("url")][:5]
+        findings = await CRLFuzzScanner().scan_batch(urls, max_concurrent=3)
+        return [
+            {
+                **asdict(finding),
+                "title": "CRLF Injection",
+                "target_url": finding.url,
+                "description": finding.evidence,
+            }
+            for finding in findings
+        ]
+    except Exception as exc:
+        log.debug("[crlfuzz] scan failed (non-fatal): %s", exc)
+        return []
+
+
+async def _run_dalfox_scan(endpoints: list[dict]) -> list[dict]:
+    """Run Dalfox on endpoints that already expose query parameters."""
+    try:
+        from pentra_tools.scanners.dalfox_scanner import DalfoxScanner
+
+        urls = [
+            ep["url"] for ep in endpoints
+            if ep.get("url") and ("?" in ep["url"] or ep.get("params"))
+        ][:5]
+        findings = await DalfoxScanner().scan_batch(urls, max_concurrent=2)
+        return [
+            {
+                **asdict(finding),
+                "title": "Cross-Site Scripting",
+                "target_url": finding.url,
+                "description": finding.evidence or f"Dalfox payload: {finding.payload}",
+            }
+            for finding in findings
+        ]
+    except Exception as exc:
+        log.debug("[dalfox] scan failed (non-fatal): %s", exc)
+        return []
 
 
 async def _get_burp_proxy_findings(domain: str, scope: dict) -> list[dict]:
