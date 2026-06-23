@@ -1,5 +1,5 @@
 # Pentra AI — Progress Report
-> Updated: 2026-06-23 | Tag: `v1.0.0` | Branch: `main` | Sprint 39 ✅ COMPLETE (68 new tests: worker notifications/rss/payloads — 736 total | bugfix: VulnClass.XSS/CSRF)
+> Updated: 2026-06-23 | Tag: `v1.0.0` | Branch: `main` | Sprint 40 ✅ COMPLETE (47 frontend unit tests: Vitest setup + utils/EmptyState/LoadingSpinner/ErrorBoundary — 783 total)
 
 ---
 
