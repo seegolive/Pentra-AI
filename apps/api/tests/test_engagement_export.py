@@ -57,6 +57,8 @@ def _make_engagement(workspace_id, user_id) -> EngagementORM:
     eng.created_by = user_id
     eng.opsec_mode = False
     eng.request_jitter_ms = 0
+    eng.scan_sequential = False
+    eng.auto_approve_exploit_validation = False
     eng.created_at = now
     eng.updated_at = now
     return eng

@@ -68,6 +68,8 @@ def _fake_engagement(**kwargs):
         llm_model="qwen2.5-coder:7b",
         opsec_mode=False,
         request_jitter_ms=0,
+        scan_sequential=False,
+        auto_approve_exploit_validation=False,
     )
     return SimpleNamespace(**{**defaults, **kwargs})
 
@@ -124,6 +126,12 @@ def test_build_initial_state_opsec_mode_propagated():
     state = _build_initial_state(eng)
     assert state["opsec_mode"] is True
     assert state["request_jitter_ms"] == 200
+
+
+def test_build_initial_state_auto_approve_exploit_validation_propagated():
+    eng = _fake_engagement(auto_approve_exploit_validation=True)
+    state = _build_initial_state(eng)
+    assert state["auto_approve_exploit_validation"] is True
 
 
 def test_build_initial_state_out_of_scope_propagated():

@@ -11,6 +11,9 @@ import {
   ChevronRight,
   ChevronLeft,
   Loader2,
+  ScanSearch,
+  Layers,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useCreateEngagement } from "../lib/api";
@@ -135,6 +138,8 @@ interface TargetData {
   inScope: string;
   outScope: string;
   engagementName: string;
+  scanSequential: boolean;
+  autoApproveExploitValidation: boolean;
 }
 
 function Step1({ data, onChange }: { data: TargetData; onChange: (d: TargetData) => void }) {
@@ -199,6 +204,122 @@ function Step1({ data, onChange }: { data: TargetData; onChange: (d: TargetData)
             onChange={(e) => onChange({ ...data, outScope: e.target.value })}
             className="w-full resize-none rounded-ds-md border border-pentra-border bg-pentra-bg-input px-3 py-2 text-[13px] font-mono text-pentra-text-primary placeholder:text-pentra-text-muted outline-none focus:border-pentra-border-focus"
           />
+        </div>
+      </div>
+
+      {/* ── Approval Policy ─────────────────────────────────────────────── */}
+      <div>
+        <label className="block text-[12px] font-semibold text-pentra-text-secondary mb-2">
+          Approval Policy
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => onChange({ ...data, autoApproveExploitValidation: false })}
+            className={cn(
+              "flex items-start gap-3 rounded-ds-md border p-3 text-left transition-all",
+              !data.autoApproveExploitValidation
+                ? "border-pentra-accent bg-pentra-accent-glow"
+                : "border-pentra-border bg-pentra-bg-card hover:border-pentra-border-light"
+            )}
+          >
+            <div className={cn(
+              "mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-ds-sm",
+              !data.autoApproveExploitValidation ? "bg-pentra-accent text-white" : "bg-pentra-bg-panel text-pentra-text-muted"
+            )}>
+              <ShieldCheck className="h-3.5 w-3.5" />
+            </div>
+            <div>
+              <p className="text-[12px] font-semibold text-pentra-text-primary">Manual exploit approval</p>
+              <p className="mt-0.5 text-[11px] text-pentra-text-muted leading-snug">
+                Pause before exploit validation for an explicit human decision.
+              </p>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onChange({ ...data, autoApproveExploitValidation: true })}
+            className={cn(
+              "flex items-start gap-3 rounded-ds-md border p-3 text-left transition-all",
+              data.autoApproveExploitValidation
+                ? "border-pentra-accent bg-pentra-accent-glow"
+                : "border-pentra-border bg-pentra-bg-card hover:border-pentra-border-light"
+            )}
+          >
+            <div className={cn(
+              "mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-ds-sm",
+              data.autoApproveExploitValidation ? "bg-pentra-accent text-white" : "bg-pentra-bg-panel text-pentra-text-muted"
+            )}>
+              <Zap className="h-3.5 w-3.5" />
+            </div>
+            <div>
+              <p className="text-[12px] font-semibold text-pentra-text-primary">Initial approval only</p>
+              <p className="mt-0.5 text-[11px] text-pentra-text-muted leading-snug">
+                Continue through exploit validation automatically after the scan is started.
+              </p>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      {/* ── Subdomain Scan Mode ──────────────────────────────────────────── */}
+      <div>
+        <label className="block text-[12px] font-semibold text-pentra-text-secondary mb-2">
+          Subdomain Scan Mode
+        </label>
+        <div className="grid grid-cols-2 gap-3">
+          {/* Concurrent (default) */}
+          <button
+            type="button"
+            onClick={() => onChange({ ...data, scanSequential: false })}
+            className={cn(
+              "flex items-start gap-3 rounded-ds-md border p-3 text-left transition-all",
+              !data.scanSequential
+                ? "border-pentra-accent bg-pentra-accent-glow"
+                : "border-pentra-border bg-pentra-bg-card hover:border-pentra-border-light"
+            )}
+          >
+            <div className={cn(
+              "mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-ds-sm",
+              !data.scanSequential ? "bg-pentra-accent text-white" : "bg-pentra-bg-panel text-pentra-text-muted"
+            )}>
+              <Layers className="h-3.5 w-3.5" />
+            </div>
+            <div>
+              <p className="text-[12px] font-semibold text-pentra-text-primary">Concurrent</p>
+              <p className="mt-0.5 text-[11px] text-pentra-text-muted leading-snug">
+                Scan all subdomains simultaneously — faster (~5×) but higher traffic volume.
+              </p>
+            </div>
+          </button>
+
+          {/* Sequential */}
+          <button
+            type="button"
+            onClick={() => onChange({ ...data, scanSequential: true })}
+            className={cn(
+              "flex items-start gap-3 rounded-ds-md border p-3 text-left transition-all",
+              data.scanSequential
+                ? "border-pentra-accent bg-pentra-accent-glow"
+                : "border-pentra-border bg-pentra-bg-card hover:border-pentra-border-light"
+            )}
+          >
+            <div className={cn(
+              "mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-ds-sm",
+              data.scanSequential ? "bg-pentra-accent text-white" : "bg-pentra-bg-panel text-pentra-text-muted"
+            )}>
+              <ScanSearch className="h-3.5 w-3.5" />
+            </div>
+            <div>
+              <p className="text-[12px] font-semibold text-pentra-text-primary">
+                Sequential <span className="text-[10px] font-normal text-pentra-text-muted ml-1">per-subdomain</span>
+              </p>
+              <p className="mt-0.5 text-[11px] text-pentra-text-muted leading-snug">
+                Passive → sleep → active per subdomain. Avoids traffic bursts. Recommended for bug bounty.
+              </p>
+            </div>
+          </button>
         </div>
       </div>
     </div>
@@ -370,6 +491,8 @@ export default function ScanWizard() {
     inScope: "",
     outScope: "",
     engagementName: "",
+    scanSequential: false,
+    autoApproveExploitValidation: false,
   });
   const [preset, setPreset] = useState("fast");
   const [auth, setAuth] = useState<AuthData>({
@@ -405,12 +528,14 @@ export default function ScanWizard() {
       const eng = await create.mutateAsync({
         workspace_id: workspaceId,
         name: target.engagementName || `${target.domain} scan`,
-        mode: "semi_auto",
+        mode: target.autoApproveExploitValidation ? "agentic" : "semi_auto",
         in_scope: inScope,
         out_of_scope: outScope,
         llm_model: selectedPreset.model,
         opsec_mode: selectedPreset.opsec ?? false,
         request_jitter_ms: selectedPreset.opsec ? 2000 : 0,
+        scan_sequential: target.scanSequential,
+        auto_approve_exploit_validation: target.autoApproveExploitValidation,
       });
       toastSuccess("Engagement created", eng.name);
       navigate(`/engagements/${eng.id}`);
@@ -456,10 +581,22 @@ export default function ScanWizard() {
                 <ReviewRow label="Preset" value={`${selectedPreset.name} (${selectedPreset.eta})`} />
                 <ReviewRow label="Model" value={selectedPreset.model} />
                 <ReviewRow
+                  label="Mode"
+                  value={target.autoApproveExploitValidation ? "Agentic" : "Semi-auto"}
+                />
+                <ReviewRow
                   label="Auth Mode"
                   value={auth.enabled ? auth.authType : "None (unauthenticated)"}
                 />
                 <ReviewRow label="Opsec Mode" value={selectedPreset.opsec ? "Enabled" : "Disabled"} />
+                <ReviewRow
+                  label="Scan Mode"
+                  value={target.scanSequential ? "Sequential (per-subdomain, traffic-safe)" : "Concurrent (default)"}
+                />
+                <ReviewRow
+                  label="Approval"
+                  value={target.autoApproveExploitValidation ? "Initial approval only" : "Manual exploit approval"}
+                />
               </div>
             </div>
           )}

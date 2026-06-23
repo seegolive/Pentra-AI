@@ -55,6 +55,18 @@ class Engagement(BaseModel):
         description="Explicitly excluded sub-targets",
     )
 
+    # ── Scan behaviour ─────────────────────────────────────────────────────
+    opsec_mode: bool = Field(default=False, description="Enable OPSEC jitter between tool calls")
+    request_jitter_ms: int = Field(default=0, description="Max random delay (ms) added before each tool request")
+    scan_sequential: bool = Field(
+        default=False,
+        description="Scan each discovered subdomain one-by-one (passive then active) instead of all at once. Prevents traffic bursts and enables per-host rate-limit profiling.",
+    )
+    auto_approve_exploit_validation: bool = Field(
+        default=False,
+        description="Bypass exploit-validation HITL approval after the engagement has been started.",
+    )
+
     # ── LLM Configuration ─────────────────────────────────────────────────
     llm_model: str = Field(
         description="Ollama model tag selected for this engagement (e.g., 'qwen2.5-coder:32b')"
@@ -93,6 +105,13 @@ class EngagementCreate(BaseModel):
         default="qwen2.5-coder:32b",
         description="Ollama model tag to use for this engagement",
     )
+    opsec_mode: bool = Field(default=False)
+    request_jitter_ms: int = Field(default=0, ge=0, le=30000)
+    scan_sequential: bool = Field(
+        default=False,
+        description="Scan each subdomain one-by-one (sequential mode) instead of all at once",
+    )
+    auto_approve_exploit_validation: bool = Field(default=False)
 
 
 class EngagementUpdate(BaseModel):
@@ -107,6 +126,10 @@ class EngagementUpdate(BaseModel):
     in_scope: list[str] | None = None
     out_of_scope: list[str] | None = None
     llm_model: str | None = None
+    opsec_mode: bool | None = None
+    request_jitter_ms: int | None = Field(default=None, ge=0, le=30000)
+    scan_sequential: bool | None = None
+    auto_approve_exploit_validation: bool | None = None
 
 
 class EngagementResponse(Engagement):

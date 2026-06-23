@@ -61,6 +61,8 @@ def _make_engagement(workspace_id, user_id, status: str = "planning") -> Engagem
     eng.langgraph_thread_id = str(eng.id)
     eng.opsec_mode = False
     eng.request_jitter_ms = 0
+    eng.scan_sequential = False
+    eng.auto_approve_exploit_validation = False
     eng.created_by = user_id
     eng.created_at = now
     eng.updated_at = now
@@ -80,6 +82,8 @@ def _engagement_create(workspace_id) -> EngagementCreate:
         llm_model="qwen2.5-coder:7b",
         opsec_mode=True,
         request_jitter_ms=250,
+        scan_sequential=True,
+        auto_approve_exploit_validation=True,
     )
 
 
@@ -123,6 +127,8 @@ async def test_create_engagement_persists_thread_id_equal_engagement_id():
     assert created.in_scope == ["acme.test"]
     assert result.langgraph_thread_id == str(result.id)
     assert result.opsec_mode is True
+    assert result.scan_sequential is True
+    assert result.auto_approve_exploit_validation is True
 
 
 @pytest.mark.asyncio

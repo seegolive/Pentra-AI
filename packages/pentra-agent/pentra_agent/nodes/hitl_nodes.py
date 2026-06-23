@@ -7,7 +7,8 @@ Rules:
     semi_auto  → interrupt, wait for user.
     agentic    → auto-approve, write audit log.
 - hitl_exploit_review:
-    ALWAYS interrupts — destructive action safety gate, never bypassed.
+    interrupts by default; can auto-approve only when the engagement explicitly
+    enables auto_approve_exploit_validation.
 """
 
 from __future__ import annotations
@@ -105,9 +106,32 @@ async def hitl_recon_review(state: PentraState) -> dict:
 async def hitl_exploit_review(state: PentraState) -> dict:
     """Safety gate before exploit validation.
 
-    ALWAYS interrupts regardless of mode — exploit actions are destructive
-    and require explicit human approval. This gate cannot be bypassed.
+    Interrupts by default because exploit validation can be destructive.
+    Operators may explicitly enable auto_approve_exploit_validation when they
+    want one approval at the beginning and no later exploit-validation pause.
     """
+    if state.get("auto_approve_exploit_validation", False):
+        await write_audit_log(
+            engagement_id=state["engagement_id"],
+            actor="agent/auto-approve",
+            action="auto_approved_exploit_validation",
+            detail={
+                "reason": "Engagement configured to bypass exploit-validation approval",
+                "mode": state.get("mode"),
+                "findings_to_validate": len(state.get("findings", [])),
+                "high_or_critical": sum(
+                    1
+                    for f in state.get("findings", [])
+                    if (f.get("severity") or "").lower() in ("high", "critical")
+                ),
+            },
+        )
+        log.info(
+            "[hitl_exploit_review] Auto-approved exploit validation for %s",
+            state["engagement_id"],
+        )
+        return {"user_decision": "approve", "awaiting_approval": False}
+
     decision = interrupt({
         "type": "AWAITING_APPROVAL",
         "phase": "exploit_validation",

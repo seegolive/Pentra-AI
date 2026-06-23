@@ -65,6 +65,8 @@ class EngagementORM(Base):
 
     opsec_mode: Mapped[bool] = mapped_column(nullable=False, default=False, comment="Enable OPSEC jitter between tool calls")
     request_jitter_ms: Mapped[int] = mapped_column(nullable=False, default=0, comment="Max random delay (ms) added before each tool request")
+    scan_sequential: Mapped[bool] = mapped_column(nullable=False, default=False, comment="Scan subdomains one-by-one (passive→sleep→active) instead of concurrently")
+    auto_approve_exploit_validation: Mapped[bool] = mapped_column(nullable=False, default=False, comment="Bypass exploit-validation HITL gate after initial approval")
 
     in_scope: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     out_of_scope: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)

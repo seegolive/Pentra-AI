@@ -220,6 +220,7 @@ async def _run_subscan_async(engagement_id: str, target_urls: list[str]) -> None
             "llm_model": engagement.llm_model or settings.ollama_model_fast,
             "opsec_mode": bool(engagement.opsec_mode),
             "request_jitter_ms": int(engagement.request_jitter_ms or 0),
+            "auto_approve_exploit_validation": bool(getattr(engagement, "auto_approve_exploit_validation", False)),
             "current_phase": "vuln_hunt",
             "phase_history": [],
             "subdomains": [],
@@ -305,6 +306,8 @@ def _build_initial_state(engagement) -> dict:
     llm_model: str = engagement.llm_model or settings.ollama_model_fast
     opsec_mode: bool = bool(engagement.opsec_mode)
     request_jitter_ms: int = int(engagement.request_jitter_ms or 0)
+    scan_sequential: bool = bool(getattr(engagement, "scan_sequential", False))
+    auto_approve_exploit_validation: bool = bool(getattr(engagement, "auto_approve_exploit_validation", False))
 
     return {
         "engagement_id": str(engagement.id),
@@ -321,6 +324,8 @@ def _build_initial_state(engagement) -> dict:
         "llm_model": llm_model,
         "opsec_mode": opsec_mode,
         "request_jitter_ms": request_jitter_ms,
+        "scan_sequential": scan_sequential,
+        "auto_approve_exploit_validation": auto_approve_exploit_validation,
         "current_phase": "planning",
         "phase_history": [],
         "subdomains": [],
@@ -338,5 +343,4 @@ def _build_initial_state(engagement) -> dict:
         "tool_outputs": [],
         "errors": [],
     }
-
 

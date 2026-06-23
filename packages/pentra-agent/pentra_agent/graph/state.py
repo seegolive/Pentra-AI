@@ -105,6 +105,10 @@ class PentraState(TypedDict):
     tool_outputs: Annotated[list[dict], operator.add]
     errors: Annotated[list[str], operator.add]
 
+    # ── Scan behaviour ────────────────────────────────────────────────
+    scan_sequential: bool  # per-engagement: scan subdomains one-by-one vs all at once
+    auto_approve_exploit_validation: bool  # bypass final exploit HITL gate after initial approval
+
     # ── Recon metadata ────────────────────────────────────────────────
     rate_limit_info: dict  # {safe_rps, delay_ms, is_limited, notes}
     waf_info: dict         # {waf_type, is_blocking, bypass_strategies, safe_rps}

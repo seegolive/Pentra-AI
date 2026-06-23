@@ -102,6 +102,8 @@ export interface Engagement {
   langgraph_thread_id: string;
   opsec_mode: boolean;
   request_jitter_ms: number;
+  scan_sequential: boolean;
+  auto_approve_exploit_validation: boolean;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -119,6 +121,8 @@ export interface EngagementCreate {
   llm_model: string;
   opsec_mode?: boolean;
   request_jitter_ms?: number;
+  scan_sequential?: boolean;
+  auto_approve_exploit_validation?: boolean;
 }
 
 // ── Finding ───────────────────────────────────────────────────────────────────

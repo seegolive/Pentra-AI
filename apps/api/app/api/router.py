@@ -146,6 +146,8 @@ async def create_engagement(
         llm_model=data.llm_model,
         opsec_mode=data.opsec_mode,
         request_jitter_ms=data.request_jitter_ms,
+        scan_sequential=data.scan_sequential,
+        auto_approve_exploit_validation=data.auto_approve_exploit_validation,
         langgraph_thread_id=str(eng_id),  # thread_id == engagement_id
         created_by=current_user.id,
     )
@@ -592,6 +594,10 @@ async def import_engagement(
         in_scope=src.in_scope,
         out_of_scope=src.out_of_scope,
         llm_model=src.llm_model,
+        opsec_mode=src.opsec_mode,
+        request_jitter_ms=src.request_jitter_ms,
+        scan_sequential=src.scan_sequential,
+        auto_approve_exploit_validation=src.auto_approve_exploit_validation,
         langgraph_thread_id=str(new_id),
         created_by=current_user.id,
     )
@@ -1146,6 +1152,8 @@ async def _run_agent(eng: EngagementORM) -> None:
         "llm_model": eng.llm_model,
         "opsec_mode": eng.opsec_mode,
         "request_jitter_ms": eng.request_jitter_ms,
+        "scan_sequential": bool(getattr(eng, "scan_sequential", False)),
+        "auto_approve_exploit_validation": bool(getattr(eng, "auto_approve_exploit_validation", False)),
         "current_phase": "planning",
         "phase_history": [],
         "subdomains": [],

@@ -61,6 +61,8 @@ function makeEngagement(overrides: Partial<Engagement> = {}): Engagement {
     langgraph_thread_id: 'eng-1',
     opsec_mode: false,
     request_jitter_ms: 0,
+    scan_sequential: false,
+    auto_approve_exploit_validation: false,
     created_by: 'user-1',
     created_at: '2026-06-23T08:00:00Z',
     updated_at: '2026-06-23T08:00:00Z',

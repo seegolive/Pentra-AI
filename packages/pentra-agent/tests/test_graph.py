@@ -7,9 +7,10 @@ Tests (8 total):
   4.  route_after_vuln_hunt → report when only medium/low findings
   5.  route_after_vuln_hunt → report when no findings
   6.  hitl_plan_review auto-approves in agentic mode
-  7.  hitl_exploit_review always interrupts (regardless of mode)
-  8.  LLMClient.complete_json strips markdown fences
-  9.  LLMClient.complete_json handles raw JSON without fences
+  7.  hitl_exploit_review interrupts by default
+  8.  hitl_exploit_review can auto-approve when explicitly configured
+  9.  LLMClient.complete_json strips markdown fences
+  10. LLMClient.complete_json handles raw JSON without fences
 """
 
 from __future__ import annotations
@@ -36,6 +37,8 @@ def _base_state(**overrides) -> PentraState:
         "llm_model": "qwen2.5-coder:7b",
         "opsec_mode": False,
         "request_jitter_ms": 0,
+        "scan_sequential": False,
+        "auto_approve_exploit_validation": False,
         "current_phase": "planning",
         "phase_history": [],
         "subdomains": [],
@@ -122,11 +125,11 @@ async def test_hitl_plan_review_auto_approves_in_agentic_mode():
            call_kwargs.args[2] == "auto_approved_plan"
 
 
-# ── 7. hitl_exploit_review always interrupts ─────────────────────────────────
+# ── 7. hitl_exploit_review interrupts by default ─────────────────────────────
 
 @pytest.mark.asyncio
-async def test_hitl_exploit_always_interrupts():
-    """hitl_exploit_review must call interrupt() regardless of mode."""
+async def test_hitl_exploit_interrupts_by_default():
+    """hitl_exploit_review must call interrupt() unless explicitly bypassed."""
     from pentra_agent.nodes.hitl_nodes import hitl_exploit_review
 
     findings = [
@@ -152,13 +155,39 @@ async def test_hitl_exploit_always_interrupts():
         assert interrupt_payload.get("engagement_id") == "test-engagement-001"
 
 
+# ── 8. hitl_exploit_review can auto-approve when configured ─────────────────
+
+@pytest.mark.asyncio
+async def test_hitl_exploit_auto_approves_when_explicitly_configured():
+    from pentra_agent.nodes.hitl_nodes import hitl_exploit_review
+
+    state = _base_state(
+        auto_approve_exploit_validation=True,
+        findings=[
+            {"title": "RCE via File Upload", "severity": "critical", "target_url": "https://example.com/upload"},
+        ],
+    )
+
+    with patch("pentra_agent.nodes.hitl_nodes.interrupt") as mock_interrupt:
+        with patch("pentra_agent.nodes.hitl_nodes.write_audit_log", new_callable=AsyncMock) as mock_audit:
+            result = await hitl_exploit_review(state)
+
+    assert result["user_decision"] == "approve"
+    assert result["awaiting_approval"] is False
+    mock_interrupt.assert_not_called()
+    mock_audit.assert_awaited_once()
+    call_kwargs = mock_audit.call_args
+    assert call_kwargs.kwargs.get("action") == "auto_approved_exploit_validation" or \
+           call_kwargs.args[2] == "auto_approved_exploit_validation"
+
+
 class _FakeInterrupt(Exception):
     def __init__(self, payload):
         self.payload = payload
         super().__init__(str(payload))
 
 
-# ── 8. LLMClient.complete_json strips markdown fences ────────────────────────
+# ── 9. LLMClient.complete_json strips markdown fences ────────────────────────
 
 @pytest.mark.asyncio
 async def test_llm_client_complete_json_strips_markdown_fences():
@@ -175,7 +204,7 @@ async def test_llm_client_complete_json_strips_markdown_fences():
     assert result["severity"] == "high"
 
 
-# ── 9. LLMClient.complete_json handles raw JSON without fences ───────────────
+# ── 10. LLMClient.complete_json handles raw JSON without fences ──────────────
 
 @pytest.mark.asyncio
 async def test_llm_client_complete_json_handles_raw_json():

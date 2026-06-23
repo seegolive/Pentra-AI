@@ -39,6 +39,8 @@ class EngagementCreate(BaseModel):
     llm_model: str = Field(default="qwen2.5:32b")
     opsec_mode: bool = False
     request_jitter_ms: int = Field(default=0, ge=0, le=30_000)
+    scan_sequential: bool = False
+    auto_approve_exploit_validation: bool = False
 
 
 class EngagementResponse(BaseModel):
@@ -56,6 +58,8 @@ class EngagementResponse(BaseModel):
     langgraph_thread_id: str
     opsec_mode: bool
     request_jitter_ms: int
+    scan_sequential: bool
+    auto_approve_exploit_validation: bool
     created_by: UUID
     created_at: datetime
     updated_at: datetime
@@ -240,4 +244,3 @@ class SnapshotDiffResponse(BaseModel):
 
 class SubscanRequest(BaseModel):
     target_urls: list[str] = Field(..., min_length=1, max_length=50)
-
