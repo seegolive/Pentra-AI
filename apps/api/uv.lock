@@ -1832,6 +1832,12 @@ requires-dist = [
     { name = "weasyprint", specifier = ">=62.0" },
 ]
 
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-asyncio", specifier = ">=0.24" },
+]
+
 [[package]]
 name = "pentra-scope"
 version = "0.1.0"
@@ -1842,6 +1848,12 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [{ name = "pentra-shared", editable = "../../packages/pentra-shared" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-asyncio", specifier = ">=0.24" },
+]
 
 [[package]]
 name = "pentra-shared"

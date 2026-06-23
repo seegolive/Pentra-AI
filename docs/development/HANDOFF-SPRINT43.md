@@ -6,7 +6,7 @@
 ## Ringkasan Eksekutif
 
 Pentra AI adalah self-hosted AI Security Research Platform (FastAPI + LangGraph + Ollama + React).
-Sprint 33–42 fokus pada **test coverage** — dari ~496 tests menjadi **873 tests passing (0 failed)**.
+Sprint 33–44 fokus pada **test coverage** — dari ~496 tests menjadi **972 tests passing (0 failed)**.
 
 ---
 
@@ -14,11 +14,11 @@ Sprint 33–42 fokus pada **test coverage** — dari ~496 tests menjadi **873 te
 
 | Metrik | Nilai |
 |--------|-------|
-| Total tests | **873 passing, 0 failed** |
-| Python tests | 736 (pytest) |
-| TypeScript tests | 137 (Vitest) |
+| Total tests | **972 passing, 0 failed** |
+| Python tests | 761 (pytest) |
+| TypeScript tests | 211 (Vitest, 20 files) |
 | E2E Playwright | 90 tests |
-| Frontend test files | 12 (`src/**/*.test.{ts,tsx}`) |
+| Frontend test files | 20 (`src/**/*.test.{ts,tsx}`) |
 | Branch | `main` |
 | Last commit | `a1b5bd2` |
 
@@ -65,122 +65,69 @@ Sprint 33–42 fokus pada **test coverage** — dari ~496 tests menjadi **873 te
 - `src/components/KBInjectDialog.test.tsx` — 13 tests (vi.mock useKBManualInject)
 - `src/components/EngagementOverviewCard.test.tsx` — 14 tests (vi.mock useApproveAction/useStopEngagement)
 
+### Sprint 43 — frontend pages + API router coverage (77 tests)
+- `apps/web/src/pages/LoginPage.test.tsx` — 7 tests
+  - render heading/fields, required fields, login submit, API error, authenticated redirect, setup redirect
+- `apps/web/src/hooks/useEngagementFeed.test.ts` — 9 tests
+  - WebSocket connect/disconnect, JSON event parsing, ping ignore, error notifications, approval state, REST history restore
+- `apps/web/src/pages/DashboardPage.test.tsx` — 7 tests
+  - heading, empty state, engagement cards, findings, navigation, quick actions
+- `apps/web/src/pages/WorkspacesPage.test.tsx` — 7 tests
+  - heading, loading, empty state, cards, create form, create submit, card navigation
+- `apps/web/src/components/StopAllModal.test.tsx` — 8 tests
+  - visibility, empty/running state, cancel, row stop, stop all success, partial failure, disabled state
+- `apps/web/src/pages/EngagementsPage.test.tsx` — 14 tests
+  - heading/breadcrumb, hook params, loading/empty/list states, navigation, create form, agentic warning, H1 scope import, JSON import
+- `apps/api/tests/test_workspace_router.py` — 6 tests
+  - create/list/get workspace, 404, non-owner 403, admin access
+- `apps/api/tests/test_engagement_router.py` — 11 tests
+  - create/list/get/start/stop/subscan/mode validation
+- `apps/api/tests/test_findings_router.py` — 8 tests
+  - list/recent findings, patch 404/success, submit-to-knowledge 404/existing/create
+
+### Sprint 44 — frontend Settings + KnowledgeBrowser coverage (22 tests)
+- `apps/web/src/pages/SettingsPage.test.tsx` — 11 tests
+  - sections, profile roles/placeholders, version info, password required fields, local validation, mutation success, API error, pending state
+- `apps/web/src/pages/KnowledgeBrowser.test.tsx` — 11 tests
+  - initial state, search enable/submit/click/Enter, loading/error/zero-results/results, drawer open/close, inject navigation, filter propagation
+
+**Verifikasi terbaru:**
+- `cd apps/web && pnpm test` → 211 passed, 0 failed
+- `cd apps/web && pnpm type-check` → pass
+- `cd apps/api && uv run pytest tests/ -q` → 148 passed, 0 failed
+
 ---
 
-## Yang BELUM Dikerjakan (Backlog Sprint 43+)
+## Yang BELUM Dikerjakan (Backlog Sprint 45+)
 
 ### PRIORITAS TINGGI
 
-#### 1. Frontend: LoginPage
-**File**: `apps/web/src/pages/LoginPage.tsx`
-**Tests to write**: `src/pages/LoginPage.test.tsx`
-
-```
-Tests yang diperlukan:
-- renders username + password fields
-- renders "Sign in" heading
-- submit calls login.mutateAsync with {username, password}
-- error message shown when login fails
-- already-authenticated user redirected to /workspaces
-- form fields are required (HTML5 validation)
-```
-
-**Mocks yang perlu dibuat**:
-```typescript
-vi.mock('../lib/api', () => ({
-  useLogin: () => ({ mutateAsync: mockLogin, isPending: false }),
-  getMeApi: vi.fn(),
-}))
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom')
-  return { ...actual, useNavigate: () => mockNavigate }
-})
-vi.mock('axios')  // untuk setup check
-```
-
----
-
-#### 2. Frontend: useEngagementFeed hook
-**File**: `apps/web/src/hooks/useEngagementFeed.ts`
-**Tests to write**: `src/hooks/useEngagementFeed.test.ts`
-
-```
-Tests yang diperlukan:
-- connects to WebSocket on mount
-- disconnects on unmount
-- parses incoming JSON events
-- updates messages state on each event
-- handles ping events (no state change)
-- handles AGENT_ERROR event
-- handles AWAITING_APPROVAL event (sets awaitingApproval=true)
-```
-
-**Cara mock WebSocket di Vitest/jsdom**:
-```typescript
-class MockWebSocket {
-  static instances: MockWebSocket[] = []
-  onmessage: ((e: MessageEvent) => void) | null = null
-  onopen: (() => void) | null = null
-  onclose: (() => void) | null = null
-  close = vi.fn()
-  send = vi.fn()
-  constructor(url: string) { MockWebSocket.instances.push(this) }
-  // Helper to trigger message from test:
-  emit(data: object) { this.onmessage?.({ data: JSON.stringify(data) } as MessageEvent) }
-}
-vi.stubGlobal('WebSocket', MockWebSocket)
-```
-
----
-
-#### 3. Frontend: DashboardPage / WorkspacesPage
-**Files**: `apps/web/src/pages/DashboardPage.tsx`, `apps/web/src/pages/WorkspacesPage.tsx`
-
-```
-Tests yang diperlukan (masing-masing):
-- renders page heading
-- shows loading state
-- shows empty state when no workspaces/engagements
-- renders workspace/engagement cards
-- create button navigates correctly
-```
-
-**Mocks**: `vi.mock('../lib/api', ...)` untuk `useWorkspaces`, `useEngagements`
-
----
-
-#### 4. Python: Worker task integration tests (lebih dalam)
+#### 1. Python: Worker task integration tests (lebih dalam)
 **Files yang belum punya tests mendalam**:
 - `apps/worker/app/tasks/knowledge_update.py` — `_extract_knowledge_batch()` helper
 - `apps/worker/app/tasks/bugcrowd_scraper.py` — sudah ada tests di `test_bugcrowd_scraper.py`, tapi bisa ditambah
 
 ---
 
-#### 5. Python: Endpoint tests yang masih kurang
-**File**: `apps/api/tests/` — cek coverage dengan:
-```bash
-cd apps/api && uv run pytest --co -q 2>&1 | grep "test session"
-```
+#### 2. Frontend pages/components berikutnya
+- `apps/web/src/pages/WorkerHealthPage.tsx`
+- `apps/web/src/pages/AdminPage.tsx`
+- `apps/web/src/pages/AdminUsersPage.tsx`
+- `apps/web/src/pages/AttackSurfacePage.tsx`
+- `apps/web/src/pages/ApiVaultPage.tsx`
+- `apps/web/src/pages/GFPatternsPage.tsx`
+- `apps/web/src/pages/TrendsPage.tsx`
 
-Router yang belum ada tests:
-- `apps/api/app/api/workspace_router.py`
-- `apps/api/app/api/findings_router.py`
-- `apps/api/app/api/engagement_router.py`
+Mulai dari halaman yang paling sedikit dependency eksternal: `ApiVaultPage`, `GFPatternsPage`, lalu `WorkerHealthPage`.
 
 ---
 
 ### PRIORITAS RENDAH (nice to have)
 
-#### 6. Frontend: StopAllModal
-**File**: `apps/web/src/components/StopAllModal.tsx`
-```
-Tests: dialog visibility, confirm stops all engagements, cancel closes
-```
-
-#### 7. pentra-agent: Node tests yang lebih dalam
+#### 3. pentra-agent: Node tests yang lebih dalam
 **File**: `packages/pentra-agent/` — sudah ada tests, tapi node individu bisa ditambah
 
-#### 8. E2E live run manual (Sprint 17.2)
+#### 4. E2E live run manual (Sprint 17.2)
 **Tidak bisa diotomasi** — harus manual dengan target real
 
 ---
@@ -219,7 +166,7 @@ cd apps/web && pnpm e2e
 
 1. **Baca file ini dulu** sebelum mulai coding
 2. **Baca CLAUDE.md** di root project untuk coding standards
-3. **Mulai dari LoginPage** (PRIORITAS TINGGI #1) — paling straightforward
+3. **Mulai dari Worker task deeper tests atau frontend pages ringan** (`ApiVaultPage`, `GFPatternsPage`, `WorkerHealthPage`)
 4. **Setelah setiap batch tests**, jalankan full test suite untuk verifikasi tidak ada regresi
 5. **Pattern mock** yang sudah terbukti kerja:
    - Local imports dalam function body → patch di source module, bukan caller
@@ -245,11 +192,14 @@ packages/
 apps/
   api/tests/
     test_auth_router.py        ✅ 12 tests
+    test_engagement_router.py  ✅ 11 tests
+    test_findings_router.py    ✅ 8 tests
     test_h1_router.py          ✅ 6 tests
     test_internal_router.py    ✅ 10 tests
     test_monitoring_router.py  ✅ 16 tests
     test_report_router.py      ✅ 9 tests
     test_setup_router.py       ✅ 7 tests
+    test_workspace_router.py   ✅ 6 tests
     (+ existing tests ~63)
 
   worker/tests/
@@ -268,6 +218,7 @@ web/src/
     toast.test.ts              ✅ 12 tests
   hooks/
     useNotifications.test.ts   ✅ 16 tests
+    useEngagementFeed.test.ts  ✅ 9 tests
   components/
     EmptyState.test.tsx              ✅ 9 tests
     LoadingSpinner.test.tsx          ✅ 8 tests
@@ -278,15 +229,17 @@ web/src/
     FilterPanel.test.tsx             ✅ 13 tests
     KBInjectDialog.test.tsx          ✅ 13 tests
     EngagementOverviewCard.test.tsx  ✅ 14 tests
+    StopAllModal.test.tsx            ✅ 8 tests
 
   pages/
-    LoginPage.test.tsx         ❌ BELUM
-    DashboardPage.test.tsx     ❌ BELUM
-    WorkspacesPage.test.tsx    ❌ BELUM
-  hooks/
-    useEngagementFeed.test.ts  ❌ BELUM
+    DashboardPage.test.tsx           ✅ 7 tests
+    EngagementsPage.test.tsx         ✅ 14 tests
+    KnowledgeBrowser.test.tsx        ✅ 11 tests
+    LoginPage.test.tsx               ✅ 7 tests
+    SettingsPage.test.tsx            ✅ 11 tests
+    WorkspacesPage.test.tsx          ✅ 7 tests
 ```
 
 ---
 
-*Total: 873 tests passing | Target Sprint 43+: 950+ tests*
+*Total: 972 tests passing | Target Sprint 43+: achieved; Sprint 45 target: 1000+ tests*
