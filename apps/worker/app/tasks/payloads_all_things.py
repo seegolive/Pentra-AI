@@ -47,7 +47,7 @@ _GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")  # optional — raises rate limit to 5
 # ── Folder-name → VulnClass mapping ──────────────────────────────────────────
 
 _FOLDER_MAP: dict[str, VulnClass] = {
-    "XSS Injection": VulnClass.XSS,
+    "XSS Injection": VulnClass.XSS_STORED,
     "SQL Injection": VulnClass.SQLI,
     "SSRF injection": VulnClass.SSRF,
     "IDOR": VulnClass.IDOR,
@@ -56,7 +56,7 @@ _FOLDER_MAP: dict[str, VulnClass] = {
     "File Inclusion": VulnClass.PATH_TRAVERSAL,
     "Path Traversal": VulnClass.PATH_TRAVERSAL,
     "Open Redirect": VulnClass.OPEN_REDIRECT,
-    "CSRF Injection": VulnClass.CSRF,
+    "CSRF Injection": VulnClass.AUTH_BYPASS,
     "XXE Injection": VulnClass.XXE,
     "Insecure Deserialization": VulnClass.DESERIALIZATION,
     "Server Side Template Injection": VulnClass.SSTI,
