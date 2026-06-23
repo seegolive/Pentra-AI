@@ -1,5 +1,5 @@
 # Pentra AI — Progress Report
-> Updated: 2026-06-23 | Tag: `v1.0.0` | Branch: `main` | Sprint 40 ✅ COMPLETE (47 frontend unit tests: Vitest setup + utils/EmptyState/LoadingSpinner/ErrorBoundary — 783 total)
+> Updated: 2026-06-23 | Tag: `v1.0.0` | Branch: `main` | Sprint 41 ✅ COMPLETE (42 new frontend tests: Zustand store, KnowledgeCard, ProtectedRoute, NotificationBell — 825 total)
 
 ---
 
