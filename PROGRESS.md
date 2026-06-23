@@ -1,5 +1,5 @@
 # Pentra AI — Progress Report
-> Updated: 2026-06-19 | Tag: `v1.0.0` | Branch: `main` | Sprint 35 ✅ COMPLETE (NameError fix + 26 new tests: internal + monitoring routers)
+> Updated: 2026-06-23 | Tag: `v1.0.0` | Branch: `main` | Sprint 36 ✅ COMPLETE (25 new tests: auth, setup, h1 routers — 123 API / 556 total)
 
 ---
 
@@ -24,13 +24,13 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 
 | Metrik | Nilai |
 |--------|-------|
-| **Test suite** | **531 passing** (225 pentra-tools + 156 pentra-agent + 25 pentra-knowledge + 27 apps/worker + 98 apps/api), 0 failed |
+| **Test suite** | **556 passing** (225 pentra-tools + 156 pentra-agent + 25 pentra-knowledge + 27 apps/worker + 123 apps/api), 0 failed |
 | **Playwright E2E** | **90 tests** (8 spec files), 0 failed |
-| **Test files** | 56 unit + 8 e2e spec files |
+| **Test files** | 59 unit + 8 e2e spec files |
 | **KB records** | **8,341** (Live API as of 2026-06-15; HackerOne — sumber tunggal, lihat keputusan Sprint 29) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
 | **Git tag** | `v1.0.0` — `main` |
-| **Sprint aktif** | Sprint 35 ✅ COMPLETE — NameError fix (monitoring_router `update` import) + 26 new tests (internal + monitoring routers, 98 API total) |
+| **Sprint aktif** | Sprint 36 ✅ COMPLETE — 25 new tests: auth_router (11), setup_router (7), h1_router (6), plus patch fixes (123 API total) |
 | **LLM** | qwen2.5-coder:32b (default), qwen3:8b (fast), bge-m3 (embedding), **pentra-ft** (Qwen2.5-Coder-7B fine-tuned, 4.4GB Q4_K_M) |
 
 Live API: 8,341 records as of 2026-06-15.
@@ -1052,3 +1052,70 @@ Bug fixed:     NameError on mark_all_alerts_read (missing update import)
 ```
 
 *Updated: 2026-06-19 — Sprint 35 complete: NameError fix di monitoring_router (update import missing), 10 tests untuk internal_router (auth + bulk findings), 16 tests untuk monitoring_router (alerts, snapshots, diff, schedule). 531 total tests passing.*
+
+---
+
+### Sprint 36 ✅ COMPLETE — Auth + Setup + H1 Router Tests (25 baru)
+
+**Konteks:** 3 router kritis masih 0% test coverage: `auth_router.py` (JWT auth flow), `setup_router.py` (first-run wizard), `h1_router.py` (H1 scope import). Sprint ini menyelesaikan seluruh coverage untuk semua endpoint auth dan setup.
+
+---
+
+#### Coverage Sprint 36 — auth_router.py (11 tests)
+
+| Test | Scenario |
+|------|----------|
+| `test_register_creates_user` | Happy path — user dibuat, add+commit dipanggil |
+| `test_register_conflict_returns_409` | Username/email sudah ada → 409 Conflict |
+| `test_login_valid_credentials_returns_tokens` | Password benar → access + refresh token |
+| `test_login_wrong_password_returns_401` | Password salah → 401 |
+| `test_login_unknown_user_returns_401` | User tidak ada → 401 |
+| `test_login_disabled_account_returns_403` | `is_active=False` → 403 |
+| `test_refresh_valid_token_returns_new_tokens` | Valid refresh token → token pair baru |
+| `test_refresh_invalid_token_returns_401` | Malformed JWT → 401 |
+| `test_refresh_access_token_rejected` | Access token di /refresh → 401 (wrong type) |
+| `test_get_me_returns_user_info` | /me returns username, email, is_admin, id |
+| `test_change_password_valid` | Password lama benar → hash baru disimpan |
+| `test_change_password_wrong_current_returns_400` | Password lama salah → 400 |
+
+---
+
+#### Coverage Sprint 36 — setup_router.py (7 tests)
+
+| Test | Scenario |
+|------|----------|
+| `test_setup_status_not_configured` | Belum ada admin → `requires_setup=True` |
+| `test_setup_status_configured` | Admin ada, Ollama OK → `is_configured=True`, kb_count=8341 |
+| `test_setup_status_ollama_unreachable` | Ollama down → `ollama_reachable=False` |
+| `test_initialize_creates_admin` | Happy path → admin dibuat, `success=True` |
+| `test_initialize_blocked_if_admin_exists` | Admin sudah ada → 403 |
+| `test_initialize_triggers_seed_knowledge` | `seed_knowledge=True` → Celery task dikirim |
+| `test_initialize_username_conflict_returns_409` | Username taken → 409 |
+
+---
+
+#### Coverage Sprint 36 — h1_router.py (6 tests)
+
+| Test | Scenario |
+|------|----------|
+| `test_h1_scope_returns_scope_data` | Happy path → in_scope, out_of_scope, program_name |
+| `test_h1_scope_invalid_handle_returns_422` | Handle dengan karakter invalid → 422 |
+| `test_h1_scope_unknown_program_returns_404` | `ValueError` dari syncer → 404 |
+| `test_h1_scope_network_error_returns_502` | Network timeout → 502 |
+| `test_h1_scope_counts_raw_assets` | `raw_in_scope_count` dan `raw_out_of_scope_count` benar |
+| `test_h1_scope_handle_with_hyphen_and_underscore` | `my-program_123` valid handle |
+
+---
+
+#### Status Akhir Sprint 36
+
+```
+API tests:     98 → 123 (+25), 0 failed
+Total tests:   531 → 556, 0 failed
+Test files:    10 → 13 (api/tests/)
+Coverage:      Semua 10 router sekarang punya test
+               (auth, setup, h1, internal, monitoring, report,
+                rate_limit, ws, worker_health, workspace_isolation)
+```
+
+*Updated: 2026-06-23 — Sprint 36 complete: 25 new tests untuk 3 router yang belum ter-cover — auth_router (register/login/refresh/me/change-password), setup_router (status + initialize), h1_router (scope import + error paths). 556 total tests, 0 failed. Semua API router sekarang fully tested.*
