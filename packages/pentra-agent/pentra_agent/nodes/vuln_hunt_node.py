@@ -52,6 +52,13 @@ try:
 except ImportError:
     _BURP_AVAILABLE = False
 
+try:
+    from pentra_tools.recon.rate_limit_detector import probe_rate_limit
+    _RL_AVAILABLE = True
+except ImportError:
+    probe_rate_limit = None  # type: ignore[assignment]
+    _RL_AVAILABLE = False
+
 from pentra_scope import ScopeEnforcer
 from pentra_scope.errors import ScopeViolationError
 
@@ -248,23 +255,28 @@ async def vuln_hunt_node(state: PentraState) -> dict:
             _run_ssrf_scan(endpoints, state["scope"], state.get("auth_credentials")),
             _run_crlfuzz_scan(endpoints),
             _run_dalfox_scan(endpoints),
-            return_exceptions=False,
+            return_exceptions=True,  # one tool failing must not kill all others
         )
-        raw_findings.extend(nuclei_results)
-        raw_findings.extend(ffuf_results)
-        raw_findings.extend(burp_scan_results)
-        raw_findings.extend(burp_proxy_results)
-        raw_findings.extend(burp_extended)
-        raw_findings.extend(soap_xxe_results)
-        raw_findings.extend(graphql_results)
-        raw_findings.extend(race_condition_results)
-        raw_findings.extend(cors_results)
-        raw_findings.extend(jwt_results)
-        raw_findings.extend(second_order_results)
-        raw_findings.extend(biz_logic_results)
-        raw_findings.extend(ssrf_results)
-        raw_findings.extend(crlf_results)
-        raw_findings.extend(dalfox_results)
+
+        _TOOL_NAMES = [
+            "nuclei", "ffuf", "burp_scan", "burp_proxy", "burp_extended",
+            "soap_xxe", "graphql", "race_condition", "cors", "jwt",
+            "second_order", "biz_logic", "ssrf", "crlf", "dalfox",
+        ]
+        _tool_results = [
+            nuclei_results, ffuf_results, burp_scan_results, burp_proxy_results,
+            burp_extended, soap_xxe_results, graphql_results, race_condition_results,
+            cors_results, jwt_results, second_order_results, biz_logic_results,
+            ssrf_results, crlf_results, dalfox_results,
+        ]
+        for _name, _result in zip(_TOOL_NAMES, _tool_results):
+            if isinstance(_result, BaseException):
+                log.warning(
+                    "[vuln_hunt_node] Tool '%s' raised exception (skipped): %s",
+                    _name, _result,
+                )
+            elif isinstance(_result, list):
+                raw_findings.extend(_result)
     log.info(
         "[vuln_hunt_node] Scan done (mode=%s): %d raw findings total",
         "sequential" if _use_sequential else "concurrent",
@@ -337,6 +349,13 @@ async def vuln_hunt_node(state: PentraState) -> dict:
     llm = LLMClient(base_url=_ollama_url(), model=state["llm_model"])
 
     async def _classify_one(raw: dict) -> dict:
+        _defaults = {
+            "vuln_class": raw.get("vuln_class", "unknown"),
+            "severity": raw.get("severity", "medium"),
+            "cvss_score": raw.get("cvss_score"),
+            "impact": raw.get("impact", ""),
+            "remediation": raw.get("remediation", ""),
+        }
         try:
             classification = await llm.classify_finding(
                 title=raw.get("title", "Potential Finding"),
@@ -344,10 +363,15 @@ async def vuln_hunt_node(state: PentraState) -> dict:
                 request=raw.get("request", ""),
                 response=raw.get("response", ""),
             )
-            return {**raw, **classification}
+            # Merge: LLM enrichment wins, but never overwrites with empty values
+            merged = {**_defaults, **raw}
+            for k, v in classification.items():
+                if v not in (None, "", [], {}):
+                    merged[k] = v
+            return merged
         except Exception as exc:
-            log.warning("[vuln_hunt_node] classify_finding failed: %s", exc)
-            return raw
+            log.warning("[vuln_hunt_node] classify_finding failed (using raw fields): %s", exc)
+            return {**_defaults, **raw}
 
     _sem = asyncio.Semaphore(4)  # max 4 concurrent LLM calls — avoid Ollama queue backup
 
@@ -1377,6 +1401,39 @@ async def _passive_csrf_check(domain: str, scope: dict) -> list[dict]:
     return findings
 
 
+async def _persist_finding_immediately(finding: dict, engagement_id: str) -> None:
+    """Persist a single confirmed finding to the DB right away.
+
+    Called as soon as a finding is CONFIRMED during active testing so that
+    findings survive if the Celery task is killed before report_node runs.
+    Failures are non-fatal — report_node will re-persist the full list anyway.
+    """
+    import os as _os
+    import httpx as _httpx
+
+    api_url = _os.getenv("INTERNAL_API_URL", "http://localhost:8000")
+    token = _os.getenv("INTERNAL_API_TOKEN", "")
+    try:
+        async with _httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(
+                f"{api_url}/internal/findings/bulk",
+                json={"engagement_id": engagement_id, "findings": [finding]},
+                headers={"X-Internal-Token": token},
+            )
+            if resp.status_code in (200, 201):
+                log.info(
+                    "[vuln_hunt_node] Incremental persist: 1 finding saved (engagement=%s title=%r)",
+                    engagement_id[:8], finding.get("title", "?")[:60],
+                )
+            else:
+                log.debug(
+                    "[vuln_hunt_node] Incremental persist returned %d — report_node will retry",
+                    resp.status_code,
+                )
+    except Exception as exc:
+        log.debug("[vuln_hunt_node] Incremental persist failed (non-fatal): %s", exc)
+
+
 async def _run_llm_burp_active_testing(
     domain: str,
     endpoints: list[dict],
@@ -2171,6 +2228,7 @@ async def _run_llm_burp_active_testing(
                             }
                             confirmed_findings.append(_sp_finding)
                             memory.mark_confirmed(cand_url, param_name, _sp_finding)
+                            await _persist_finding_immediately(_sp_finding, engagement_id)
                             log.info(
                                 "[SQLiProver] CONFIRMED SQLi at %s[%s] — breaking",
                                 cand_url, param_name,
@@ -2211,6 +2269,7 @@ async def _run_llm_burp_active_testing(
                     )
                     if _lfi_finding:
                         confirmed_findings.append(_lfi_finding)
+                        await _persist_finding_immediately(_lfi_finding, engagement_id)
                         if burp_available and client:
                             await _save_interesting_request_to_repeater(
                                 burp=client,
@@ -2323,7 +2382,11 @@ async def _run_llm_burp_active_testing(
                     confirmed_findings.append(finding)
                     # Task 18.10: record confirmed finding in LocatedMemory
                     memory.mark_confirmed(cand_url, param_name, finding)
-    
+
+                    # Incremental persistence — save immediately so findings survive
+                    # if the Celery task is killed before report_node runs.
+                    await _persist_finding_immediately(finding, engagement_id)
+
                     # Open in Burp Repeater (only when Burp available)
                     if burp_available and client:
                         await _save_interesting_request_to_repeater(

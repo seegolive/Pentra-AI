@@ -88,35 +88,62 @@ def sparse_to_qdrant(sparse: dict[str, float]) -> tuple[list[int], list[float]]:
     return indices, values
 
 
-async def embed(text: str) -> EmbeddingResult:
+async def embed(text: str, _max_retries: int = 3) -> EmbeddingResult:
     """Produce a BGE-M3 embedding for ``text`` via Ollama.
 
     Returns both a dense vector (1024-dim) and an approximate sparse vector.
-    Raises ``httpx.HTTPStatusError`` on Ollama API errors.
+    Retries with exponential backoff when Ollama returns 500 (OOM / model
+    still loading). Raises on permanent errors after max_retries exhausted.
     """
+    import asyncio as _asyncio
+    import logging as _logging
+
+    _log = _logging.getLogger(__name__)
     settings = get_settings()
     client = _get_client()
 
     # Truncate to keep within BGE-M3's 8192-token window (~32 KB of text)
     truncated = text[:32_000]
 
-    response = await client.post(
-        "/api/embeddings",
-        json={"model": settings.ollama_model_embedding, "prompt": truncated},
-    )
-    response.raise_for_status()
-    payload = response.json()
+    _delay = 2.0
+    for _attempt in range(_max_retries):
+        try:
+            response = await client.post(
+                "/api/embeddings",
+                json={"model": settings.ollama_model_embedding, "prompt": truncated},
+            )
+            response.raise_for_status()
+            payload = response.json()
 
-    dense: list[float] = payload["embedding"]
-    sparse = _build_sparse_vector(truncated)
+            dense: list[float] = payload["embedding"]
+            sparse = _build_sparse_vector(truncated)
+            return EmbeddingResult(dense=dense, sparse=sparse, model=settings.ollama_model_embedding)
 
-    return EmbeddingResult(dense=dense, sparse=sparse, model=settings.ollama_model_embedding)
+        except Exception as exc:
+            _is_memory = (
+                "500" in str(exc)
+                or "memory" in str(exc).lower()
+                or "out of memory" in str(exc).lower()
+                or "model" in str(exc).lower()
+            )
+            if _attempt < _max_retries - 1 and _is_memory:
+                _log.warning(
+                    "[embed] Ollama embedding failed (attempt %d/%d, delay %.1fs): %s",
+                    _attempt + 1, _max_retries, _delay, exc,
+                )
+                await _asyncio.sleep(_delay)
+                _delay *= 2  # exponential backoff: 2s → 4s → 8s
+            else:
+                raise
+
+    # unreachable — loop always raises or returns
+    raise RuntimeError("embed: exhausted retries")  # pragma: no cover
 
 
 async def embed_batch(
     texts: list[str],
-    batch_size: int = 32,
-    max_concurrent: int = 8,
+    batch_size: int = 10,  # reduced from 32 to avoid Ollama OOM under memory pressure
+    max_concurrent: int = 4,  # reduced from 8
 ) -> list[EmbeddingResult]:
     """Embed many texts concurrently, respecting Ollama load limits.
 
