@@ -1,5 +1,5 @@
 # Pentra AI — Progress Report
-> Updated: 2026-06-23 | Tag: `v1.0.0` | Branch: `main` | Sprint 36 ✅ COMPLETE (25 new tests: auth, setup, h1 routers — 123 API / 556 total)
+> Updated: 2026-06-23 | Tag: `v1.0.0` | Branch: `main` | Sprint 37 ✅ COMPLETE (56 new tests: pentra-scope 32 + pentra-report 24 — 612 total)
 
 ---
 
@@ -24,13 +24,13 @@ dan agent yang mampu mengkonfirmasi SQLi, XSS, CORS, GraphQL, race condition, JW
 
 | Metrik | Nilai |
 |--------|-------|
-| **Test suite** | **556 passing** (225 pentra-tools + 156 pentra-agent + 25 pentra-knowledge + 27 apps/worker + 123 apps/api), 0 failed |
+| **Test suite** | **612 passing** (225 pentra-tools + 156 pentra-agent + 57 pentra-knowledge/scope/report + 27 apps/worker + 123 apps/api + ↑), 0 failed |
 | **Playwright E2E** | **90 tests** (8 spec files), 0 failed |
-| **Test files** | 59 unit + 8 e2e spec files |
+| **Test files** | 61 unit + 8 e2e spec files |
 | **KB records** | **8,341** (Live API as of 2026-06-15; HackerOne — sumber tunggal, lihat keputusan Sprint 29) |
 | **KB sumber** | HackerOne 8,203 + Exploit-DB 50 + PortSwigger 40 + lainnya 16 |
 | **Git tag** | `v1.0.0` — `main` |
-| **Sprint aktif** | Sprint 36 ✅ COMPLETE — 25 new tests: auth_router (11), setup_router (7), h1_router (6), plus patch fixes (123 API total) |
+| **Sprint aktif** | Sprint 37 ✅ COMPLETE — 56 new tests: pentra-scope (32) + pentra-report (24), packages kini punya pytest + dev deps (612 total) |
 | **LLM** | qwen2.5-coder:32b (default), qwen3:8b (fast), bge-m3 (embedding), **pentra-ft** (Qwen2.5-Coder-7B fine-tuned, 4.4GB Q4_K_M) |
 
 Live API: 8,341 records as of 2026-06-15.

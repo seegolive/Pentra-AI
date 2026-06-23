@@ -19,3 +19,9 @@ packages = ["pentra_report"]
 
 [tool.uv.sources]
 pentra-shared = { path = "../../packages/pentra-shared", editable = true }
+
+[dependency-groups]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.24"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
