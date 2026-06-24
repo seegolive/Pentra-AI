@@ -18,8 +18,10 @@ Route summary:
 from __future__ import annotations
 
 import asyncio
+import contextvars
+import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
@@ -52,10 +54,70 @@ from app.db.models import AuditLogORM, EngagementORM, FindingORM, UserORM, Works
 from app.ws.manager import ws_manager
 
 router = APIRouter(prefix="/api/v1", tags=["engagements"])
+log = logging.getLogger(__name__)
 
 # Registry of active agent tasks, keyed by engagement_id (str).
 # Used by the /stop endpoint to cancel a running scan.
 _active_tasks: dict[str, asyncio.Task] = {}
+
+# Per-engagement locks that prevent two concurrent /approve calls from
+# launching two simultaneous graph.astream_events() on the same thread_id.
+_approve_locks: dict[str, asyncio.Lock] = {}
+_live_feed_engagement_id: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "live_feed_engagement_id",
+    default=None,
+)
+
+
+class _LiveFeedLogHandler(logging.Handler):
+    """Forward selected Python logs into one engagement's WebSocket feed."""
+
+    _LOGGER_PREFIXES = (
+        "pentra_agent",
+        "pentra_tools",
+        "app.api.router",
+        "app.core.agent",
+        "app.resume_agent",
+    )
+
+    def __init__(self, engagement_id: str, loop: asyncio.AbstractEventLoop) -> None:
+        super().__init__(level=logging.INFO)
+        self.engagement_id = engagement_id
+        self.loop = loop
+        self.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if _live_feed_engagement_id.get() != self.engagement_id:
+            return
+        if not record.name.startswith(self._LOGGER_PREFIXES):
+            return
+
+        try:
+            message = self.format(record)
+            if len(message) > 4000:
+                message = f"{message[:4000]}..."
+            payload = {
+                "type": "terminal_output",
+                "message": message,
+                "timestamp": datetime.fromtimestamp(record.created, UTC).isoformat(),
+                "data": {
+                    "logger": record.name,
+                    "level": record.levelname,
+                },
+            }
+            self.loop.create_task(ws_manager.broadcast(self.engagement_id, payload))
+        except Exception:
+            self.handleError(record)
+
+
+def _attach_live_feed_log_handler(engagement_id: str) -> _LiveFeedLogHandler:
+    handler = _LiveFeedLogHandler(engagement_id, asyncio.get_running_loop())
+    logging.getLogger().addHandler(handler)
+    return handler
+
+
+def _detach_live_feed_log_handler(handler: _LiveFeedLogHandler) -> None:
+    logging.getLogger().removeHandler(handler)
 
 
 # ── Workspaces ────────────────────────────────────────────────────────────────
@@ -267,12 +329,26 @@ async def approve_action(
     ))
     await db.commit()
 
+    # Guard against concurrent /approve calls for the same engagement.
+    # Two simultaneous approvals would launch two graph.astream_events() on
+    # the same thread_id, causing checkpoint races and orphaned tasks.
+    eid_str = str(engagement_id)
+    if eid_str not in _approve_locks:
+        _approve_locks[eid_str] = asyncio.Lock()
+    lock = _approve_locks[eid_str]
+    if lock.locked():
+        return {"status": "already_resuming", "decision": decision.action}
+
+    async def _locked_resume() -> None:
+        async with lock:
+            await _resume_agent(eid_str, decision.action)
+
     # Resume agent in background; register for cancellation via /stop
-    _resume_task = asyncio.create_task(
-        _resume_agent(str(engagement_id), decision.action)
-    )
-    _active_tasks[str(engagement_id)] = _resume_task
-    _resume_task.add_done_callback(lambda _: _active_tasks.pop(str(engagement_id), None))
+    _resume_task = asyncio.create_task(_locked_resume())
+    _active_tasks[eid_str] = _resume_task
+    _resume_task.add_done_callback(lambda _: _active_tasks.pop(eid_str, None))
+    _resume_task.add_done_callback(lambda _: _approve_locks.pop(eid_str, None))
+
     return {"status": "resumed", "decision": decision.action}
 
 
@@ -299,6 +375,8 @@ async def update_engagement_mode(
     eng = await db.get(EngagementORM, engagement_id)
     if eng is None:
         raise HTTPException(status_code=404, detail="Engagement not found")
+    if eng.status in ("completed", "cancelled", "failed"):
+        raise HTTPException(status_code=409, detail=f"Engagement is already {eng.status}")
 
     eng.mode = mode
     db.add(AuditLogORM(
@@ -334,13 +412,17 @@ async def stop_engagement(
         raise HTTPException(status_code=404, detail="Engagement not found")
     if not current_user.is_admin and eng.created_by != current_user.id:
         raise HTTPException(status_code=403, detail="Access denied")
-    if eng.status in ("completed", "cancelled"):
-        return {"status": eng.status, "message": "Engagement already finished"}
 
-    # Cancel running asyncio task if present
+    # Cancel running asyncio task unconditionally — must happen before the
+    # early-return guard, because status may already be 'cancelled' in DB while
+    # the task is still running (stop_engagement was called before the task had
+    # a chance to observe the DB change).
     task = _active_tasks.pop(str(engagement_id), None)
     if task and not task.done():
         task.cancel()
+
+    if eng.status in ("completed", "cancelled"):
+        return {"status": eng.status, "message": "Engagement already finished"}
 
     eng.status = "cancelled"
     eng.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -1105,8 +1187,15 @@ async def get_engagement_events(
 async def engagement_feed(
     websocket: WebSocket,
     engagement_id: UUID,
+    token: str = Query(...),
 ) -> None:
     """Real-time event stream for a running engagement."""
+    from app.core.security import decode_token
+    try:
+        decode_token(token)
+    except Exception:
+        await websocket.close(code=4401)
+        return
     eid = str(engagement_id)
     await ws_manager.connect(websocket, eid)
     try:
@@ -1129,12 +1218,14 @@ class _EngagementCancelled(Exception):
 async def _run_agent(eng: EngagementORM) -> None:
     """Background task: run the LangGraph agent and stream events to WebSocket."""
     import json
-    from datetime import UTC, datetime
 
     from app.core.agent import get_agent_service
 
     engagement_id = str(eng.id)
     agent_service = get_agent_service()
+    live_log_token = _live_feed_engagement_id.set(engagement_id)
+    live_log_handler = _attach_live_feed_log_handler(engagement_id)
+    log.info("[live_feed] terminal output attached for engagement %s", engagement_id)
 
     _domain = eng.in_scope[0] if eng.in_scope else ""
     initial_state = {
@@ -1217,7 +1308,7 @@ async def _run_agent(eng: EngagementORM) -> None:
                 # Check DB status at each node boundary — handles cross-worker cancellation
                 # where task.cancel() in stop_engagement can't reach us (different process)
                 async with _chk_session() as _cs:
-                    _ce = await _cs.get(EngagementORM, engagement_id)
+                    _ce = await _cs.get(EngagementORM, uuid.UUID(engagement_id))
                     if _ce and _ce.status == "cancelled":
                         raise _EngagementCancelled()
         # After astream_events loop — check if the graph is paused at an interrupt
@@ -1242,7 +1333,7 @@ async def _run_agent(eng: EngagementORM) -> None:
             _engine = create_async_engine(_get_s().database_url, echo=False)
             _asession = _sm(_engine, class_=AsyncSession, expire_on_commit=False)
             async with _asession() as _sess:
-                _eng = await _sess.get(EngagementORM, engagement_id)
+                _eng = await _sess.get(EngagementORM, uuid.UUID(engagement_id))
                 if _eng:
                     _eng.status = "awaiting_approval"
                     await _sess.commit()
@@ -1263,7 +1354,7 @@ async def _run_agent(eng: EngagementORM) -> None:
             _engine = create_async_engine(_get_s().database_url, echo=False)
             _asession = _sm(_engine, class_=AsyncSession, expire_on_commit=False)
             async with _asession() as _sess:
-                _eng = await _sess.get(EngagementORM, engagement_id)
+                _eng = await _sess.get(EngagementORM, uuid.UUID(engagement_id))
                 if _eng:
                     _eng.status = "completed"
                     _eng.completed_at = datetime.now(UTC).replace(tzinfo=None)
@@ -1294,7 +1385,7 @@ async def _run_agent(eng: EngagementORM) -> None:
             _engine2 = create_async_engine(_get_s().database_url, echo=False)
             _asession2 = _sm(_engine2, class_=AsyncSession, expire_on_commit=False)
             async with _asession2() as _sess2:
-                _eng2 = await _sess2.get(EngagementORM, engagement_id)
+                _eng2 = await _sess2.get(EngagementORM, uuid.UUID(engagement_id))
                 if _eng2 and _eng2.status not in ("completed", "awaiting_approval"):
                     _eng2.status = "failed"
                     await _sess2.commit()
@@ -1307,20 +1398,23 @@ async def _run_agent(eng: EngagementORM) -> None:
             "timestamp": _ts(),
         })
     finally:
+        _detach_live_feed_log_handler(live_log_handler)
+        _live_feed_engagement_id.reset(live_log_token)
         if _chk_engine is not None:
             await _chk_engine.dispose()
 
 
 async def _resume_agent(engagement_id: str, user_decision: str) -> None:
     """Background task: update state with HITL decision, then stream resumed agent events."""
-    from datetime import UTC, datetime
-
     from app.core.agent import get_agent_service
     from langgraph.types import Command
 
     agent_service = get_agent_service()
     graph = agent_service.graph
     config = {"configurable": {"thread_id": engagement_id}}
+    live_log_token = _live_feed_engagement_id.set(engagement_id)
+    live_log_handler = _attach_live_feed_log_handler(engagement_id)
+    log.info("[live_feed] terminal output attached for engagement %s", engagement_id)
 
     def _ts() -> str:
         return datetime.now(UTC).isoformat()
@@ -1333,7 +1427,7 @@ async def _resume_agent(engagement_id: str, user_decision: str) -> None:
         _engine = create_async_engine(_get_s().database_url, echo=False)
         _asession = _sm(_engine, class_=AsyncSession, expire_on_commit=False)
         async with _asession() as _sess:
-            _eng = await _sess.get(EngagementORM, engagement_id)
+            _eng = await _sess.get(EngagementORM, uuid.UUID(engagement_id))
             if _eng:
                 _eng.status = "active"
                 await _sess.commit()
@@ -1386,7 +1480,7 @@ async def _resume_agent(engagement_id: str, user_decision: str) -> None:
             _engine = create_async_engine(_get_s().database_url, echo=False)
             _asession = _sm(_engine, class_=AsyncSession, expire_on_commit=False)
             async with _asession() as _sess:
-                _eng = await _sess.get(EngagementORM, engagement_id)
+                _eng = await _sess.get(EngagementORM, uuid.UUID(engagement_id))
                 if _eng:
                     _eng.status = "awaiting_approval"
                     await _sess.commit()
@@ -1407,7 +1501,7 @@ async def _resume_agent(engagement_id: str, user_decision: str) -> None:
             _engine = create_async_engine(_get_s().database_url, echo=False)
             _asession = _sm(_engine, class_=AsyncSession, expire_on_commit=False)
             async with _asession() as _sess:
-                _eng = await _sess.get(EngagementORM, engagement_id)
+                _eng = await _sess.get(EngagementORM, uuid.UUID(engagement_id))
                 if _eng:
                     _eng.status = "completed"
                     _eng.completed_at = datetime.now(UTC).replace(tzinfo=None)
@@ -1436,3 +1530,6 @@ async def _resume_agent(engagement_id: str, user_decision: str) -> None:
             "message": f"❌ Resume error: {exc}",
             "timestamp": _ts(),
         })
+    finally:
+        _detach_live_feed_log_handler(live_log_handler)
+        _live_feed_engagement_id.reset(live_log_token)

@@ -15,6 +15,26 @@ from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
 
 
+def _merge_findings(existing: list[dict], new: list[dict]) -> list[dict]:
+    """Deduplicate findings by (title, target_url) on every state merge.
+
+    Prevents DO-NOT-STOP re-entry rounds from doubling the findings list via
+    the operator.add accumulator pattern.
+    Guards against non-dict items that could slip in via extend(string).
+    """
+    safe_existing = [f for f in existing if isinstance(f, dict)]
+    safe_new = [f for f in new if isinstance(f, dict)]
+    seen: set[tuple[str, str]] = {
+        (f.get("title", ""), f.get("target_url", ""))
+        for f in safe_existing
+    }
+    deduped = [
+        f for f in safe_new
+        if (f.get("title", ""), f.get("target_url", "")) not in seen
+    ]
+    return safe_existing + deduped
+
+
 # ── Sub-TypedDicts ────────────────────────────────────────────────────────────
 
 class Target(TypedDict):
@@ -88,7 +108,7 @@ class PentraState(TypedDict):
     endpoints: Annotated[list[Endpoint], operator.add]
 
     # ── Findings (agent-discovered or manual) ─────────────────────────
-    findings: Annotated[list[dict], operator.add]
+    findings: Annotated[list[dict], _merge_findings]
 
     # ── LLM reasoning ─────────────────────────────────────────────────
     pentest_plan: str

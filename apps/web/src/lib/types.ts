@@ -177,6 +177,7 @@ export type FeedEventType =
   | "agent_complete"
   | "agent_cancelled"
   | "agent_resumed"
+  | "terminal_output"
   | "error"
   // structured backend events (service.py / worker)
   | "NODE_START"

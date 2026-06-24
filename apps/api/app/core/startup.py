@@ -104,6 +104,16 @@ class StartupValidator:
                 "generate a strong random key and set it in .env"
             )
 
+        # INTERNAL_API_TOKEN must be set — empty string disables all incremental
+        # finding persistence (_persist_finding_immediately silently gets HTTP 503).
+        internal_token = getattr(settings, "internal_api_token", "") or ""
+        if not internal_token:
+            self.warnings.append(
+                "INTERNAL_API_TOKEN is not set — incremental finding persistence is "
+                "disabled. Findings will only be saved when report_node completes. "
+                "Set INTERNAL_API_TOKEN in .env to enable per-finding persistence."
+            )
+
     # ── Database ──────────────────────────────────────────────────────────────
 
     async def _validate_database(self, settings) -> None:  # type: ignore[no-untyped-def]

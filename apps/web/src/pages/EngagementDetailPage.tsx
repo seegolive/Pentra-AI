@@ -19,6 +19,7 @@ import {
   ListChecks,
   AlertCircle,
   Square,
+  Terminal,
 } from "lucide-react";
 import { useEngagement, useStartEngagement, useApproveAction, useFindings, downloadEngagementExport, useUpdateEngagementMode, useWorkspaces, useMonitoringAlerts, useStopEngagement } from "../lib/api";
 import { MonitoringPanel } from "../components/monitoring/MonitoringPanel";
@@ -88,6 +89,11 @@ const TYPE_META: Record<
     label: "Complete",
     color: "text-emerald-400",
     icon: <CheckCircle2 className="h-3 w-3" />,
+  },
+  terminal_output: {
+    label: "Terminal",
+    color: "text-cyan-300",
+    icon: <Terminal className="h-3 w-3" />,
   },
 };
 
@@ -200,6 +206,7 @@ function FeedRow({ event }: { event: FeedEvent }) {
   const meta = TYPE_META[event.type];
   const color = meta?.color ?? "text-muted-foreground";
   const icon = meta?.icon ?? <Activity className="h-3 w-3" />;
+  const isTerminal = event.type === "terminal_output";
   const nodeLabel = event.node
     ? (NODE_LABELS[event.node] ?? event.node)
     : (meta?.label ?? event.type);
@@ -228,7 +235,14 @@ function FeedRow({ event }: { event: FeedEvent }) {
       <span className="min-w-0 flex-1">
         <span className={cn("text-[11px] font-semibold", color)}>{nodeLabel}</span>
         {content && (
-          <span className="block truncate text-[11px] text-pentra-text-secondary">
+          <span
+            className={cn(
+              "block text-[11px] text-pentra-text-secondary",
+              isTerminal
+                ? "whitespace-pre-wrap break-words font-mono leading-relaxed text-cyan-100/80"
+                : "truncate"
+            )}
+          >
             {content}
             {event.data && Object.keys(event.data).length > 0 && (
               <span className="ml-2 text-[10px] opacity-60">
@@ -385,9 +399,7 @@ export default function EngagementDetailPage() {
   const startMutation = useStartEngagement(engagementId ?? "");
   const stopMutation = useStopEngagement(engagementId ?? "");
   const modeMutation = useUpdateEngagementMode(engagementId ?? "");
-  const { events, pendingApproval, connected, agentStatus, clearApproval } = useEngagementFeed(
-    (engagement?.status === "active" || engagement?.status === "awaiting_approval") ? engagementId : undefined
-  );
+  const { events, pendingApproval, connected, agentStatus, clearApproval } = useEngagementFeed(engagementId);
 
   // Counters for tab badges
   const { data: findings } = useFindings(engagementId ?? "");

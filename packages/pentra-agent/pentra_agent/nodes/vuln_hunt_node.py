@@ -90,6 +90,13 @@ _INTER_SUBDOMAIN_DELAY: float = float(os.getenv("PENTRA_INTER_SUBDOMAIN_DELAY", 
 _PASSIVE_TAGS = "exposure,misconfig,default-login,disclosure,info,config,panel"
 _ACTIVE_TAGS = "cve,vuln,sqli,xss,lfi,rce,injection,ssti,ssrf"
 
+# ── LocatedMemory cross-round persistence ─────────────────────────────────────
+# Keyed by engagement_id — survives DO-NOT-STOP re-entry within the same process.
+# Cleared automatically when the engagement task finishes (via vuln_hunt_node's
+# finally block). Scoped to one OS process, so a worker restart resets memory,
+# which is acceptable (the node comment: "not persisted to DB in this sprint").
+_located_memory_cache: dict[str, "LocatedMemory"] = {}  # type: ignore[name-defined]
+
 
 # ── Burp MCP config helpers ───────────────────────────────────────────────────
 
@@ -165,6 +172,12 @@ async def vuln_hunt_node(state: PentraState) -> dict:
 
     current_round = state.get("hunt_rounds", 0)
     log.info("[vuln_hunt_node] Starting hunt round %d for %s (%d endpoints)", current_round + 1, domain, len(endpoints))
+
+    # Clear the LocatedMemory cache when a fresh engagement starts (round 0),
+    # so a restarted engagement doesn't inherit stale memory from a previous run.
+    engagement_id_for_cache = state.get("engagement_id", "")
+    if current_round == 0 and engagement_id_for_cache:
+        _located_memory_cache.pop(engagement_id_for_cache, None)
 
     # On re-entry from DO NOT STOP routing, focus on chain suggestions
     if current_round > 0:
@@ -242,7 +255,7 @@ async def vuln_hunt_node(state: PentraState) -> dict:
         ) = await asyncio.gather(
             _run_nuclei(endpoints, state["scope"], tech_stack=state.get("tech_stack", [])) if _RUN_NUCLEI else _noop_list(),
             _run_ffuf(endpoints[:5]) if _RUN_FFUF else _noop_list(),
-            _run_burp_active_scan(endpoints[:10], state["scope"]) if _RUN_BURP_SCAN else _noop_list(),
+            _run_burp_active_scan(endpoints[:3], state["scope"]) if _RUN_BURP_SCAN else _noop_list(),
             _get_burp_proxy_findings(domain, state["scope"]),
             _run_burp_extended_checks(domain, state["scope"], endpoints),
             _run_soap_xxe_scan(domain, state["scope"], state.get("auth_credentials")) if _RUN_SOAP_XXE else _noop_list(),
@@ -348,15 +361,19 @@ async def vuln_hunt_node(state: PentraState) -> dict:
     # and can run in parallel. Limit concurrency to 4 to avoid overloading Ollama.
     llm = LLMClient(base_url=_ollama_url(), model=state["llm_model"])
 
+    # Guard: filter out any non-dict items that could have slipped in via extend()
+    # (e.g. if a tool returned a string and extend() added individual characters).
+    raw_findings = [f for f in raw_findings if isinstance(f, dict)]
+
     async def _classify_one(raw: dict) -> dict:
-        _defaults = {
-            "vuln_class": raw.get("vuln_class", "unknown"),
-            "severity": raw.get("severity", "medium"),
-            "cvss_score": raw.get("cvss_score"),
-            "impact": raw.get("impact", ""),
-            "remediation": raw.get("remediation", ""),
-        }
         try:
+            _defaults = {
+                "vuln_class": raw.get("vuln_class", "unknown"),
+                "severity": raw.get("severity", "medium"),
+                "cvss_score": raw.get("cvss_score"),
+                "impact": raw.get("impact", ""),
+                "remediation": raw.get("remediation", ""),
+            }
             classification = await llm.classify_finding(
                 title=raw.get("title", "Potential Finding"),
                 description=raw.get("description", ""),
@@ -371,7 +388,7 @@ async def vuln_hunt_node(state: PentraState) -> dict:
             return merged
         except Exception as exc:
             log.warning("[vuln_hunt_node] classify_finding failed (using raw fields): %s", exc)
-            return {**_defaults, **raw}
+            return raw if isinstance(raw, dict) else {}
 
     _sem = asyncio.Semaphore(4)  # max 4 concurrent LLM calls — avoid Ollama queue backup
 
@@ -512,11 +529,18 @@ async def _kb_prefetch(
     # Always fetch auth + IDOR patterns (highest-value, most universal)
     queries.append("authentication bypass IDOR privilege escalation access control")
 
-    # Extract interesting param names from endpoints for injection context
+    # Extract interesting param names from endpoints for injection context.
+    # Endpoint.params is list[str] (param names) — handle both str and dict
+    # (some crawlers emit {"name": "...", "value": "..."} dicts instead).
     param_names: set[str] = set()
     for ep in endpoints[:30]:
         for p in ep.get("params", []):
-            name = (p.get("name") or "").strip().lower()
+            if isinstance(p, str):
+                name = p.strip().lower()
+            elif isinstance(p, dict):
+                name = (p.get("name") or "").strip().lower()
+            else:
+                continue
             if len(name) >= 2:
                 param_names.add(name)
     injection_hints = [
@@ -1124,26 +1148,37 @@ async def _run_burp_active_scan(endpoints: list[dict], scope: dict) -> list[dict
         return []
 
     async with client.managed_session():
+        # PERF: parallelize scan probes — each trigger_active_scan call has ~21s
+        # SSE round-trip overhead when sent sequentially. Semaphore=3 balances
+        # throughput vs Burp session pool limits.
+        _scan_sem = asyncio.Semaphore(3)
         probed_urls: list[str] = []
-        for ep in endpoints:
+
+        async def _probe_one(ep: dict) -> str | None:
             url = ep.get("url", "")
             if not url:
-                continue
-            # Scope check before every Burp call
+                return None
             try:
                 enforcer.validate_or_raise(url)
             except ScopeViolationError as exc:
                 log.warning("[vuln_hunt_node] Active scan skipped for %s — scope: %s", url, exc)
-                continue
-            try:
-                await client.trigger_active_scan(url=url, scope=in_scope)
-                probed_urls.append(url)
-                log.debug("[vuln_hunt_node] Burp scan probe sent: %s", url)
-            except BurpConnectionError:
-                log.info("[vuln_hunt_node] Burp disconnected during active scan")
-                break
-            except Exception as exc:
-                log.warning("[vuln_hunt_node] trigger_active_scan error for %s: %s", url, exc)
+                return None
+            async with _scan_sem:
+                try:
+                    await client.trigger_active_scan(url=url, scope=in_scope)
+                    log.debug("[vuln_hunt_node] Burp scan probe sent: %s", url)
+                    return url
+                except BurpConnectionError:
+                    log.info("[vuln_hunt_node] Burp disconnected during active scan")
+                    return None
+                except Exception as exc:
+                    log.warning("[vuln_hunt_node] trigger_active_scan error for %s: %s", url, exc)
+                    return None
+
+        probe_results = await asyncio.gather(*[_probe_one(ep) for ep in endpoints], return_exceptions=True)
+        for r in probe_results:
+            if isinstance(r, str):
+                probed_urls.append(r)
 
         if not probed_urls:
             return []
@@ -1526,30 +1561,30 @@ async def _run_llm_burp_active_testing(
         log.info("[llm_burp] Burp not configured — running without Burp (direct httpx) for %s", domain)
 
     # ── Step 1: Crawl target — capture req/resp ───────────────────────────────
+    # PERF: always use direct httpx routed through Burp HTTP proxy (if available).
+    # Burp MCP send_request has ~21s SSE round-trip overhead; httpx-through-proxy
+    # is 0.3-2s and still appears in Burp proxy history for LLM analysis.
+    # Concurrency: 8 parallel requests → 49 paths crawled in ~6s vs ~17 minutes.
     crawl_paths = [
-        # Authentication surfaces
-        "/", "/login", "/login.aspx", "/signin", "/register", "/register.aspx",
-        "/Signup.aspx", "/logout", "/forgot-password", "/reset-password",
+        # Authentication surfaces (highest injection value)
+        "/", "/login", "/signin", "/register", "/forgot-password",
+        "/login.aspx", "/register.aspx", "/Signup.aspx",
         # Search / input surfaces
         "/search", "/search.aspx", "/Search.aspx",
         # Admin / debug surfaces
-        "/admin", "/admin.aspx", "/debug/", "/actuator/health", "/phpinfo.php",
-        # Sensitive files (quick passive check)
-        "/.env", "/.git/HEAD", "/web.config", "/backup.zip", "/config.php",
+        "/admin", "/admin.aspx", "/phpinfo.php", "/actuator/health",
+        # Sensitive files (passive check)
+        "/.env", "/.git/HEAD", "/web.config", "/config.php",
         # API patterns
-        "/api/", "/api/v1/", "/api/v1/users", "/api/v1/products", "/graphql",
-        # Profile / user data (IDOR surfaces)
+        "/api/", "/api/v1/", "/graphql",
+        # Profile / IDOR surfaces
         "/profile", "/user", "/account",
-        # Content pages
-        "/about.aspx", "/contact.aspx",
-        # ASP.NET ACME demo surfaces (parameterized)
-        "/listproducts.aspx", "/categories.aspx", "/artists.aspx", "/comment.aspx",
-        "/ReadNews.aspx?id=1", "/ReadNews.aspx?id=2", "/ReadNews.aspx?id=3",
-        "/Comments.aspx?id=1", "/Comments.aspx?id=2", "/Comments.aspx?id=3",
+        # ASP.NET ACME demo surfaces (parameterized — high injection value)
         "/listproducts.aspx?cat=1", "/listproducts.aspx?cat=2",
-        "/Search.aspx?tfSearch=test",
-        "/artists.aspx?id=1", "/artists.aspx?id=2",
-        "/comment.aspx?id=1",
+        "/ReadNews.aspx?id=1", "/ReadNews.aspx?id=2",
+        "/Comments.aspx?id=1", "/artists.aspx?id=1",
+        "/Search.aspx?tfSearch=test", "/comment.aspx?id=1",
+        "/categories.aspx", "/artists.aspx",
     ]
     base_url_for_crawl = ""
     for ep in endpoints[:3]:
@@ -1564,44 +1599,64 @@ async def _run_llm_burp_active_testing(
     discovered_urls: set[str] = set()
 
     if base_url_for_crawl:
-        crawl_queue = [f"{base_url_for_crawl}{path}" for path in crawl_paths]
+        crawl_queue: list[str] = []
+        for path in crawl_paths:
+            u = f"{base_url_for_crawl}{path}"
+            if u not in discovered_urls:
+                crawl_queue.append(u)
+                discovered_urls.add(u)
+        crawl_queue = crawl_queue[:_CRAWL_PAGES]
+
         log.info(
-            "[llm_burp] Crawling %d pages via %s...",
+            "[llm_burp] Crawling %d pages concurrently (sem=8, via %s)...",
             len(crawl_queue),
-            "Burp" if burp_available else "httpx",
+            "Burp proxy" if burp_proxy else "httpx direct",
         )
-        idx = 0
-        while idx < len(crawl_queue) and idx < _CRAWL_PAGES:  # preset-controlled crawl depth
-            crawl_url = crawl_queue[idx]
-            idx += 1
-            if crawl_url in discovered_urls:
-                continue
-            try:
-                enforcer.validate_or_raise(crawl_url)
-                discovered_urls.add(crawl_url)
-                await asyncio.sleep(0.3)
-                if burp_available and client:
-                    raw_req, raw_resp = await client.send_request(crawl_url, method="GET")
-                else:
+
+        _crawl_sem = asyncio.Semaphore(8)
+
+        async def _crawl_one(crawl_url: str) -> dict | None:
+            async with _crawl_sem:
+                try:
+                    enforcer.validate_or_raise(crawl_url)
                     raw_req, raw_resp = await _direct_request(
-                        crawl_url, method="GET"  # no proxy when Burp is down
+                        crawl_url, method="GET", proxy=burp_proxy
                     )
-                crawl_traffic.append({
-                    "url": crawl_url,
-                    "method": "GET",
-                    "request": raw_req,
-                    "response": raw_resp,
-                })
-                log.debug("[llm_burp] crawled: %s (%d bytes)", crawl_url, len(raw_resp))
-                # Discover more URLs with query params from HTML responses
-                for linked_url in _extract_linked_urls(crawl_url, raw_resp):
-                    if linked_url not in discovered_urls:
-                        crawl_queue.append(linked_url)
-            except ScopeViolationError:
-                continue
-            except Exception as exc:
-                log.debug("[llm_burp] crawl error %s: %s", crawl_url, exc)
-        log.info("[llm_burp] Crawl complete: %d pages, %d responses captured", idx, len(crawl_traffic))
+                    log.debug("[llm_burp] crawled: %s (%d bytes)", crawl_url, len(raw_resp))
+                    return {"url": crawl_url, "method": "GET", "request": raw_req, "response": raw_resp}
+                except ScopeViolationError:
+                    return None
+                except Exception as exc:
+                    log.debug("[llm_burp] crawl error %s: %s", crawl_url, exc)
+                    return None
+
+        crawl_results = await asyncio.gather(
+            *[_crawl_one(u) for u in crawl_queue], return_exceptions=True
+        )
+        for r in crawl_results:
+            if isinstance(r, dict):
+                crawl_traffic.append(r)
+
+        # Discover linked URLs from HTML responses and crawl those too (one batch)
+        linked_queue: list[str] = []
+        for entry in crawl_traffic:
+            for linked_url in _extract_linked_urls(entry["url"], entry["response"]):
+                if linked_url not in discovered_urls and len(linked_queue) < 10:
+                    discovered_urls.add(linked_url)
+                    linked_queue.append(linked_url)
+        if linked_queue:
+            log.info("[llm_burp] Crawling %d discovered links...", len(linked_queue))
+            linked_results = await asyncio.gather(
+                *[_crawl_one(u) for u in linked_queue], return_exceptions=True
+            )
+            for r in linked_results:
+                if isinstance(r, dict):
+                    crawl_traffic.append(r)
+
+        log.info(
+            "[llm_burp] Crawl complete: %d/%d pages, %d responses captured",
+            len(crawl_queue), len(crawl_paths), len(crawl_traffic),
+        )
 
     # ── Step 2: Pull Burp proxy history (only when Burp is available) ─────────
     import re as _re
@@ -1743,8 +1798,11 @@ async def _run_llm_burp_active_testing(
     # ── Task 18.10: Located Memory — no context forgetting ───────────────────
     # Tracks confirmed findings, exhausted candidates, effective payloads and
     # failed attempts so LLM never wastes time re-testing what was already done.
+    # Loaded from _located_memory_cache so DO-NOT-STOP re-entry rounds inherit
+    # skip-gates from round 1 instead of re-testing exhausted candidates.
     from pentra_agent.memory.located_memory import LocatedMemory
-    memory = LocatedMemory()
+    memory = _located_memory_cache.get(engagement_id) or LocatedMemory()
+    _located_memory_cache[engagement_id] = memory
 
     # Backward-compat alias for react_history (now inside memory)
     react_history = memory.react_history
@@ -2456,7 +2514,7 @@ async def _run_llm_burp_active_testing(
                 log.info("[llm_burp] Collaborator: %d OOB interaction(s) detected!", len(interactions))
                 for interaction in interactions:
                     candidate = blind_payload_ids[0][1] if blind_payload_ids else {}
-                    confirmed_findings.append({
+                    _oob_finding = {
                         "title": f"Blind Out-of-Band Interaction ({interaction.interaction_type or 'DNS/HTTP'})",
                         "description": (
                             f"Burp Collaborator received an OOB interaction from the target.\n"
@@ -2474,7 +2532,9 @@ async def _run_llm_burp_active_testing(
                         "impact": "Server-Side Request Forgery or blind code execution allowing internal network access",
                         "remediation": "Validate and whitelist all user-controlled URLs. Disable unnecessary outbound HTTP from server.",
                         "cvss_score": 8.1,
-                    })
+                    }
+                    confirmed_findings.append(_oob_finding)
+                    await _persist_finding_immediately(_oob_finding, engagement_id)
         except BurpNotProError:
             log.info("[llm_burp] Collaborator polling requires Pro")
         except Exception as exc:
@@ -4255,8 +4315,13 @@ async def _sequential_subdomain_scan(
         all_findings.extend(passive_findings)
 
         # ── Step 3: Polite pause before active phase ─────────────────────────
-        log.info("[per_subdomain] [%s] passive done (%d findings) — sleeping %.1fs before active", host, len(passive_findings), host_delay)
-        await asyncio.sleep(host_delay)
+        # Use the full host_delay only when a rate-limit was detected; otherwise
+        # a 1s courtesy pause is enough to avoid alarming WAFs between phases.
+        _is_rate_limited = bool(rl_info.get("is_limited") or rl_info.get("delay_ms", 0) > 0)
+        _passive_to_active_delay = host_delay if _is_rate_limited else min(1.0, host_delay)
+        log.info("[per_subdomain] [%s] passive done (%d findings) — sleeping %.1fs before active (rate_limited=%s)",
+                 host, len(passive_findings), _passive_to_active_delay, _is_rate_limited)
+        await asyncio.sleep(_passive_to_active_delay)
 
         # ── Step 4: Active scan ──────────────────────────────────────────────
         active_findings = await _active_host_scan(
@@ -4265,12 +4330,15 @@ async def _sequential_subdomain_scan(
         all_findings.extend(active_findings)
 
         # ── Step 5: Inter-subdomain delay (skip after last host) ─────────────
+        # Sleep the full host_delay only when rate-limited; otherwise 1s to keep
+        # the scan fast. Never sleep after the last subdomain.
         if idx < len(hosts) - 1:
+            _inter_delay = host_delay if _is_rate_limited else min(1.0, host_delay)
             log.info(
                 "[per_subdomain] [%s] active done (%d findings) — sleeping %.1fs before next subdomain",
-                host, len(active_findings), host_delay,
+                host, len(active_findings), _inter_delay,
             )
-            await asyncio.sleep(host_delay)
+            await asyncio.sleep(_inter_delay)
         else:
             log.info("[per_subdomain] [%s] active done (%d findings) — last subdomain, no delay", host, len(active_findings))
 

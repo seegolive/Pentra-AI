@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -11,6 +13,8 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.router import (
+    _LiveFeedLogHandler,
+    _live_feed_engagement_id,
     create_engagement,
     get_engagement,
     list_engagements,
@@ -230,6 +234,86 @@ async def test_update_engagement_mode_validates_mode():
         )
 
     assert exc_info.value.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_update_engagement_mode_rejects_finished_engagement():
+    user = _make_user()
+    eng = _make_engagement(uuid4(), user.id, status="cancelled")
+    db = AsyncMock()
+    db.get = AsyncMock(return_value=eng)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await update_engagement_mode(
+            engagement_id=eng.id,
+            body={"mode": "agentic"},
+            db=db,
+            current_user=user,
+        )
+
+    assert exc_info.value.status_code == 409
+    assert eng.mode == "semi_auto"
+    db.commit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_live_feed_log_handler_forwards_scoped_agent_logs():
+    token = _live_feed_engagement_id.set("eng-1")
+    broadcast = AsyncMock()
+
+    try:
+        with patch("app.api.router.ws_manager.broadcast", new=broadcast):
+            handler = _LiveFeedLogHandler("eng-1", asyncio.get_running_loop())
+            record = logging.LogRecord(
+                "pentra_agent.nodes.recon_node",
+                logging.INFO,
+                __file__,
+                1,
+                "Recon %s",
+                ("started",),
+                None,
+            )
+
+            handler.emit(record)
+            await asyncio.sleep(0)
+
+        broadcast.assert_awaited_once()
+        engagement_id, payload = broadcast.await_args.args
+        assert engagement_id == "eng-1"
+        assert payload["type"] == "terminal_output"
+        assert payload["message"] == "INFO pentra_agent.nodes.recon_node: Recon started"
+        assert payload["data"] == {
+            "logger": "pentra_agent.nodes.recon_node",
+            "level": "INFO",
+        }
+    finally:
+        _live_feed_engagement_id.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_live_feed_log_handler_ignores_other_engagement_context():
+    token = _live_feed_engagement_id.set("eng-2")
+    broadcast = AsyncMock()
+
+    try:
+        with patch("app.api.router.ws_manager.broadcast", new=broadcast):
+            handler = _LiveFeedLogHandler("eng-1", asyncio.get_running_loop())
+            record = logging.LogRecord(
+                "pentra_agent.nodes.recon_node",
+                logging.INFO,
+                __file__,
+                1,
+                "Recon started",
+                None,
+                None,
+            )
+
+            handler.emit(record)
+            await asyncio.sleep(0)
+
+        broadcast.assert_not_awaited()
+    finally:
+        _live_feed_engagement_id.reset(token)
 
 
 @pytest.mark.asyncio

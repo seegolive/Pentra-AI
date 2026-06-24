@@ -99,7 +99,8 @@ export function useEngagementFeed(engagementId: string | undefined) {
       })
       .catch(() => { /* non-fatal */ });
 
-    const ws = new WebSocket(`${WS_URL}/api/v1/ws/engagements/${engagementId}/feed`);
+    const wsTokenParam = accessToken ? `?token=${encodeURIComponent(accessToken)}` : "";
+    const ws = new WebSocket(`${WS_URL}/api/v1/ws/engagements/${engagementId}/feed${wsTokenParam}`);
     wsRef.current = ws;
 
     ws.onopen = () => setConnected(true);
