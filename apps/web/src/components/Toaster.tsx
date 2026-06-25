@@ -31,8 +31,8 @@ function ToastRow({ id, title, description, variant }: ToastItem) {
     <div
       role="alert"
       className={cn(
-        "flex items-start gap-3 w-80 rounded-lg border p-3 shadow-lg",
-        "bg-card text-card-foreground",
+        "flex items-start gap-3 w-80 rounded-ds-md border p-3 shadow-xl",
+        "bg-pentra-bg-panel text-pentra-text-primary",
         BORDER_MAP[variant]
       )}
     >
@@ -40,7 +40,7 @@ function ToastRow({ id, title, description, variant }: ToastItem) {
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium leading-snug">{title}</p>
         {description && (
-          <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+          <p className="text-xs text-pentra-text-muted mt-0.5 leading-snug">
             {description}
           </p>
         )}
@@ -48,7 +48,7 @@ function ToastRow({ id, title, description, variant }: ToastItem) {
       <button
         onClick={() => remove(id)}
         aria-label="Dismiss"
-        className="flex-shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+        className="flex-shrink-0 text-pentra-text-muted hover:text-pentra-text-primary transition-colors"
       >
         <X className="h-3.5 w-3.5" />
       </button>

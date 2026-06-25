@@ -137,7 +137,7 @@ function groupFeedEvents(events: FeedEvent[]): FeedGroup[] {
 function StatCard({ label, value, color }: { label: string; value: number; color?: string }) {
   return (
     <div
-      className="flex-1 min-w-0 rounded-ds-md border border-pentra-border bg-pentra-bg-card px-3 py-2"
+      className="flex-1 min-w-0 rounded-ds-md border border-pentra-border bg-pentra-bg-pentra-bg-card px-3 py-2"
     >
       <p className="text-[10px] font-semibold uppercase tracking-wide text-pentra-text-muted">
         {label}
@@ -158,26 +158,26 @@ function LLMStreamGroup({ group }: { group: Extract<FeedGroup, { kind: "llm" }> 
   const preview = text.slice(0, 80).replace(/\n/g, " ");
 
   return (
-    <div className="border-b border-border/30 last:border-0">
+    <div className="border-b border-pentra-border/30 last:border-0">
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-start gap-2 py-1.5 px-2 hover:bg-white/5 rounded text-xs font-mono text-left"
+        className="w-full flex items-start gap-2 py-1.5 px-2 hover:bg-pentra-bg-hover rounded text-xs font-mono text-left"
       >
         <span className="flex-shrink-0 mt-0.5 text-violet-400">
           <Cpu className="h-3 w-3" />
         </span>
         <span className="flex-1 min-w-0">
           <span className="text-violet-400 font-medium">{label}</span>
-          <span className="text-muted-foreground ml-2">
+          <span className="text-pentra-text-muted ml-2">
             LLM · {group.tokens.length} tokens
           </span>
           {!expanded && (
-            <span className="block text-muted-foreground/70 truncate text-[10px] mt-0.5">
+            <span className="block text-pentra-text-muted/70 truncate text-[10px] mt-0.5">
               {preview}{text.length > 80 ? "…" : ""}
             </span>
           )}
         </span>
-        <span className="flex items-center gap-1 flex-shrink-0 text-muted-foreground">
+        <span className="flex items-center gap-1 flex-shrink-0 text-pentra-text-muted">
           {group.timestamp && (
             <span className="text-[10px]">
               {new Date(group.timestamp).toLocaleTimeString()}
@@ -192,7 +192,7 @@ function LLMStreamGroup({ group }: { group: Extract<FeedGroup, { kind: "llm" }> 
         </span>
       </button>
       {expanded && (
-        <div className="mx-2 mb-1.5 px-3 py-2 rounded bg-violet-500/5 border border-violet-500/20 text-[11px] font-mono text-foreground/80 whitespace-pre-wrap leading-relaxed max-h-80 overflow-auto">
+        <div className="mx-2 mb-1.5 px-3 py-2 rounded bg-violet-500/5 border border-violet-500/20 text-[11px] font-mono text-pentra-text-primary/80 whitespace-pre-wrap leading-relaxed max-h-80 overflow-auto">
           {text}
         </div>
       )}
@@ -204,7 +204,7 @@ function LLMStreamGroup({ group }: { group: Extract<FeedGroup, { kind: "llm" }> 
 
 function FeedRow({ event }: { event: FeedEvent }) {
   const meta = TYPE_META[event.type];
-  const color = meta?.color ?? "text-muted-foreground";
+  const color = meta?.color ?? "text-pentra-text-muted";
   const icon = meta?.icon ?? <Activity className="h-3 w-3" />;
   const isTerminal = event.type === "terminal_output";
   const nodeLabel = event.node
@@ -225,7 +225,7 @@ function FeedRow({ event }: { event: FeedEvent }) {
 
   return (
     <div
-      className="flex items-start gap-3 border-b border-border/20 px-3 py-2 transition-colors hover:bg-white/5 last:border-0"
+      className="flex items-start gap-3 border-b border-pentra-border/20 px-3 py-2 transition-colors hover:bg-pentra-bg-hover last:border-0"
       style={{ animation: "fadeSlideIn 0.12s ease-out" }}
     >
       <span className="w-[58px] flex-shrink-0 pt-0.5 text-right font-mono text-[10px] text-pentra-text-muted">
@@ -279,7 +279,7 @@ function ApprovalDialog({ engagementId, phase, summary, onDone }: ApprovalDialog
         className="mx-4 w-full max-w-2xl overflow-hidden rounded-ds-lg border shadow-2xl"
         style={{
           borderColor: "rgba(245,197,66,0.35)",
-          background: "var(--bg-card)",
+          background: "var(--bg-pentra-bg-card)",
           animation: "fadeUp 0.2s ease-out",
         }}
       >
@@ -353,7 +353,7 @@ function FindingsPanel({ engagementId }: { engagementId: string }) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center flex-1 text-muted-foreground">
+      <div className="flex items-center justify-center flex-1 text-pentra-text-muted">
         <Loader2 className="h-4 w-4 animate-spin" />
       </div>
     );
@@ -411,7 +411,7 @@ export default function EngagementDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center text-muted-foreground">
+      <div className="flex-1 flex items-center justify-center text-pentra-text-muted">
         <Loader2 className="h-5 w-5 animate-spin mr-2" />
         Loading…
       </div>
@@ -420,7 +420,7 @@ export default function EngagementDetailPage() {
 
   if (!engagement) {
     return (
-      <div className="flex-1 flex items-center justify-center text-muted-foreground">
+      <div className="flex-1 flex items-center justify-center text-pentra-text-muted">
         Engagement not found
       </div>
     );
@@ -439,11 +439,11 @@ export default function EngagementDetailPage() {
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="border-b border-border px-8 py-4 flex-shrink-0">
-        <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-2">
+      <div className="border-b border-pentra-border px-8 py-4 flex-shrink-0">
+        <div className="flex items-center gap-1.5 text-sm text-pentra-text-muted mb-2">
           <button
             onClick={() => navigate("/workspaces")}
-            className="hover:text-foreground transition-colors"
+            className="hover:text-pentra-text-primary transition-colors"
           >
             Workspaces
           </button>
@@ -454,7 +454,7 @@ export default function EngagementDetailPage() {
                 onClick={() =>
                   navigate(`/workspaces/${workspace.id}/engagements`)
                 }
-                className="hover:text-foreground transition-colors"
+                className="hover:text-pentra-text-primary transition-colors"
               >
                 {workspace.name}
               </button>
@@ -463,17 +463,17 @@ export default function EngagementDetailPage() {
           <ChevronRight className="h-3.5 w-3.5" />
           <button
             onClick={() => navigate(-1)}
-            className="hover:text-foreground transition-colors"
+            className="hover:text-pentra-text-primary transition-colors"
           >
             Engagements
           </button>
           <ChevronRight className="h-3.5 w-3.5" />
-          <span className="text-foreground">{engagement.name}</span>
+          <span className="text-pentra-text-primary">{engagement.name}</span>
         </div>
 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h1 className="text-xl font-bold text-foreground">{engagement.name}</h1>
+            <h1 className="text-xl font-bold text-pentra-text-primary">{engagement.name}</h1>
             <span
               className={cn(
                 "text-xs font-medium",
@@ -486,7 +486,7 @@ export default function EngagementDetailPage() {
               <span
                 className={cn(
                   "flex items-center gap-1 text-xs",
-                  connected ? "text-green-400" : "text-muted-foreground"
+                  connected ? "text-green-400" : "text-pentra-text-muted"
                 )}
               >
                 {connected ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
@@ -504,7 +504,7 @@ export default function EngagementDetailPage() {
                     ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/30"
                     : agentStatus === "completed"
                     ? "bg-green-500/10 text-green-400 border-green-500/30"
-                    : "bg-muted text-muted-foreground border-border"
+                    : "bg-pentra-bg-hover text-pentra-text-muted border-pentra-border"
                 )}
               >
                 {agentStatus === "running" ? "⚡ running" : agentStatus === "waiting" ? "⏸ awaiting approval" : "✓ completed"}
@@ -527,10 +527,10 @@ export default function EngagementDetailPage() {
                     : "Click to enable Auto Approve (agentic mode, no HITL prompts)"
                 }
                 className={cn(
-                  "flex items-center gap-2 px-3 py-2 border rounded-md text-sm font-medium transition-colors",
+                  "flex items-center gap-2 px-3 py-2 border rounded-ds-md text-sm font-medium transition-colors",
                   engagement.mode === "agentic"
                     ? "border-yellow-500/60 text-yellow-400 bg-yellow-500/10 hover:bg-yellow-500/20"
-                    : "border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+                    : "border-pentra-border text-pentra-text-muted hover:text-pentra-text-primary hover:bg-pentra-bg-hover"
                 )}
               >
                 {modeMutation.isPending ? (
@@ -545,7 +545,7 @@ export default function EngagementDetailPage() {
               onClick={handleExport}
               disabled={exporting}
               title="Export engagement as JSON"
-              className="flex items-center gap-2 px-3 py-2 border border-border rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              className="flex items-center gap-2 px-3 py-2 border border-pentra-border rounded-ds-md text-sm text-pentra-text-muted hover:text-pentra-text-primary hover:bg-pentra-bg-hover transition-colors"
             >
               {exporting ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -558,7 +558,7 @@ export default function EngagementDetailPage() {
               <button
                 onClick={() => startMutation.mutate()}
                 disabled={startMutation.isPending}
-                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-md text-sm font-medium hover:bg-green-500 disabled:opacity-50 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-ds-md text-sm font-medium hover:bg-green-500 disabled:opacity-50 transition-colors"
               >
                 {startMutation.isPending ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -572,7 +572,7 @@ export default function EngagementDetailPage() {
               <button
                 onClick={() => stopMutation.mutate()}
                 disabled={stopMutation.isPending}
-                className="flex items-center gap-2 px-4 py-2 bg-red-600/80 text-white rounded-md text-sm font-medium hover:bg-red-600 disabled:opacity-50 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 bg-red-600/80 text-white rounded-ds-md text-sm font-medium hover:bg-red-600 disabled:opacity-50 transition-colors"
               >
                 {stopMutation.isPending ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -607,7 +607,7 @@ export default function EngagementDetailPage() {
       </div>
 
       {/* Tab bar */}
-      <div className="flex border-b border-border px-8 flex-shrink-0 bg-background/50">
+      <div className="flex border-b border-pentra-border px-8 flex-shrink-0 bg-pentra-bg-base/50">
         {[
           {
             key: "feed" as Tab,
@@ -640,8 +640,8 @@ export default function EngagementDetailPage() {
             className={cn(
               "flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-colors",
               tab === key
-                ? "border-primary text-foreground"
-                : "border-transparent text-muted-foreground hover:text-foreground"
+                ? "border-pentra-accent text-pentra-text-primary"
+                : "border-transparent text-pentra-text-muted hover:text-pentra-text-primary"
             )}
           >
             {icon}
@@ -652,7 +652,7 @@ export default function EngagementDetailPage() {
                   "inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1 rounded-full text-[10px] font-semibold",
                   tab === key
                     ? "bg-primary/20 text-primary"
-                    : "bg-muted text-muted-foreground"
+                    : "bg-pentra-bg-hover text-pentra-text-muted"
                 )}
               >
                 {count}
@@ -692,18 +692,18 @@ export default function EngagementDetailPage() {
               </div>
             )}
             {engagement.status === "planning" ? (
-              <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+              <div className="flex flex-col items-center justify-center h-full text-pentra-text-muted">
                 <ScrollText className="h-10 w-10 mb-3 opacity-20" />
                 <p className="text-sm">Agent not started yet</p>
                 <p className="text-xs mt-1 opacity-60">Click "Start Agent" to begin</p>
               </div>
             ) : events.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+              <div className="flex flex-col items-center justify-center h-full text-pentra-text-muted">
                 <Activity className="h-8 w-8 mb-2 opacity-20 animate-pulse" />
                 <p className="text-sm">Waiting for agent events…</p>
               </div>
             ) : (
-              <div className="flex-1 overflow-auto rounded-lg bg-background border border-border p-2">
+              <div className="flex-1 overflow-auto rounded-ds-lg bg-pentra-bg-base border border-pentra-border p-2">
                 {groupFeedEvents(events).map((group, idx) =>
                   group.kind === "llm" ? (
                     <LLMStreamGroup key={idx} group={group} />
