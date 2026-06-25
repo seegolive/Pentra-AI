@@ -91,11 +91,11 @@ const PRESETS: ScanPreset[] = [
   {
     id: "pentra-ft",
     name: "Pentra-FT",
-    description: "Fine-tuned model optimized for pentest workflows — 8× more effective",
+    description: "Fine-tuned model optimized for pentest workflows — coming soon",
     eta: "~30 min",
     icon: <Cpu className="h-5 w-5" />,
-    model: "pentra-ft",
-    recommended: true,
+    model: "qwen2.5:32b",
+    disabled: true,
   },
 ];
 
@@ -584,19 +584,26 @@ function Step2({
             <button
               key={preset.id}
               type="button"
-              onClick={() => onSelect(preset.id)}
+              onClick={() => !("disabled" in preset && preset.disabled) && onSelect(preset.id)}
+              disabled={"disabled" in preset && preset.disabled}
               className={cn(
                 "relative flex flex-col gap-2 rounded-ds-md border p-4 text-left transition-all",
-                selected === preset.id
+                "disabled" in preset && preset.disabled
+                  ? "border-pentra-border/40 bg-pentra-bg-card/40 opacity-50 cursor-not-allowed"
+                  : selected === preset.id
                   ? "border-pentra-accent bg-pentra-accent-glow"
                   : "border-pentra-border bg-pentra-bg-card hover:border-pentra-border-light hover:bg-pentra-bg-hover"
               )}
             >
-              {preset.recommended && (
+              {"disabled" in preset && preset.disabled ? (
+                <span className="absolute right-2 top-2 rounded-full bg-pentra-bg-hover border border-pentra-border px-2 py-0.5 text-[9px] font-bold text-pentra-text-muted">
+                  Soon
+                </span>
+              ) : preset.recommended ? (
                 <span className="absolute right-2 top-2 rounded-full bg-pentra-accent px-2 py-0.5 text-[9px] font-bold text-white">
                   Recommended
                 </span>
-              )}
+              ) : null}
               <div className={cn(
                 "flex h-9 w-9 items-center justify-center rounded-ds-md",
                 selected === preset.id ? "bg-pentra-accent text-white" : "bg-pentra-bg-panel text-pentra-text-muted"

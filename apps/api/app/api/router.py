@@ -1271,6 +1271,33 @@ async def _run_agent(eng: EngagementORM) -> None:
 
     _base_urls = [_to_base_url(s) for s in _non_cidr] if _non_cidr else []
 
+    # ── Model availability check ────────────────────────────────────────────
+    # Validate the requested LLM model exists in Ollama before starting the
+    # graph — Ollama returns 404 for unknown models, which surfaces as an
+    # opaque error deep in the agent. Fail fast with a clear message instead.
+    _ollama_base = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+    _fallback_model = os.environ.get("OLLAMA_MODEL_DEFAULT", "qwen2.5:32b")
+    _requested_model = eng.llm_model
+    try:
+        import httpx as _httpx
+        async with _httpx.AsyncClient(timeout=5) as _hc:
+            _tags = (await _hc.get(f"{_ollama_base}/api/tags")).json()
+        _installed = {m["name"].split(":")[0] for m in _tags.get("models", [])}
+        _installed |= {m["name"] for m in _tags.get("models", [])}
+        if _requested_model not in _installed and _requested_model.split(":")[0] not in _installed:
+            log.warning(
+                "[_run_agent] Model '%s' not found in Ollama — falling back to '%s'",
+                _requested_model, _fallback_model,
+            )
+            await ws_manager.broadcast(engagement_id, {
+                "type": "error",
+                "message": f"Model '{_requested_model}' not installed. Falling back to '{_fallback_model}'.",
+            })
+            _requested_model = _fallback_model
+    except Exception as _model_check_exc:
+        log.warning("[_run_agent] Could not verify model availability: %s", _model_check_exc)
+        _requested_model = _requested_model  # keep original, let it fail naturally
+
     initial_state = {
         "engagement_id": engagement_id,
         "target": {
@@ -1283,7 +1310,7 @@ async def _run_agent(eng: EngagementORM) -> None:
             "out_of_scope": list(eng.out_of_scope),
         },
         "mode": eng.mode,
-        "llm_model": eng.llm_model,
+        "llm_model": _requested_model,
         "opsec_mode": eng.opsec_mode,
         "request_jitter_ms": eng.request_jitter_ms,
         "scan_sequential": bool(getattr(eng, "scan_sequential", False)),
