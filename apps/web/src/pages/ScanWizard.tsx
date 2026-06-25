@@ -726,134 +726,6 @@ function ReviewRow({ label, value, highlight }: { label: string; value: string; 
   );
 }
 
-// ── Live Summary Panel (right column on lg+) ─────────────────────────────────
-
-function SummaryItem({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className="flex items-start justify-between gap-2 py-1.5 border-b border-pentra-border last:border-0">
-      <span className="text-[11px] text-pentra-text-muted flex-shrink-0">{label}</span>
-      <span className={cn(
-        "text-[11px] text-right break-all",
-        accent ? "text-orange-300 font-semibold" : "text-pentra-text-primary font-medium"
-      )}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
-function ScanSummaryPanel({
-  target,
-  preset,
-  auth,
-  fullBypass,
-  effectiveMode,
-  effectiveAutoApprove,
-  effectiveModel,
-  effectiveJitter,
-  step,
-}: {
-  target: TargetData;
-  preset: string;
-  auth: { enabled: boolean; authType: string };
-  fullBypass: boolean;
-  effectiveMode: string;
-  effectiveAutoApprove: boolean;
-  effectiveModel: string;
-  effectiveJitter: number;
-  step: number;
-}) {
-  const selectedPreset = PRESETS.find((p) => p.id === preset) ?? PRESETS[1];
-  const stepLabels = ["Target & Scope", "Scan Preset", "Authentication", "Review & Launch"];
-
-  return (
-    <div className="sticky top-6 space-y-3">
-      {/* Live config summary */}
-      <div className={cn(
-        "rounded-ds-lg border bg-pentra-bg-panel p-4 transition-colors",
-        fullBypass ? "border-orange-500/30" : "border-pentra-border"
-      )}>
-        <div className="flex items-center gap-2 mb-3">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-pentra-text-muted">
-            Scan Summary
-          </span>
-          {fullBypass && (
-            <span className="ml-auto text-[9px] font-bold text-orange-400 border border-orange-500/40 rounded px-1.5 py-0.5">
-              FULL BYPASS
-            </span>
-          )}
-        </div>
-
-        <div>
-          <SummaryItem
-            label="Target"
-            value={target.domain || "—"}
-          />
-          <SummaryItem
-            label="Preset"
-            value={fullBypass ? "pentra-ft (all modules)" : `${selectedPreset.name} · ${selectedPreset.eta}`}
-            accent={fullBypass}
-          />
-          <SummaryItem
-            label="Model"
-            value={effectiveModel}
-            accent={fullBypass}
-          />
-          <SummaryItem
-            label="Mode"
-            value={effectiveMode === "agentic" ? "Agentic (no HITL)" : "Semi-Auto (HITL)"}
-            accent={fullBypass && effectiveMode === "agentic"}
-          />
-          <SummaryItem
-            label="Approval"
-            value={effectiveAutoApprove ? "Auto (bypass)" : "Manual at exploit gate"}
-            accent={effectiveAutoApprove}
-          />
-          <SummaryItem
-            label="Auth"
-            value={auth.enabled ? auth.authType : "None"}
-          />
-          {effectiveJitter > 0 && (
-            <SummaryItem
-              label="Jitter"
-              value={`≤${effectiveJitter}ms`}
-            />
-          )}
-        </div>
-      </div>
-
-      {/* Step progress */}
-      <div className="rounded-ds-lg border border-pentra-border bg-pentra-bg-panel p-4">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-pentra-text-muted block mb-3">
-          Progress
-        </span>
-        <div className="space-y-1.5">
-          {stepLabels.map((label, i) => (
-            <div key={i} className="flex items-center gap-2.5">
-              <div className={cn(
-                "flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold border transition-colors",
-                i < step
-                  ? "bg-pentra-accent border-pentra-accent text-white"
-                  : i === step
-                  ? "border-pentra-accent text-pentra-accent bg-pentra-accent/10"
-                  : "border-pentra-border text-pentra-text-muted"
-              )}>
-                {i < step ? "✓" : i + 1}
-              </div>
-              <span className={cn(
-                "text-[12px] transition-colors",
-                i === step ? "text-pentra-text-primary font-medium" : "text-pentra-text-muted"
-              )}>
-                {label}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── Main Wizard ──────────────────────────────────────────────────────────────
 
 export default function ScanWizard() {
@@ -959,12 +831,8 @@ export default function ScanWizard() {
         )}
       </div>
 
-      {/* Two-column layout — fills full available width */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] xl:grid-cols-[1fr_300px] gap-8 items-start">
-
-        {/* Left: wizard steps */}
-        <div className="min-w-0">
-            <StepIndicator current={step} />
+      <div className="max-w-2xl">
+        <StepIndicator current={step} />
 
             <div className={cn(
               "rounded-ds-lg border bg-pentra-bg-panel p-6 transition-colors",
@@ -1049,67 +917,51 @@ export default function ScanWizard() {
               )}
             </div>
 
-            {/* Navigation */}
-            <div className="flex items-center justify-between mt-4">
-              <button
-                type="button"
-                onClick={() => setStep((s) => Math.max(0, s - 1))}
-                disabled={step === 0}
-                className="flex items-center gap-1.5 rounded-ds-md border border-pentra-border px-4 py-2 text-[13px] text-pentra-text-secondary transition-colors hover:bg-pentra-bg-hover hover:text-pentra-text-primary disabled:opacity-40"
-              >
-                <ChevronLeft className="h-4 w-4" />
-                Back
-              </button>
+        {/* Navigation */}
+        <div className="flex items-center justify-between mt-4">
+          <button
+            type="button"
+            onClick={() => setStep((s) => Math.max(0, s - 1))}
+            disabled={step === 0}
+            className="flex items-center gap-1.5 rounded-ds-md border border-pentra-border px-4 py-2 text-[13px] text-pentra-text-secondary transition-colors hover:bg-pentra-bg-hover hover:text-pentra-text-primary disabled:opacity-40"
+          >
+            <ChevronLeft className="h-4 w-4" />
+            Back
+          </button>
 
-              {step < 3 ? (
-                <button
-                  type="button"
-                  onClick={() => setStep((s) => Math.min(3, s + 1))}
-                  disabled={!canNext()}
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-ds-md px-4 py-2 text-[13px] font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-40",
-                    fullBypass ? "bg-orange-500" : "bg-pentra-accent"
-                  )}
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleLaunch}
-                  disabled={create.isPending}
-                  className={cn(
-                    "flex items-center gap-2 rounded-ds-md px-5 py-2 text-[13px] font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-50",
-                    fullBypass ? "bg-orange-500 shadow-lg shadow-orange-500/30" : "bg-pentra-accent"
-                  )}
-                >
-                  {create.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : fullBypass ? (
-                    <Bot className="h-4 w-4" />
-                  ) : (
-                    <CheckCircle2 className="h-4 w-4" />
-                  )}
-                  {fullBypass ? "Launch Full Bypass" : "Launch Scan"}
-                </button>
+          {step < 3 ? (
+            <button
+              type="button"
+              onClick={() => setStep((s) => Math.min(3, s + 1))}
+              disabled={!canNext()}
+              className={cn(
+                "flex items-center gap-1.5 rounded-ds-md px-4 py-2 text-[13px] font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-40",
+                fullBypass ? "bg-orange-500" : "bg-pentra-accent"
               )}
-            </div>
-          </div>
-
-        {/* Right: live summary panel — visible on lg+ only */}
-        <div className="hidden lg:block mt-[52px]">
-          <ScanSummaryPanel
-            target={target}
-            preset={preset}
-            auth={auth}
-            fullBypass={fullBypass}
-            effectiveMode={effectiveMode}
-            effectiveAutoApprove={effectiveAutoApprove}
-            effectiveModel={effectiveModel}
-            effectiveJitter={effectiveJitter}
-            step={step}
-          />
+            >
+              Next
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleLaunch}
+              disabled={create.isPending}
+              className={cn(
+                "flex items-center gap-2 rounded-ds-md px-5 py-2 text-[13px] font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-50",
+                fullBypass ? "bg-orange-500 shadow-lg shadow-orange-500/30" : "bg-pentra-accent"
+              )}
+            >
+              {create.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : fullBypass ? (
+                <Bot className="h-4 w-4" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4" />
+              )}
+              {fullBypass ? "Launch Full Bypass" : "Launch Scan"}
+            </button>
+          )}
         </div>
       </div>
     </div>

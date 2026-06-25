@@ -27,21 +27,21 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-card border border-border rounded-xl overflow-hidden">
-      <div className="flex items-center gap-2.5 px-6 py-4 border-b border-border bg-background/40">
-        <span className="text-muted-foreground">{icon}</span>
-        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+    <div className="rounded-ds-lg border border-pentra-border bg-pentra-bg-panel overflow-hidden">
+      <div className="flex items-center gap-2.5 px-5 py-3.5 border-b border-pentra-border bg-pentra-bg-card/40">
+        <span className="text-pentra-text-muted">{icon}</span>
+        <h2 className="text-[13px] font-semibold text-pentra-text-primary">{title}</h2>
       </div>
-      <div className="px-6 py-5">{children}</div>
+      <div className="px-5 py-5">{children}</div>
     </div>
   );
 }
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span className="text-sm font-mono text-foreground">{value}</span>
+    <div className="flex items-center justify-between py-2.5 border-b border-pentra-border/50 last:border-0">
+      <span className="text-[13px] text-pentra-text-muted">{label}</span>
+      <span className="text-[13px] font-mono text-pentra-text-primary">{value}</span>
     </div>
   );
 }
@@ -89,10 +89,12 @@ function ChangePasswordForm() {
 
   const displayError = localError ?? apiError;
 
+  const inputClass = "w-full px-3 py-2 text-[13px] bg-pentra-bg-input border border-pentra-border rounded-ds-md text-pentra-text-primary placeholder:text-pentra-text-muted outline-none focus:border-pentra-border-focus transition-colors";
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4 max-w-sm">
       <div>
-        <label htmlFor="cp-current" className="block text-xs font-medium text-muted-foreground mb-1.5">
+        <label htmlFor="cp-current" className="block text-[12px] font-medium text-pentra-text-muted mb-1.5">
           Current Password
         </label>
         <input
@@ -102,12 +104,12 @@ function ChangePasswordForm() {
           onChange={(e) => setCurrent(e.target.value)}
           required
           autoComplete="current-password"
-          className="w-full px-3 py-2 text-sm bg-background border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
+          className={inputClass}
         />
       </div>
 
       <div>
-        <label htmlFor="cp-new" className="block text-xs font-medium text-muted-foreground mb-1.5">
+        <label htmlFor="cp-new" className="block text-[12px] font-medium text-pentra-text-muted mb-1.5">
           New Password
         </label>
         <input
@@ -117,12 +119,12 @@ function ChangePasswordForm() {
           onChange={(e) => setNext(e.target.value)}
           required
           autoComplete="new-password"
-          className="w-full px-3 py-2 text-sm bg-background border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-primary"
+          className={inputClass}
         />
       </div>
 
       <div>
-        <label htmlFor="cp-confirm" className="block text-xs font-medium text-muted-foreground mb-1.5">
+        <label htmlFor="cp-confirm" className="block text-[12px] font-medium text-pentra-text-muted mb-1.5">
           Confirm New Password
         </label>
         <input
@@ -133,23 +135,23 @@ function ChangePasswordForm() {
           required
           autoComplete="new-password"
           className={cn(
-            "w-full px-3 py-2 text-sm bg-background border rounded-md focus:outline-none focus:ring-1 focus:ring-primary",
+            inputClass,
             confirm && next && confirm !== next
-              ? "border-red-500/60"
-              : "border-border"
+              ? "border-pentra-severity-critical/60"
+              : ""
           )}
         />
       </div>
 
       {displayError && (
-        <div className="flex items-center gap-2 text-xs text-red-400">
+        <div className="flex items-center gap-2 text-[12px] text-pentra-severity-critical bg-red-950/40 border border-red-900/40 rounded-ds-md px-3 py-2">
           <AlertCircle className="h-3.5 w-3.5 flex-shrink-0" />
           {displayError}
         </div>
       )}
 
       {success && (
-        <div className="flex items-center gap-2 text-xs text-green-400">
+        <div className="flex items-center gap-2 text-[12px] text-pentra-severity-low bg-green-950/40 border border-green-900/40 rounded-ds-md px-3 py-2">
           <CheckCircle2 className="h-3.5 w-3.5 flex-shrink-0" />
           Password changed successfully.
         </div>
@@ -158,7 +160,7 @@ function ChangePasswordForm() {
       <button
         type="submit"
         disabled={isPending}
-        className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-md hover:opacity-90 disabled:opacity-50 transition-opacity"
+        className="flex items-center gap-2 px-4 py-2 bg-pentra-accent text-white text-[13px] font-medium rounded-ds-md hover:opacity-90 disabled:opacity-50 transition-opacity"
       >
         {isPending ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -178,62 +180,37 @@ export default function SettingsPage() {
   const { data: versionInfo } = useVersionInfo();
 
   return (
-    <div className="flex-1 overflow-auto p-6">
-      <div className="max-w-2xl mx-auto space-y-6">
+    <div className="flex-1 w-full p-6 lg:p-8">
+      <div className="max-w-2xl space-y-6">
+
         {/* Page header */}
         <div>
-          <h1 className="text-xl font-bold text-foreground">Settings</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <h1 className="text-[22px] font-bold text-pentra-text-primary">Settings</h1>
+          <p className="text-[13px] text-pentra-text-secondary mt-0.5">
             Profile, security, and system information.
           </p>
         </div>
 
         {/* Profile */}
         <Section title="Profile" icon={<User className="h-4 w-4" />}>
-          <div className="space-y-0">
-            <InfoRow label="Username" value={user?.username ?? "—"} />
-            <InfoRow label="Email" value={user?.email ?? "—"} />
-            <InfoRow
-              label="Role"
-              value={user?.is_admin ? "Administrator" : "Operator"}
-            />
-          </div>
+          <InfoRow label="Username" value={user?.username ?? "—"} />
+          <InfoRow label="Email" value={user?.email ?? "—"} />
+          <InfoRow label="Role" value={user?.is_admin ? "Administrator" : "Operator"} />
         </Section>
 
         {/* Change password */}
-        <Section
-          title="Change Password"
-          icon={<Lock className="h-4 w-4" />}
-        >
+        <Section title="Change Password" icon={<Lock className="h-4 w-4" />}>
           <ChangePasswordForm />
         </Section>
 
         {/* System info */}
-        <Section
-          title="System Information"
-          icon={<Info className="h-4 w-4" />}
-        >
-          <div className="space-y-0">
-            <InfoRow
-              label="API Version"
-              value={versionInfo?.version ?? APP_VERSION}
-            />
-            <InfoRow
-              label="Frontend Version"
-              value={APP_VERSION}
-            />
-            <InfoRow
-              label="Build Date"
-              value={versionInfo?.build_date ?? BUILD_DATE}
-            />
-            <InfoRow
-              label="Phase"
-              value={versionInfo?.phase ?? "Phase 2 — Agent Engine"}
-            />
-          </div>
+        <Section title="System Information" icon={<Info className="h-4 w-4" />}>
+          <InfoRow label="API Version" value={versionInfo?.version ?? APP_VERSION} />
+          <InfoRow label="Frontend Version" value={APP_VERSION} />
+          <InfoRow label="Build Date" value={versionInfo?.build_date ?? BUILD_DATE} />
+          <InfoRow label="Phase" value={versionInfo?.phase ?? "Phase 2 — Agent Engine"} />
 
-          {/* Icon legend */}
-          <div className="mt-4 flex flex-wrap gap-4 text-xs text-muted-foreground">
+          <div className="mt-4 flex flex-wrap gap-4 text-[12px] text-pentra-text-muted">
             <span className="flex items-center gap-1.5">
               <Cpu className="h-3.5 w-3.5" /> Ollama (local LLM)
             </span>

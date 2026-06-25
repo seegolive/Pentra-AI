@@ -92,17 +92,17 @@ function EngagementCard({ eng, onClick }: { eng: Engagement; onClick: () => void
     <button
       onClick={onClick}
       className={cn(
-        "w-full text-left p-5 border border-border rounded-lg bg-card",
-        "hover:border-primary/50 hover:bg-card/80 transition-colors group"
+        "w-full text-left p-5 border border-pentra-border rounded-ds-lg bg-pentra-bg-card",
+        "hover:border-pentra-accent/50 hover:bg-pentra-bg-hover transition-colors group"
       )}
     >
       <div className="flex items-start justify-between gap-4">
         {/* Left: title + meta */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-semibold text-foreground truncate">{eng.name}</p>
+            <p className="font-semibold text-pentra-text-primary truncate">{eng.name}</p>
             <StatusBadge status={eng.status as EngagementStatus} />
-            <span className="text-xs text-muted-foreground border border-border rounded px-1.5 py-0.5 font-mono">
+            <span className="text-xs text-pentra-text-muted border border-pentra-border rounded px-1.5 py-0.5 font-mono">
               {eng.mode === "semi_auto" ? "Semi-Auto" : "Agentic"}
             </span>
             {eng.scan_preset && (
@@ -113,21 +113,21 @@ function EngagementCard({ eng, onClick }: { eng: Engagement; onClick: () => void
           </div>
 
           {eng.description && (
-            <p className="text-xs text-muted-foreground mt-1 truncate">{eng.description}</p>
+            <p className="text-xs text-pentra-text-muted mt-1 truncate">{eng.description}</p>
           )}
 
           <div className="flex items-center flex-wrap gap-x-4 gap-y-1 mt-2">
             {/* Scope */}
-            <span className="text-xs text-muted-foreground font-mono">
+            <span className="text-xs text-pentra-text-muted font-mono">
               <ScanSearch className="h-3 w-3 inline mr-1 opacity-60" />
               {scopeLabel}
             </span>
             {/* Model */}
-            <span className="text-xs text-muted-foreground font-mono opacity-60">
+            <span className="text-xs text-pentra-text-muted font-mono opacity-60">
               {eng.llm_model}
             </span>
             {/* Date */}
-            <span className="text-xs text-muted-foreground opacity-50">
+            <span className="text-xs text-pentra-text-muted opacity-50">
               {startedDate ? `Started ${startedDate}` : `Created ${createdDate}`}
             </span>
           </div>
@@ -141,7 +141,7 @@ function EngagementCard({ eng, onClick }: { eng: Engagement; onClick: () => void
               Ready
             </span>
           )}
-          <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+          <ChevronRight className="h-4 w-4 text-pentra-text-muted group-hover:text-pentra-text-primary transition-colors" />
         </div>
       </div>
     </button>
@@ -180,22 +180,22 @@ export default function EngagementsPage() {
       <div className="w-full max-w-4xl mx-auto">
 
         {/* Breadcrumb */}
-        <div className="flex items-center gap-1.5 text-sm text-muted-foreground mb-6">
+        <div className="flex items-center gap-1.5 text-sm text-pentra-text-muted mb-6">
           <button
             onClick={() => navigate("/workspaces")}
-            className="hover:text-foreground transition-colors"
+            className="hover:text-pentra-text-primary transition-colors"
           >
             Workspaces
           </button>
           <ChevronRight className="h-3.5 w-3.5" />
-          <span className="text-foreground">{workspace?.name ?? "…"}</span>
+          <span className="text-pentra-text-primary">{workspace?.name ?? "…"}</span>
         </div>
 
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold text-foreground">Engagements</h1>
-            <p className="text-sm text-muted-foreground mt-1">
+            <h1 className="text-2xl font-bold text-pentra-text-primary">Engagements</h1>
+            <p className="text-sm text-pentra-text-muted mt-1">
               {engagements?.length
                 ? `${engagements.length} engagement${engagements.length !== 1 ? "s" : ""} in this workspace`
                 : "Security testing engagements for this workspace"}
@@ -208,7 +208,7 @@ export default function EngagementsPage() {
               onClick={() => fileInputRef.current?.click()}
               disabled={importMutation.isPending}
               title="Import engagement from JSON export"
-              className="flex items-center gap-2 px-3 py-2 border border-border rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors disabled:opacity-50"
+              className="flex items-center gap-2 px-3 py-2 border border-pentra-border rounded-ds-md text-[13px] text-pentra-text-muted hover:text-pentra-text-primary hover:bg-pentra-bg-hover transition-colors disabled:opacity-50"
             >
               {importMutation.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -227,7 +227,7 @@ export default function EngagementsPage() {
 
             <button
               onClick={() => navigate("/scan/new", { state: { workspaceId } })}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors"
+              className="flex items-center gap-2 px-4 py-2 bg-pentra-accent text-white rounded-ds-md text-[13px] font-medium hover:opacity-90 transition-colors"
             >
               <Plus className="h-4 w-4" />
               New Scan
@@ -237,12 +237,12 @@ export default function EngagementsPage() {
 
         {/* Engagement list */}
         {isLoading ? (
-          <div className="flex items-center justify-center h-40 text-muted-foreground">
+          <div className="flex items-center justify-center h-40 text-pentra-text-muted">
             <Loader2 className="h-5 w-5 animate-spin mr-2" />
             Loading…
           </div>
         ) : engagements?.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-muted-foreground border border-dashed border-border rounded-lg gap-3">
+          <div className="flex flex-col items-center justify-center h-64 text-pentra-text-muted border border-dashed border-pentra-border rounded-ds-lg gap-3">
             <Target className="h-12 w-12 opacity-20" />
             <div className="text-center">
               <p className="text-sm font-medium">No engagements yet</p>
@@ -250,7 +250,7 @@ export default function EngagementsPage() {
             </div>
             <button
               onClick={() => navigate("/scan/new", { state: { workspaceId } })}
-              className="mt-2 flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors"
+              className="mt-2 flex items-center gap-2 px-4 py-2 bg-pentra-accent text-white rounded-ds-md text-[13px] font-medium hover:opacity-90 transition-colors"
             >
               <Plus className="h-4 w-4" />
               New Scan
