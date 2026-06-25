@@ -47,25 +47,25 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-pentra-bg-base flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="text-3xl font-black tracking-tight text-white">
-            Pentra<span className="text-indigo-400">AI</span>
+          <div className="text-3xl font-black tracking-tight text-pentra-text-primary">
+            Pentra<span className="text-pentra-accent">AI</span>
           </div>
-          <p className="mt-2 text-sm text-gray-400">
+          <p className="mt-2 text-sm text-pentra-text-muted">
             Self-hosted AI Security Research Platform
           </p>
         </div>
 
         {/* Card */}
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 shadow-xl">
-          <h1 className="text-lg font-semibold text-white mb-6">Sign in</h1>
+        <div className="bg-pentra-bg-panel border border-pentra-border rounded-ds-lg p-6 shadow-xl">
+          <h1 className="text-lg font-semibold text-pentra-text-primary mb-6">Sign in</h1>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="username" className="block text-xs font-medium text-gray-400 mb-1">
+              <label htmlFor="username" className="block text-xs font-medium text-pentra-text-muted mb-1.5">
                 Username
               </label>
               <input
@@ -75,14 +75,15 @@ export default function LoginPage() {
                 onChange={(e) => setUsername(e.target.value)}
                 autoComplete="username"
                 required
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2
-                           text-sm text-white placeholder-gray-500
-                           focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full bg-pentra-bg-card border border-pentra-border rounded-ds-md px-3 py-2
+                           text-sm text-pentra-text-primary placeholder-pentra-text-muted/50
+                           focus:outline-none focus:ring-1 focus:ring-pentra-accent focus:border-pentra-accent/60
+                           transition-colors"
               />
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-xs font-medium text-gray-400 mb-1">
+              <label htmlFor="password" className="block text-xs font-medium text-pentra-text-muted mb-1.5">
                 Password
               </label>
               <input
@@ -92,14 +93,15 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
                 required
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2
-                           text-sm text-white placeholder-gray-500
-                           focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full bg-pentra-bg-card border border-pentra-border rounded-ds-md px-3 py-2
+                           text-sm text-pentra-text-primary placeholder-pentra-text-muted/50
+                           focus:outline-none focus:ring-1 focus:ring-pentra-accent focus:border-pentra-accent/60
+                           transition-colors"
               />
             </div>
 
             {error && (
-              <p className="text-xs text-red-400 bg-red-950 border border-red-800 rounded-lg px-3 py-2">
+              <p className="text-xs text-red-400 bg-red-950/60 border border-red-800/60 rounded-ds-md px-3 py-2">
                 {error}
               </p>
             )}
@@ -107,9 +109,9 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={login.isPending}
-              className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed
-                         text-white text-sm font-semibold rounded-lg px-4 py-2.5
-                         transition-colors duration-150"
+              className="w-full bg-pentra-accent hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed
+                         text-white text-sm font-semibold rounded-ds-md px-4 py-2.5
+                         transition-opacity"
             >
               {login.isPending ? "Signing in…" : "Sign in"}
             </button>
