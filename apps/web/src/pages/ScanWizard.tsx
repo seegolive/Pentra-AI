@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   Zap,
   Wind,
@@ -730,8 +730,11 @@ function ReviewRow({ label, value, highlight }: { label: string; value: string; 
 
 export default function ScanWizard() {
   const navigate = useNavigate();
+  const location = useLocation();
   const create = useCreateEngagement();
   const { data: workspaces } = useWorkspaces();
+  // workspaceId passed via navigate state from EngagementsPage, fallback to first workspace
+  const stateWorkspaceId = (location.state as { workspaceId?: string } | null)?.workspaceId;
 
   const [step, setStep] = useState(0);
   const [fullBypass, setFullBypass] = useState(false);
@@ -772,7 +775,7 @@ export default function ScanWizard() {
   };
 
   const handleLaunch = async () => {
-    const workspaceId = workspaces?.[0]?.id;
+    const workspaceId = stateWorkspaceId ?? workspaces?.[0]?.id;
     if (!workspaceId) {
       toastError("No workspace", "Please create a workspace first");
       return;

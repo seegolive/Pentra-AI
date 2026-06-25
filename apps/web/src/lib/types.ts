@@ -99,6 +99,7 @@ export interface Engagement {
   in_scope: string[];
   out_of_scope: string[];
   llm_model: string;
+  scan_preset: string;
   langgraph_thread_id: string;
   opsec_mode: boolean;
   request_jitter_ms: number;
@@ -119,6 +120,7 @@ export interface EngagementCreate {
   in_scope: string[];
   out_of_scope: string[];
   llm_model: string;
+  scan_preset?: string;
   opsec_mode?: boolean;
   request_jitter_ms?: number;
   scan_sequential?: boolean;
