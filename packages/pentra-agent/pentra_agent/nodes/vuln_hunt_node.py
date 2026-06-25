@@ -4240,8 +4240,17 @@ async def _run_per_subdomain_tools(
         log.info("[per_subdomain_concurrent] [%s] → %d finding(s)", host, len(merged))
         return merged
 
+    # Limit concurrent subdomain scans — each subdomain launches nuclei+ffuf+…
+    # simultaneously, so running too many at once starves CPU/network.
+    _max_concurrent_hosts = int(os.getenv("PENTRA_CONCURRENT_SUBDOMAINS", "3"))
+    _host_sem = asyncio.Semaphore(_max_concurrent_hosts)
+
+    async def _scan_one_host_guarded(host: str, host_eps: list[dict]) -> list[dict]:
+        async with _host_sem:
+            return await _scan_one_host(host, host_eps)
+
     host_results = await asyncio.gather(
-        *[_scan_one_host(host, eps) for host, eps in groups.items()],
+        *[_scan_one_host_guarded(host, eps) for host, eps in groups.items()],
         return_exceptions=True,
     )
 

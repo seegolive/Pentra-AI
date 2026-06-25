@@ -37,7 +37,10 @@ for _logger_name in (
         _h = _logging.StreamHandler()
         _h.setFormatter(_logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s"))
         _logging.getLogger(_logger_name).addHandler(_h)
-        _logging.getLogger(_logger_name).propagate = True
+    # propagate=False: prevent messages from reaching the root logger's uvicorn
+    # handler — without this, every message is written twice (once by the handler
+    # above, once by uvicorn's root handler via propagation).
+    _logging.getLogger(_logger_name).propagate = False
 
 from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
