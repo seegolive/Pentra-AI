@@ -135,7 +135,7 @@ async def recon_node(state: PentraState) -> dict:
 
     await asyncio.gather(_probe_rl(), _probe_waf())
 
-    ports: list[dict] = await _run_nmap(subdomains)
+    ports: list[dict] = await _run_nmap(subdomains, ip_ranges=state["target"].get("ip_ranges", []))
     tech_stack: list[str] = _extract_tech_stack(subdomains)
 
     # Defense-in-depth: drop any OOS subdomain before building endpoints
@@ -381,13 +381,14 @@ async def _run_httpx_probe(subdomains: list[dict]) -> list[dict]:
         return subdomains
 
 
-async def _run_nmap(subdomains: list[dict]) -> list[dict]:
-    """Quick nmap scan on top alive hosts; returns list of Port dicts."""
+async def _run_nmap(subdomains: list[dict], ip_ranges: list[str] | None = None) -> list[dict]:
+    """Quick nmap scan on top alive hosts + any explicit IP CIDR ranges."""
     alive = [s for s in subdomains if s.get("is_alive")][:10]
-    if not alive:
+    cidr_targets = list(ip_ranges or [])
+    targets = [s["host"] for s in alive] + cidr_targets
+    if not targets:
         return []
     try:
-        targets = [s["host"] for s in alive]
         proc = await asyncio.create_subprocess_exec(
             "nmap", "-T4", "--open", "-oX", "-",
             "--top-ports", "1000",
@@ -396,6 +397,8 @@ async def _run_nmap(subdomains: list[dict]) -> list[dict]:
             stderr=asyncio.subprocess.DEVNULL,
         )
         stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=300)
+        if cidr_targets:
+            log.info("[recon_node] nmap scanning %d hosts + %d CIDR range(s)", len(alive), len(cidr_targets))
         return _parse_nmap_xml(stdout.decode())
     except FileNotFoundError:
         log.warning("[recon_node] nmap not found — skipping port scan")

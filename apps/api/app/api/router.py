@@ -1247,13 +1247,36 @@ async def _run_agent(eng: EngagementORM) -> None:
     live_log_handler = _attach_live_feed_log_handler(engagement_id)
     log.info("[live_feed] terminal output attached for engagement %s", engagement_id)
 
-    _domain = eng.in_scope[0] if eng.in_scope else ""
+    # Derive the primary domain for tools (subfinder, crt.sh, etc.) from in_scope.
+    # Rules:
+    #   - Skip CIDR ranges (nmap handles those separately via ip_ranges)
+    #   - Strip wildcard prefix: "*.example.com" → "example.com"
+    #   - Pick the shortest non-CIDR entry (most likely the root domain)
+    import re as _re
+    _cidr_re = _re.compile(r"^\d+\.\d+\.\d+\.\d+/\d+$")
+    _non_cidr = [s for s in eng.in_scope if not _cidr_re.match(s)]
+    _ip_ranges = [s for s in eng.in_scope if _cidr_re.match(s)]
+    if _non_cidr:
+        # Strip wildcard prefixes, then pick shortest (root domain, not subdomain)
+        _stripped = [_re.sub(r"^\*\.", "", s) for s in _non_cidr]
+        _domain = min(_stripped, key=len)
+    else:
+        _domain = ""
+
+    # Build base_urls from all non-CIDR in_scope items (not just the first)
+    def _to_base_url(scope_entry: str) -> str:
+        bare = _re.sub(r"^\*\.", "", scope_entry)
+        scheme = "http" if bare.split(":")[0] in ("localhost", "127.0.0.1", "::1") else "https"
+        return f"{scheme}://{bare}"
+
+    _base_urls = [_to_base_url(s) for s in _non_cidr] if _non_cidr else []
+
     initial_state = {
         "engagement_id": engagement_id,
         "target": {
             "domain": _domain,
-            "ip_ranges": [],
-            "base_urls": [f"{'http' if _domain.split(':')[0] in ('localhost', '127.0.0.1', '::1') else 'https'}://{_domain}"] if _domain else [],
+            "ip_ranges": _ip_ranges,
+            "base_urls": _base_urls,
         },
         "scope": {
             "in_scope": list(eng.in_scope),

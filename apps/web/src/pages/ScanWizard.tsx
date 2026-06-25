@@ -396,15 +396,19 @@ function Step1({
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-[12px] font-semibold text-pentra-text-secondary mb-1.5">
-            In-Scope (one per line)
+            Additional In-Scope Assets
+            <span className="ml-1.5 text-[10px] font-normal text-pentra-text-muted">(optional, one per line)</span>
           </label>
           <textarea
             rows={4}
-            placeholder={"*.example.com\n10.0.0.0/24"}
+            placeholder={"*.example.com\napi.example.com\n10.0.0.0/24"}
             value={data.inScope}
             onChange={(e) => onChange({ ...data, inScope: e.target.value })}
             className="w-full resize-none rounded-ds-md border border-pentra-border bg-pentra-bg-input px-3 py-2 text-[13px] font-mono text-pentra-text-primary placeholder:text-pentra-text-muted outline-none focus:border-pentra-border-focus"
           />
+          <p className="mt-1 text-[10px] text-pentra-text-muted">
+            Wildcards (*.x.com), subdomains, IP CIDRs. Target domain is always included.
+          </p>
         </div>
         <div>
           <label className="block text-[12px] font-semibold text-pentra-text-secondary mb-1.5">
@@ -774,9 +778,14 @@ export default function ScanWizard() {
       return;
     }
 
-    const inScope = target.inScope
+    const inScopeRaw = target.inScope
       ? target.inScope.split("\n").map((s) => s.trim()).filter(Boolean)
-      : [target.domain];
+      : [];
+    // Always include the bare domain as the first in_scope entry so the backend
+    // can reliably derive the primary domain for subfinder/crt.sh/OSINT.
+    const inScope = inScopeRaw.includes(target.domain) || !target.domain
+      ? (inScopeRaw.length > 0 ? inScopeRaw : [target.domain])
+      : [target.domain, ...inScopeRaw];
     const outScope = target.outScope
       ? target.outScope.split("\n").map((s) => s.trim()).filter(Boolean)
       : [];
@@ -850,7 +859,11 @@ export default function ScanWizard() {
                 <ReviewRow label="Name" value={target.engagementName || `${target.domain} scan`} />
                 <ReviewRow
                   label="In-Scope"
-                  value={target.inScope ? target.inScope.split("\n").filter(Boolean).join(", ") : target.domain}
+                  value={(() => {
+                    const extra = target.inScope ? target.inScope.split("\n").map(s => s.trim()).filter(Boolean) : [];
+                    const all = extra.includes(target.domain) ? extra : [target.domain, ...extra].filter(Boolean);
+                    return all.join(", ") || target.domain;
+                  })()}
                 />
                 {target.outScope && (
                   <ReviewRow label="Out-of-Scope" value={target.outScope.split("\n").filter(Boolean).join(", ")} />
