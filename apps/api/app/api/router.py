@@ -105,7 +105,9 @@ class _LiveFeedLogHandler(logging.Handler):
                     "level": record.levelname,
                 },
             }
-            self.loop.create_task(ws_manager.broadcast(self.engagement_id, payload))
+            asyncio.run_coroutine_threadsafe(
+                ws_manager.broadcast(self.engagement_id, payload), self.loop
+            )
         except Exception:
             self.handleError(record)
 
@@ -388,11 +390,22 @@ async def update_engagement_mode(
     await db.commit()
     await db.refresh(eng)
 
-    # If currently paused and switching to agentic, auto-resume
+    # If currently paused and switching to agentic, auto-resume (guarded like /approve)
     auto_resumed = False
     if mode == "agentic" and eng.status == "awaiting_approval":
-        asyncio.create_task(_resume_agent(str(engagement_id), "approve"))
-        auto_resumed = True
+        eid_str = str(engagement_id)
+        if eid_str not in _approve_locks:
+            _approve_locks[eid_str] = asyncio.Lock()
+        lock = _approve_locks[eid_str]
+        if not lock.locked():
+            async def _locked_mode_resume() -> None:
+                async with lock:
+                    await _resume_agent(eid_str, "approve")
+            _mode_task = asyncio.create_task(_locked_mode_resume())
+            _active_tasks[eid_str] = _mode_task
+            _mode_task.add_done_callback(lambda _: _active_tasks.pop(eid_str, None))
+            _mode_task.add_done_callback(lambda _: _approve_locks.pop(eid_str, None))
+            auto_resumed = True
 
     return {"status": "updated", "mode": mode, "auto_resumed": auto_resumed}
 
@@ -1188,13 +1201,19 @@ async def engagement_feed(
     websocket: WebSocket,
     engagement_id: UUID,
     token: str = Query(...),
+    db: AsyncSession = Depends(get_db),
 ) -> None:
     """Real-time event stream for a running engagement."""
     from app.core.security import decode_token
     try:
-        decode_token(token)
+        payload = decode_token(token)
+        user_id = payload.get("sub")
     except Exception:
         await websocket.close(code=4401)
+        return
+    eng = await db.get(EngagementORM, engagement_id)
+    if eng is None or str(eng.created_by) != user_id:
+        await websocket.close(code=4403)
         return
     eid = str(engagement_id)
     await ws_manager.connect(websocket, eid)

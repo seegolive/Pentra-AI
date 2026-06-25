@@ -92,9 +92,9 @@ _ACTIVE_TAGS = "cve,vuln,sqli,xss,lfi,rce,injection,ssti,ssrf"
 
 # ── LocatedMemory cross-round persistence ─────────────────────────────────────
 # Keyed by engagement_id — survives DO-NOT-STOP re-entry within the same process.
-# Cleared automatically when the engagement task finishes (via vuln_hunt_node's
-# finally block). Scoped to one OS process, so a worker restart resets memory,
-# which is acceptable (the node comment: "not persisted to DB in this sprint").
+# Cleared at the end of vuln_hunt_node (normal exit) and on round 0 restart.
+# Scoped to one OS process, so a worker restart resets memory, which is
+# acceptable (the node comment: "not persisted to DB in this sprint").
 _located_memory_cache: dict[str, "LocatedMemory"] = {}  # type: ignore[name-defined]
 
 
@@ -366,14 +366,16 @@ async def vuln_hunt_node(state: PentraState) -> dict:
     raw_findings = [f for f in raw_findings if isinstance(f, dict)]
 
     async def _classify_one(raw: dict) -> dict:
+        # Compute defaults outside try so the except branch can always fall back
+        # to a fully-formed finding even when classify_finding() raises.
+        _defaults = {
+            "vuln_class": raw.get("vuln_class", "unknown"),
+            "severity": raw.get("severity", "medium"),
+            "cvss_score": raw.get("cvss_score"),
+            "impact": raw.get("impact", ""),
+            "remediation": raw.get("remediation", ""),
+        }
         try:
-            _defaults = {
-                "vuln_class": raw.get("vuln_class", "unknown"),
-                "severity": raw.get("severity", "medium"),
-                "cvss_score": raw.get("cvss_score"),
-                "impact": raw.get("impact", ""),
-                "remediation": raw.get("remediation", ""),
-            }
             classification = await llm.classify_finding(
                 title=raw.get("title", "Potential Finding"),
                 description=raw.get("description", ""),
@@ -388,7 +390,7 @@ async def vuln_hunt_node(state: PentraState) -> dict:
             return merged
         except Exception as exc:
             log.warning("[vuln_hunt_node] classify_finding failed (using raw fields): %s", exc)
-            return raw if isinstance(raw, dict) else {}
+            return {**_defaults, **raw}
 
     _sem = asyncio.Semaphore(4)  # max 4 concurrent LLM calls — avoid Ollama queue backup
 
@@ -477,6 +479,10 @@ async def vuln_hunt_node(state: PentraState) -> dict:
             else "_No findings discovered._"
         )
     )
+
+    # Clean up LocatedMemory for this engagement on normal exit so completed
+    # engagements don't accumulate indefinitely in the process-global cache.
+    _located_memory_cache.pop(engagement_id_for_cache, None)
 
     return {
         "findings": deduped,

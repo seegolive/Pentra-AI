@@ -754,7 +754,7 @@ export default function ScanWizard() {
   const effectiveMode = fullBypass ? "agentic" : (target.autoApproveExploitValidation ? "agentic" : "semi_auto");
   const effectiveAutoApprove = fullBypass ? true : target.autoApproveExploitValidation;
   const effectiveSequential = fullBypass ? false : target.scanSequential;
-  const effectiveModel = fullBypass ? "pentra-ft:latest" : selectedPreset.model;
+  const effectiveModel = fullBypass ? (PRESETS.find((p) => p.id === "pentra-ft")?.model ?? PRESETS[2].model) : selectedPreset.model;
   const effectiveJitter = fullBypass ? 0 : (selectedPreset.opsec ? 2000 : 0);
   const effectiveOpsec = fullBypass ? false : (selectedPreset.opsec ?? false);
 

@@ -15,24 +15,37 @@ from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
 
 
+def _enrichment_score(f: dict) -> int:
+    """Count how many key fields are populated — used to prefer richer versions."""
+    return sum([
+        f.get("cvss_score") is not None,
+        bool(f.get("impact")),
+        bool(f.get("remediation")),
+        bool(f.get("vuln_class") and f.get("vuln_class") != "unknown"),
+        bool(f.get("severity") and f.get("severity") != "medium"),
+    ])
+
+
 def _merge_findings(existing: list[dict], new: list[dict]) -> list[dict]:
     """Deduplicate findings by (title, target_url) on every state merge.
 
-    Prevents DO-NOT-STOP re-entry rounds from doubling the findings list via
-    the operator.add accumulator pattern.
+    When a DO-NOT-STOP re-entry round re-confirms an existing finding with
+    richer data (e.g. a now-classified cvss_score), the enriched version
+    replaces the stale one instead of being silently dropped.
     Guards against non-dict items that could slip in via extend(string).
     """
     safe_existing = [f for f in existing if isinstance(f, dict)]
     safe_new = [f for f in new if isinstance(f, dict)]
-    seen: set[tuple[str, str]] = {
-        (f.get("title", ""), f.get("target_url", ""))
+    # Ordered dict preserves insertion order; key = (title, target_url)
+    result: dict[tuple[str, str], dict] = {
+        (f.get("title", ""), f.get("target_url", "")): f
         for f in safe_existing
     }
-    deduped = [
-        f for f in safe_new
-        if (f.get("title", ""), f.get("target_url", "")) not in seen
-    ]
-    return safe_existing + deduped
+    for f in safe_new:
+        key = (f.get("title", ""), f.get("target_url", ""))
+        if key not in result or _enrichment_score(f) > _enrichment_score(result[key]):
+            result[key] = f
+    return list(result.values())
 
 
 # ── Sub-TypedDicts ────────────────────────────────────────────────────────────

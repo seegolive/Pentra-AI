@@ -399,7 +399,9 @@ export default function EngagementDetailPage() {
   const startMutation = useStartEngagement(engagementId ?? "");
   const stopMutation = useStopEngagement(engagementId ?? "");
   const modeMutation = useUpdateEngagementMode(engagementId ?? "");
-  const { events, pendingApproval, connected, agentStatus, clearApproval } = useEngagementFeed(engagementId);
+  const { events, pendingApproval, connected, agentStatus, clearApproval } = useEngagementFeed(
+    (engagement?.status === "active" || engagement?.status === "awaiting_approval") ? engagementId : undefined
+  );
 
   // Counters for tab badges
   const { data: findings } = useFindings(engagementId ?? "");

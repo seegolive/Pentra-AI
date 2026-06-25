@@ -65,6 +65,7 @@ export function useEngagementFeed(engagementId: string | undefined) {
 
   useEffect(() => {
     if (!engagementId) return;
+    if (!accessToken) return;
 
     // Reset state when engagement changes
     setEvents([]);

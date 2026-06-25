@@ -37,7 +37,7 @@ for _logger_name in (
         _h = _logging.StreamHandler()
         _h.setFormatter(_logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s"))
         _logging.getLogger(_logger_name).addHandler(_h)
-        _logging.getLogger(_logger_name).propagate = False
+        _logging.getLogger(_logger_name).propagate = True
 
 from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
