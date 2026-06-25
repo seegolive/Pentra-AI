@@ -789,6 +789,7 @@ export default function ScanWizard() {
         in_scope: inScope,
         out_of_scope: outScope,
         llm_model: effectiveModel,
+        scan_preset: fullBypass ? "pentra-ft" : preset,
         opsec_mode: effectiveOpsec,
         request_jitter_ms: effectiveJitter,
         scan_sequential: effectiveSequential,

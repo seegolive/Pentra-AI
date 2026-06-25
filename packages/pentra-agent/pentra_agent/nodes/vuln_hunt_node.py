@@ -170,6 +170,27 @@ async def vuln_hunt_node(state: PentraState) -> dict:
     tech_stack = state.get("tech_stack", [])
     knowledge_context = state.get("knowledge_context", [])
 
+    # Re-read preset-controlled flags from os.environ at call time so that
+    # apply_to_env() called in _run_agent (before graph.astream_events) is
+    # honoured. Module-level constants are frozen at import — these p_ locals override them.
+    p_nuclei: bool = os.getenv("PENTRA_RUN_NUCLEI", "true").lower() == "true"
+    p_ffuf: bool = os.getenv("PENTRA_RUN_FFUF", "true").lower() == "true"
+    p_burp_scan: bool = os.getenv("PENTRA_RUN_BURP_SCAN", "true").lower() == "true"
+    p_soap_xxe: bool = os.getenv("PENTRA_RUN_SOAP_XXE", "true").lower() == "true"
+    p_csrf: bool = os.getenv("PENTRA_RUN_CSRF_CHECK", "true").lower() == "true"
+    p_max_candidates: int = int(os.getenv("PENTRA_MAX_CANDIDATES", "20"))
+    p_max_payloads: int = int(os.getenv("PENTRA_MAX_PAYLOADS", "4"))
+    p_crawl_pages: int = int(os.getenv("PENTRA_CRAWL_PAGES", "49"))
+    p_nuclei_timeout: int = int(os.getenv("PENTRA_NUCLEI_TIMEOUT", "300"))
+    p_concurrent: int = int(os.getenv("PENTRA_CONCURRENT_CANDIDATES", "3"))
+    p_pacing: float = float(os.getenv("PENTRA_PAYLOAD_PACING", "0.15"))
+    log.info(
+        "[vuln_hunt_node] Preset flags: nuclei=%s ffuf=%s burp=%s soap_xxe=%s csrf=%s "
+        "max_cand=%d max_payloads=%d crawl=%d conc=%d",
+        p_nuclei, p_ffuf, p_burp_scan, p_soap_xxe, p_csrf,
+        p_max_candidates, p_max_payloads, p_crawl_pages, p_concurrent,
+    )
+
     current_round = state.get("hunt_rounds", 0)
     log.info("[vuln_hunt_node] Starting hunt round %d for %s (%d endpoints)", current_round + 1, domain, len(endpoints))
 
@@ -234,7 +255,7 @@ async def vuln_hunt_node(state: PentraState) -> dict:
         log.info(
             "[vuln_hunt_node] Launching tools concurrently "
             "[nuclei=%s ffuf=%s burp_scan=%s soap_xxe=%s csrf=%s]",
-            _RUN_NUCLEI, _RUN_FFUF, _RUN_BURP_SCAN, _RUN_SOAP_XXE, _RUN_CSRF_CHECK,
+            p_nuclei, p_ffuf, p_burp_scan, p_soap_xxe, p_csrf,
         )
         (
             nuclei_results,
@@ -253,12 +274,12 @@ async def vuln_hunt_node(state: PentraState) -> dict:
             crlf_results,
             dalfox_results,
         ) = await asyncio.gather(
-            _run_nuclei(endpoints, state["scope"], tech_stack=state.get("tech_stack", [])) if _RUN_NUCLEI else _noop_list(),
-            _run_ffuf(endpoints[:5]) if _RUN_FFUF else _noop_list(),
-            _run_burp_active_scan(endpoints[:3], state["scope"]) if _RUN_BURP_SCAN else _noop_list(),
+            _run_nuclei(endpoints, state["scope"], tech_stack=state.get("tech_stack", [])) if p_nuclei else _noop_list(),
+            _run_ffuf(endpoints[:5]) if p_ffuf else _noop_list(),
+            _run_burp_active_scan(endpoints[:3], state["scope"]) if p_burp_scan else _noop_list(),
             _get_burp_proxy_findings(domain, state["scope"]),
             _run_burp_extended_checks(domain, state["scope"], endpoints),
-            _run_soap_xxe_scan(domain, state["scope"], state.get("auth_credentials")) if _RUN_SOAP_XXE else _noop_list(),
+            _run_soap_xxe_scan(domain, state["scope"], state.get("auth_credentials")) if p_soap_xxe else _noop_list(),
             _run_graphql_scan(domain, state["scope"], state.get("auth_credentials")),
             _run_race_condition_scan(endpoints, state["scope"], state.get("auth_credentials")),
             _run_cors_scan(endpoints, state["scope"], state.get("auth_credentials")),
@@ -349,7 +370,7 @@ async def vuln_hunt_node(state: PentraState) -> dict:
                 auth_credentials=state.get("auth_credentials"),
                 waf_info=state.get("waf_info"),
             ),
-            _passive_csrf_check(domain, state["scope"]) if _RUN_CSRF_CHECK else _noop_list(),
+            _passive_csrf_check(domain, state["scope"]) if p_csrf else _noop_list(),
         )
         raw_findings.extend(llm_burp_results)
         raw_findings.extend(csrf_results)
@@ -1611,7 +1632,7 @@ async def _run_llm_burp_active_testing(
             if u not in discovered_urls:
                 crawl_queue.append(u)
                 discovered_urls.add(u)
-        crawl_queue = crawl_queue[:_CRAWL_PAGES]
+        crawl_queue = crawl_queue[:int(os.getenv("PENTRA_CRAWL_PAGES", "49"))]
 
         log.info(
             "[llm_burp] Crawling %d pages concurrently (sem=8, via %s)...",
@@ -1822,7 +1843,7 @@ async def _run_llm_burp_active_testing(
     # Run up to CONCURRENT_CANDIDATES candidates in parallel.
     # asyncio single-thread model makes shared list appends safe without locks.
     # Semaphore prevents burst-hitting the target and Burp session limit.
-    _CAND_SEM = asyncio.Semaphore(CONCURRENT_CANDIDATES)
+    _CAND_SEM = asyncio.Semaphore(int(os.getenv("PENTRA_CONCURRENT_CANDIDATES", "3")))
 
     async def _test_one(candidate: dict) -> None:
         """Test a single injection candidate — guarded by concurrency semaphore."""
@@ -2148,7 +2169,7 @@ async def _run_llm_burp_active_testing(
             log.info("[llm_burp] Testing %d payloads on %s[%s]", len(payloads), param_name, param_location)
 
             # Send each payload
-            for payload_spec in payloads[:_MAX_PAYLOADS_PER_CANDIDATE]:  # preset-controlled cap
+            for payload_spec in payloads[:int(os.getenv("PENTRA_MAX_PAYLOADS", "4"))]:  # preset-controlled cap
                 test_payload = str(payload_spec.get("injected_value", payload_spec.get("payload", "")))
                 test_type = payload_spec.get("test_type", "unknown")
                 detection_hint = payload_spec.get("detection_hint", "")
@@ -2173,7 +2194,7 @@ async def _run_llm_burp_active_testing(
                         payload_value=test_payload,
                     )
                     enforcer.validate_or_raise(test_url)
-                    await asyncio.sleep(_PAYLOAD_PACING_S)  # polite pacing (Task 18.9: reduced)
+                    await asyncio.sleep(float(os.getenv("PENTRA_PAYLOAD_PACING", "0.15")))  # polite pacing (preset-controlled)
                     _t1 = _time.monotonic()
                     if burp_available and client:
                         test_raw_req, test_response = await client.send_request(
@@ -2487,7 +2508,7 @@ async def _run_llm_burp_active_testing(
                 cand_url, param_name, original_response,
                 vuln_found=memory.is_confirmed(cand_url, param_name),
             )
-    await asyncio.gather(*[_test_one(c) for c in candidates[:_MAX_CANDIDATES]], return_exceptions=True)
+    await asyncio.gather(*[_test_one(c) for c in candidates[:int(os.getenv("PENTRA_MAX_CANDIDATES", "20"))]], return_exceptions=True)
     log.info(
         "[memory] Stats: confirmed=%d exhausted=%d effective_classes=%s",
         memory.stats["confirmed"], memory.stats["exhausted"],
@@ -4210,7 +4231,7 @@ async def _passive_host_scan(
     log.info("[per_subdomain] [%s] PASSIVE — %d endpoints", host, len(host_endpoints))
     findings: list[dict] = []
     try:
-        if _RUN_NUCLEI:
+        if os.getenv("PENTRA_RUN_NUCLEI", "true").lower() == "true":
             passive = await _run_nuclei(
                 host_endpoints,
                 scope,
@@ -4240,9 +4261,11 @@ async def _active_host_scan(
     )
     findings: list[dict] = []
     try:
+        _seq_nuclei = os.getenv("PENTRA_RUN_NUCLEI", "true").lower() == "true"
+        _seq_ffuf = os.getenv("PENTRA_RUN_FFUF", "true").lower() == "true"
         results = await asyncio.gather(
-            _run_nuclei(host_endpoints, scope, tech_stack=tech_stack, tags_override=_ACTIVE_TAGS) if _RUN_NUCLEI else _noop_list(),
-            _run_ffuf(host_endpoints[:3]) if _RUN_FFUF else _noop_list(),
+            _run_nuclei(host_endpoints, scope, tech_stack=tech_stack, tags_override=_ACTIVE_TAGS) if _seq_nuclei else _noop_list(),
+            _run_ffuf(host_endpoints[:3]) if _seq_ffuf else _noop_list(),
             _run_cors_scan(host_endpoints, scope, auth_credentials),
             _run_csrf_host(host, host_endpoints, scope),
             _run_ssrf_scan(host_endpoints, scope, auth_credentials),
@@ -4261,7 +4284,7 @@ async def _active_host_scan(
 
 async def _run_csrf_host(host: str, endpoints: list[dict], scope: dict) -> list[dict]:
     """CSRF passive check scoped to a single host."""
-    if not _RUN_CSRF_CHECK:
+    if not (os.getenv("PENTRA_RUN_CSRF_CHECK", "true").lower() == "true"):
         return []
     try:
         from urllib.parse import urlparse

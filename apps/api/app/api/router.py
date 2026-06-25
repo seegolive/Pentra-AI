@@ -208,6 +208,7 @@ async def create_engagement(
         in_scope=data.in_scope,
         out_of_scope=data.out_of_scope,
         llm_model=data.llm_model,
+        scan_preset=data.scan_preset,
         opsec_mode=data.opsec_mode,
         request_jitter_ms=data.request_jitter_ms,
         scan_sequential=data.scan_sequential,
@@ -1299,6 +1300,16 @@ async def _run_agent(eng: EngagementORM) -> None:
         from app.core.config import get_api_settings as _get_s
         _chk_engine = _cae(_get_s().database_url, echo=False, pool_size=1, max_overflow=0)
         _chk_session = _sm_chk(_chk_engine, class_=_AS, expire_on_commit=False)
+
+        # Apply scan preset env vars before graph invocation so vuln_hunt_node
+        # reads the correct tool flags and limits for this engagement.
+        try:
+            from pentra_agent.scan_presets import get_preset as _get_preset
+            _preset_name = getattr(eng, "scan_preset", "fast") or "fast"
+            _get_preset(_preset_name).apply_to_env()
+            log.info("[_run_agent] Preset '%s' applied for engagement %s", _preset_name, engagement_id)
+        except Exception as _preset_exc:
+            log.warning("[_run_agent] Failed to apply preset (non-fatal): %s", _preset_exc)
 
         # Stream events from the graph using astream_events
         graph = agent_service.graph

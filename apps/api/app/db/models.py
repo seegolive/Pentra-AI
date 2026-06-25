@@ -72,6 +72,7 @@ class EngagementORM(Base):
     out_of_scope: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
 
     llm_model: Mapped[str] = mapped_column(String(100), nullable=False, default="qwen2.5:32b")
+    scan_preset: Mapped[str] = mapped_column(String(50), nullable=False, default="fast", comment="Scan preset name (full/fast/stealth/quick/authenticated/pentra-ft)")
     langgraph_thread_id: Mapped[str] = mapped_column(String(100), nullable=False)
 
     created_by: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), nullable=False)

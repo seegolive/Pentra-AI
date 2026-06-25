@@ -37,6 +37,7 @@ class EngagementCreate(BaseModel):
     in_scope: list[str] = Field(min_length=1)
     out_of_scope: list[str] = Field(default_factory=list)
     llm_model: str = Field(default="qwen2.5:32b")
+    scan_preset: str = Field(default="fast")
     opsec_mode: bool = False
     request_jitter_ms: int = Field(default=0, ge=0, le=30_000)
     scan_sequential: bool = False
@@ -55,6 +56,7 @@ class EngagementResponse(BaseModel):
     in_scope: list[str]
     out_of_scope: list[str]
     llm_model: str
+    scan_preset: str
     langgraph_thread_id: str
     opsec_mode: bool
     request_jitter_ms: int
