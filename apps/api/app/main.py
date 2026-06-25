@@ -21,8 +21,15 @@ os.chdir(str(_API_DIR))
 from dotenv import load_dotenv  # noqa: E402
 load_dotenv(dotenv_path=str(_API_DIR / ".env"), override=False)
 
-# ── Logging: ensure pentra_agent node logs are visible in uvicorn output ─────
+# ── Logging: ensure pentra_agent node logs reach the root logger ──────────────
+# Root logger is set to INFO so messages propagate through to both the log file
+# (via uvicorn's stderr handler) and the per-engagement live feed handler
+# (attached to root by _attach_live_feed_log_handler).
+# Per-logger StreamHandlers are NOT added here — they cause duplicate log lines
+# because each message is written once by the child handler and again when it
+# propagates up the hierarchy to another ancestor with a handler.
 import logging as _logging  # noqa: E402
+_logging.getLogger().setLevel(_logging.INFO)   # root logger passes INFO upward
 for _logger_name in (
     "pentra_agent",
     "pentra_agent.nodes.plan_node",
@@ -32,15 +39,9 @@ for _logger_name in (
     "pentra_agent.llm.client",
     "pentra_tools.burp.client",
 ):
-    _logging.getLogger(_logger_name).setLevel(_logging.DEBUG)
-    if not _logging.getLogger(_logger_name).handlers:
-        _h = _logging.StreamHandler()
-        _h.setFormatter(_logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s"))
-        _logging.getLogger(_logger_name).addHandler(_h)
-    # propagate=False: prevent messages from reaching the root logger's uvicorn
-    # handler — without this, every message is written twice (once by the handler
-    # above, once by uvicorn's root handler via propagation).
-    _logging.getLogger(_logger_name).propagate = False
+    _l = _logging.getLogger(_logger_name)
+    _l.setLevel(_logging.DEBUG)   # let all levels through; root filters at INFO
+    _l.propagate = True           # propagate to root so live feed handler receives them
 
 from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
