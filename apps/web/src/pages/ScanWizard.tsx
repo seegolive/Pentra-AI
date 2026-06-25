@@ -943,28 +943,27 @@ export default function ScanWizard() {
   };
 
   return (
-    <div className="flex min-h-full items-start justify-center bg-pentra-bg-base px-4 py-6 sm:px-6 lg:px-8">
-      <div className="w-full max-w-2xl lg:max-w-5xl xl:max-w-6xl">
+    <div className="flex-1 w-full p-6 lg:p-8">
 
-        {/* Header */}
-        <div className="mb-6 flex items-start justify-between">
-          <div>
-            <h1 className="text-[22px] font-bold text-pentra-text-primary">New Scan</h1>
-            <p className="text-[13px] text-pentra-text-secondary mt-1">Configure and launch a security engagement</p>
-          </div>
-          {fullBypass && (
-            <div className="flex items-center gap-2 rounded-ds-md bg-orange-900/40 border border-orange-500/40 px-3 py-1.5">
-              <div className="h-2 w-2 rounded-full bg-orange-500 animate-pulse" />
-              <span className="text-[11px] font-bold text-orange-300">FULL BYPASS MODE</span>
-            </div>
-          )}
+      {/* Header */}
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-[22px] font-bold text-pentra-text-primary">New Scan</h1>
+          <p className="text-[13px] text-pentra-text-secondary mt-1">Configure and launch a security engagement</p>
         </div>
+        {fullBypass && (
+          <div className="flex items-center gap-2 rounded-ds-md bg-orange-900/40 border border-orange-500/40 px-3 py-1.5">
+            <div className="h-2 w-2 rounded-full bg-orange-500 animate-pulse" />
+            <span className="text-[11px] font-bold text-orange-300">FULL BYPASS MODE</span>
+          </div>
+        )}
+      </div>
 
-        {/* Responsive two-column layout: form left, summary right on lg+ */}
-        <div className="lg:grid lg:grid-cols-[1fr_260px] xl:grid-cols-[1fr_290px] lg:gap-8 lg:items-start">
+      {/* Two-column layout — fills full available width */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] xl:grid-cols-[1fr_300px] gap-8 items-start">
 
-          {/* Left: wizard steps */}
-          <div className="min-w-0">
+        {/* Left: wizard steps */}
+        <div className="min-w-0">
             <StepIndicator current={step} />
 
             <div className={cn(
@@ -1098,20 +1097,19 @@ export default function ScanWizard() {
             </div>
           </div>
 
-          {/* Right: live summary panel — visible on lg+ only */}
-          <div className="hidden lg:block mt-[52px]">
-            <ScanSummaryPanel
-              target={target}
-              preset={preset}
-              auth={auth}
-              fullBypass={fullBypass}
-              effectiveMode={effectiveMode}
-              effectiveAutoApprove={effectiveAutoApprove}
-              effectiveModel={effectiveModel}
-              effectiveJitter={effectiveJitter}
-              step={step}
-            />
-          </div>
+        {/* Right: live summary panel — visible on lg+ only */}
+        <div className="hidden lg:block mt-[52px]">
+          <ScanSummaryPanel
+            target={target}
+            preset={preset}
+            auth={auth}
+            fullBypass={fullBypass}
+            effectiveMode={effectiveMode}
+            effectiveAutoApprove={effectiveAutoApprove}
+            effectiveModel={effectiveModel}
+            effectiveJitter={effectiveJitter}
+            step={step}
+          />
         </div>
       </div>
     </div>
