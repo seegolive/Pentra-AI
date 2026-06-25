@@ -23,6 +23,7 @@ interface AdminStats {
   total_findings: number;
   total_knowledge_records: number;
   total_workspaces: number;
+  findings_by_severity?: Record<string, number>;
 }
 
 interface EngagementSummary {
@@ -50,16 +51,16 @@ function StatCard({
   color: string;
 }) {
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
+    <div className="bg-pentra-bg-panel border border-pentra-border rounded-ds-lg p-6">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-pentra-text-muted">
             {title}
           </p>
           <p className={`text-3xl font-bold mt-1 ${color}`}>{value}</p>
-          <p className="text-xs text-slate-500 mt-1">{subtitle}</p>
+          <p className="text-xs text-pentra-text-muted mt-1">{subtitle}</p>
         </div>
-        <div className="p-3 rounded-xl bg-slate-800">
+        <div className="p-3 rounded-xl bg-pentra-bg-card">
           <Icon size={22} className={color} />
         </div>
       </div>
@@ -72,7 +73,7 @@ function StatCard({
 const STATUS_CONFIG = {
   planning: {
     label: "Planning",
-    color: "text-slate-400 border-slate-700",
+    color: "text-pentra-text-muted border-pentra-border",
     icon: Clock,
   },
   active: {
@@ -102,7 +103,7 @@ const STATUS_CONFIG = {
   },
   cancelled: {
     label: "Cancelled",
-    color: "text-slate-500 border-slate-700",
+    color: "text-pentra-text-muted border-pentra-border",
     icon: AlertTriangle,
   },
 } as const;
@@ -124,20 +125,20 @@ function EngagementCard({
   return (
     <div
       onClick={onClick}
-      className="flex items-center justify-between p-4 rounded-lg
-                 bg-slate-900 border border-slate-800
-                 hover:border-slate-700 hover:bg-slate-800/50
+      className="flex items-center justify-between p-4 rounded-ds-md
+                 bg-pentra-bg-panel border border-pentra-border
+                 hover:border-pentra-border-light hover:bg-pentra-bg-hover
                  cursor-pointer transition-all group"
     >
       <div className="flex items-center gap-3 min-w-0">
-        <div className="p-2 rounded-lg bg-slate-800">
-          <Target size={16} className="text-slate-400" />
+        <div className="p-2 rounded-lg bg-pentra-bg-card">
+          <Target size={16} className="text-pentra-text-muted" />
         </div>
         <div className="min-w-0">
-          <p className="text-sm font-medium text-slate-200 truncate">
+          <p className="text-sm font-medium text-pentra-text-primary truncate">
             {engagement.name}
           </p>
-          <p className="text-xs text-slate-500 truncate mt-0.5">
+          <p className="text-xs text-pentra-text-muted truncate mt-0.5">
             {engagement.target_domain ?? engagement.in_scope?.[0] ?? "—"}
           </p>
         </div>
@@ -157,7 +158,7 @@ function EngagementCard({
         </div>
         <ChevronRight
           size={14}
-          className="text-slate-600 group-hover:text-slate-400 transition-colors"
+          className="text-pentra-text-muted/40 group-hover:text-pentra-text-muted transition-colors"
         />
       </div>
     </div>
@@ -171,8 +172,63 @@ const SEV_COLORS: Record<string, string> = {
   high: "bg-orange-900/60 text-orange-300",
   medium: "bg-yellow-900/60 text-yellow-300",
   low: "bg-blue-900/60 text-blue-300",
-  info: "bg-slate-800 text-slate-400",
+  info: "bg-pentra-bg-card text-pentra-text-muted",
 };
+
+// ── Severity breakdown ────────────────────────────────────────────────────────
+
+const SEV_ORDER = ["critical", "high", "medium", "low", "info"] as const;
+
+const SEV_BAR: Record<string, string> = {
+  critical: "bg-red-500/70",
+  high:     "bg-orange-500/70",
+  medium:   "bg-yellow-500/70",
+  low:      "bg-blue-500/70",
+  info:     "bg-pentra-text-muted/30",
+};
+
+const SEV_LABEL: Record<string, string> = {
+  critical: "text-red-400",
+  high:     "text-orange-400",
+  medium:   "text-yellow-400",
+  low:      "text-blue-400",
+  info:     "text-pentra-text-muted",
+};
+
+function SeverityBreakdown({ bySeverity }: { bySeverity: Record<string, number> }) {
+  const total = SEV_ORDER.reduce((s, k) => s + (bySeverity[k] ?? 0), 0);
+  if (total === 0) return null;
+
+  return (
+    <div className="bg-pentra-bg-panel border border-pentra-border rounded-ds-lg p-5">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-pentra-text-muted mb-4">
+        Findings by Severity
+      </p>
+      <div className="space-y-2.5">
+        {SEV_ORDER.map((sev) => {
+          const count = bySeverity[sev] ?? 0;
+          const pct = total > 0 ? (count / total) * 100 : 0;
+          return (
+            <div key={sev} className="flex items-center gap-3">
+              <span className={`w-14 text-[11px] font-semibold capitalize flex-shrink-0 ${SEV_LABEL[sev]}`}>
+                {sev}
+              </span>
+              <div className="flex-1 h-1.5 rounded-full bg-pentra-bg-card overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-700 ${SEV_BAR[sev]}`}
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <span className="w-6 text-right text-[11px] font-mono text-pentra-text-muted flex-shrink-0">
+                {count}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 // ── Dashboard ─────────────────────────────────────────────────────────────────
 
@@ -218,17 +274,17 @@ export function DashboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-100">Dashboard</h1>
-          <p className="text-sm text-slate-500 mt-1">
+          <h1 className="text-[22px] font-bold text-pentra-text-primary">Dashboard</h1>
+          <p className="text-[13px] text-pentra-text-secondary mt-1">
             Self-hosted AI Security Research Platform
           </p>
         </div>
         <button
-          className="flex items-center gap-2 px-4 py-2 bg-green-700 hover:bg-green-600 text-white rounded-md text-sm font-medium transition-colors"
-          onClick={() => navigate("/workspaces")}
+          className="flex items-center gap-2 px-4 py-2 bg-pentra-accent hover:opacity-90 text-white rounded-ds-md text-sm font-medium transition-opacity"
+          onClick={() => navigate("/scan/new")}
         >
           <Plus size={16} />
-          New Engagement
+          New Scan
         </button>
       </div>
 
@@ -264,17 +320,22 @@ export function DashboardPage() {
         />
       </div>
 
+      {/* Severity breakdown */}
+      {stats?.findings_by_severity && (
+        <SeverityBreakdown bySeverity={stats.findings_by_severity} />
+      )}
+
       {/* Two column layout */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent engagements */}
         <div>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
+            <h2 className="text-[11px] font-semibold text-pentra-text-muted uppercase tracking-wider">
               Recent Engagements
             </h2>
             <button
-              onClick={() => navigate("/workspaces")}
-              className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+              onClick={() => navigate("/engagements")}
+              className="text-xs text-pentra-text-muted hover:text-pentra-text-secondary transition-colors"
             >
               View all →
             </button>
@@ -282,17 +343,17 @@ export function DashboardPage() {
           <div className="space-y-2">
             {!engagements || engagements.length === 0 ? (
               <div
-                className="text-center py-10 text-slate-600 text-sm
-                              border border-dashed border-slate-800 rounded-lg"
+                className="text-center py-10 text-pentra-text-muted text-sm
+                              border border-dashed border-pentra-border rounded-ds-lg"
               >
-                <Target size={28} className="mx-auto mb-3 text-slate-700" />
+                <Target size={28} className="mx-auto mb-3 opacity-20" />
                 No engagements yet.
                 <br />
                 <button
-                  onClick={() => navigate("/workspaces")}
-                  className="mt-2 text-blue-500 hover:text-blue-400 text-xs"
+                  onClick={() => navigate("/scan/new")}
+                  className="mt-2 text-pentra-accent hover:opacity-80 text-xs"
                 >
-                  Create your first engagement →
+                  Create your first scan →
                 </button>
               </div>
             ) : (
@@ -310,17 +371,17 @@ export function DashboardPage() {
         {/* Recent findings */}
         <div>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
+            <h2 className="text-[11px] font-semibold text-pentra-text-muted uppercase tracking-wider">
               Recent Findings
             </h2>
           </div>
           <div className="space-y-2">
             {!recentFindings || recentFindings.length === 0 ? (
               <div
-                className="text-center py-10 text-slate-600 text-sm
-                              border border-dashed border-slate-800 rounded-lg"
+                className="text-center py-10 text-pentra-text-muted text-sm
+                              border border-dashed border-pentra-border rounded-ds-lg"
               >
-                <Shield size={28} className="mx-auto mb-3 text-slate-700" />
+                <Shield size={28} className="mx-auto mb-3 opacity-20" />
                 No findings yet.
                 <br />
                 <span className="text-xs">
@@ -334,8 +395,9 @@ export function DashboardPage() {
                   onClick={() =>
                     navigate(`/engagements/${f.engagement_id}?tab=findings`)
                   }
-                  className="flex items-center gap-3 p-3 rounded-lg bg-slate-900
-                             border border-slate-800 hover:border-slate-700
+                  className="flex items-center gap-3 p-3 rounded-ds-md
+                             bg-pentra-bg-panel border border-pentra-border
+                             hover:border-pentra-border-light hover:bg-pentra-bg-hover
                              cursor-pointer transition-all"
                 >
                   <span
@@ -344,10 +406,10 @@ export function DashboardPage() {
                   >
                     {f.severity}
                   </span>
-                  <p className="text-sm text-slate-300 truncate flex-1">
+                  <p className="text-sm text-pentra-text-primary truncate flex-1">
                     {f.title}
                   </p>
-                  <p className="text-xs text-slate-600 shrink-0 font-mono">
+                  <p className="text-xs text-pentra-text-muted shrink-0 font-mono">
                     {f.vuln_class}
                   </p>
                 </div>
@@ -359,7 +421,7 @@ export function DashboardPage() {
 
       {/* Quick actions */}
       <div>
-        <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-3">
+        <h2 className="text-[11px] font-semibold text-pentra-text-muted uppercase tracking-wider mb-3">
           Quick Actions
         </h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -371,10 +433,10 @@ export function DashboardPage() {
               color: "text-purple-400",
             },
             {
-              label: "New Workspace",
+              label: "New Scan",
               icon: Plus,
-              path: "/workspaces",
-              color: "text-green-400",
+              path: "/scan/new",
+              color: "text-pentra-accent",
             },
             {
               label: "All Engagements",
@@ -392,12 +454,13 @@ export function DashboardPage() {
             <button
               key={path}
               onClick={() => navigate(path)}
-              className="flex items-center gap-2 p-3 rounded-lg bg-slate-900
-                         border border-slate-800 hover:border-slate-700
-                         hover:bg-slate-800/50 transition-all text-left"
+              className="flex items-center gap-2 p-3 rounded-ds-md
+                         bg-pentra-bg-panel border border-pentra-border
+                         hover:border-pentra-border-light hover:bg-pentra-bg-hover
+                         transition-all text-left"
             >
               <Icon size={16} className={color} />
-              <span className="text-xs text-slate-400">{label}</span>
+              <span className="text-xs text-pentra-text-secondary">{label}</span>
             </button>
           ))}
         </div>

@@ -68,6 +68,7 @@ class KBStatsResponse(BaseModel):
     total_workspaces: int
     total_engagements: int
     total_findings: int
+    findings_by_severity: dict[str, int] = {}
 
 
 class BulkImportRequest(BaseModel):
@@ -114,6 +115,12 @@ async def get_admin_stats(
     eng_count = (await db.execute(select(func.count(EngagementORM.id)))).scalar_one()
     find_count = (await db.execute(select(func.count(FindingORM.id)))).scalar_one()
 
+    sev_rows = (await db.execute(
+        select(FindingORM.severity, func.count(FindingORM.id))
+        .group_by(FindingORM.severity)
+    )).all()
+    findings_by_severity = {str(row[0]): row[1] for row in sev_rows}
+
     # KB stats via shared repository (same DB session)
     try:
         from pentra_knowledge.db.repository import KnowledgeRepository
@@ -139,6 +146,7 @@ async def get_admin_stats(
         total_workspaces=ws_count,
         total_engagements=eng_count,
         total_findings=find_count,
+        findings_by_severity=findings_by_severity,
     )
 
 

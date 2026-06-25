@@ -256,6 +256,121 @@ function FeedRow({ event }: { event: FeedEvent }) {
   );
 }
 
+// ── Phase pipeline strip ──────────────────────────────────────────────────────
+
+const PHASE_PIPELINE = [
+  { key: "plan",         label: "Plan",      gate: false },
+  { key: "hitl_plan",    label: "Review",    gate: true  },
+  { key: "recon",        label: "Recon",     gate: false },
+  { key: "hitl_recon",   label: "Review",    gate: true  },
+  { key: "vuln_hunt",    label: "Hunt",      gate: false },
+  { key: "hitl_exploit", label: "Review",    gate: true  },
+  { key: "report",       label: "Report",    gate: false },
+] as const;
+
+type PhaseKey = typeof PHASE_PIPELINE[number]["key"];
+
+function deriveActivePhase(events: FeedEvent[]): PhaseKey | null {
+  for (const ev of events) {
+    if (ev.type === "NODE_START" || ev.type === "AWAITING_APPROVAL") {
+      const key = ev.node as PhaseKey;
+      if (PHASE_PIPELINE.some((p) => p.key === key)) return key;
+    }
+  }
+  return null;
+}
+
+function deriveCompletedPhases(events: FeedEvent[]): Set<PhaseKey> {
+  const done = new Set<PhaseKey>();
+  for (const ev of events) {
+    if (ev.type === "NODE_COMPLETE" && ev.node) {
+      done.add(ev.node as PhaseKey);
+    }
+  }
+  return done;
+}
+
+function PhaseStrip({
+  events,
+  agentStatus,
+}: {
+  events: FeedEvent[];
+  agentStatus: string;
+}) {
+  if (agentStatus === "idle") return null;
+
+  const active = deriveActivePhase(events);
+  const completed = deriveCompletedPhases(events);
+
+  return (
+    <div className="flex items-center gap-0 px-8 py-3 border-b border-pentra-border/60 bg-pentra-bg-card/30 flex-shrink-0 overflow-x-auto">
+      {PHASE_PIPELINE.map((phase, idx) => {
+        const isDone = completed.has(phase.key);
+        const isActive = active === phase.key;
+        const isAwaiting = isActive && phase.gate;
+
+        return (
+          <div key={phase.key} className="flex items-center">
+            {/* Node */}
+            <div className="flex flex-col items-center gap-1 min-w-[52px]">
+              {phase.gate ? (
+                // HITL gate — hexagon outline
+                <div
+                  className={cn(
+                    "h-5 w-5 flex items-center justify-center text-[9px] font-bold transition-all duration-300",
+                    "border rounded-sm rotate-45",
+                    isDone
+                      ? "border-pentra-accent/60 bg-pentra-accent/20 text-pentra-accent"
+                      : isAwaiting
+                      ? "border-yellow-500/80 bg-yellow-500/20 text-yellow-400 shadow-[0_0_8px_rgba(234,179,8,0.4)]"
+                      : isActive
+                      ? "border-pentra-accent bg-pentra-accent/10 text-pentra-accent animate-pulse"
+                      : "border-pentra-border/50 bg-transparent text-pentra-text-muted/30"
+                  )}
+                >
+                  <span className="-rotate-45 text-[8px]">⬡</span>
+                </div>
+              ) : (
+                // Regular phase — circle
+                <div
+                  className={cn(
+                    "h-4 w-4 rounded-full border-2 flex items-center justify-center transition-all duration-300",
+                    isDone
+                      ? "border-pentra-accent bg-pentra-accent"
+                      : isActive
+                      ? "border-pentra-accent bg-pentra-accent/20 animate-pulse shadow-[0_0_8px_rgba(99,102,241,0.5)]"
+                      : "border-pentra-border/40 bg-transparent"
+                  )}
+                >
+                  {isDone && <CheckCircle2 className="h-2 w-2 text-white" />}
+                </div>
+              )}
+              <span
+                className={cn(
+                  "text-[9px] font-medium whitespace-nowrap",
+                  isDone || isActive ? "text-pentra-text-secondary" : "text-pentra-text-muted/40"
+                )}
+              >
+                {phase.label}
+              </span>
+            </div>
+
+            {/* Connector line (not after last node) */}
+            {idx < PHASE_PIPELINE.length - 1 && (
+              <div
+                className={cn(
+                  "h-px w-8 mb-4 flex-shrink-0 transition-colors duration-300",
+                  completed.has(phase.key) ? "bg-pentra-accent/40" : "bg-pentra-border/30"
+                )}
+              />
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── HITL Approval dialog ───────────────────────────────────────────────────────
 
 interface ApprovalDialogProps {
@@ -605,6 +720,9 @@ export default function EngagementDetailPage() {
           ))}
         </div>
       </div>
+
+      {/* Phase pipeline — visible once scan has started */}
+      <PhaseStrip events={events} agentStatus={agentStatus} />
 
       {/* Tab bar */}
       <div className="flex border-b border-pentra-border px-8 flex-shrink-0 bg-pentra-bg-base/50">
