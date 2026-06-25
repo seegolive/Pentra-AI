@@ -197,17 +197,28 @@ class StartupValidator:
             )
             return
 
+        # Normalize names: "bge-m3" matches "bge-m3:latest", "foo:bar" matches "foo:bar"
+        def _model_available(name: str) -> bool:
+            if name in available:
+                return True
+            # "bge-m3" should match "bge-m3:latest"
+            if ":" not in name and f"{name}:latest" in available:
+                return True
+            # "bge-m3:latest" should match "bge-m3"
+            base = name.split(":")[0]
+            return any(m == base or m.startswith(f"{base}:") for m in available)
+
         # Check embedding model — required for KB indexing
         embedding_model = getattr(settings, "ollama_model_embedding", "bge-m3")
-        if embedding_model not in available:
+        if not _model_available(embedding_model):
             self.warnings.append(
                 f"Embedding model '{embedding_model}' not found in Ollama. "
                 f"Run: ollama pull {embedding_model}"
             )
 
         # Check default LLM — required for agent operation
-        default_model = getattr(settings, "ollama_model_default", "qwen2.5-coder:32b")
-        if default_model not in available:
+        default_model = getattr(settings, "ollama_model_default", "qwen2.5:32b")
+        if not _model_available(default_model):
             self.warnings.append(
                 f"Default LLM '{default_model}' not found in Ollama. "
                 f"Run: ollama pull {default_model}"
