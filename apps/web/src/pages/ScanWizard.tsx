@@ -579,7 +579,7 @@ function Step2({
             </span>
           )}
         </label>
-        <div className={cn("grid grid-cols-2 gap-3", fullBypass && "opacity-40 pointer-events-none")}>
+        <div className={cn("grid grid-cols-2 xl:grid-cols-3 gap-3", fullBypass && "opacity-40 pointer-events-none")}>
           {PRESETS.map((preset) => (
             <button
               key={preset.id}
@@ -726,6 +726,134 @@ function ReviewRow({ label, value, highlight }: { label: string; value: string; 
   );
 }
 
+// ── Live Summary Panel (right column on lg+) ─────────────────────────────────
+
+function SummaryItem({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div className="flex items-start justify-between gap-2 py-1.5 border-b border-pentra-border last:border-0">
+      <span className="text-[11px] text-pentra-text-muted flex-shrink-0">{label}</span>
+      <span className={cn(
+        "text-[11px] text-right break-all",
+        accent ? "text-orange-300 font-semibold" : "text-pentra-text-primary font-medium"
+      )}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+function ScanSummaryPanel({
+  target,
+  preset,
+  auth,
+  fullBypass,
+  effectiveMode,
+  effectiveAutoApprove,
+  effectiveModel,
+  effectiveJitter,
+  step,
+}: {
+  target: TargetData;
+  preset: string;
+  auth: { enabled: boolean; authType: string };
+  fullBypass: boolean;
+  effectiveMode: string;
+  effectiveAutoApprove: boolean;
+  effectiveModel: string;
+  effectiveJitter: number;
+  step: number;
+}) {
+  const selectedPreset = PRESETS.find((p) => p.id === preset) ?? PRESETS[1];
+  const stepLabels = ["Target & Scope", "Scan Preset", "Authentication", "Review & Launch"];
+
+  return (
+    <div className="sticky top-6 space-y-3">
+      {/* Live config summary */}
+      <div className={cn(
+        "rounded-ds-lg border bg-pentra-bg-panel p-4 transition-colors",
+        fullBypass ? "border-orange-500/30" : "border-pentra-border"
+      )}>
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-pentra-text-muted">
+            Scan Summary
+          </span>
+          {fullBypass && (
+            <span className="ml-auto text-[9px] font-bold text-orange-400 border border-orange-500/40 rounded px-1.5 py-0.5">
+              FULL BYPASS
+            </span>
+          )}
+        </div>
+
+        <div>
+          <SummaryItem
+            label="Target"
+            value={target.domain || "—"}
+          />
+          <SummaryItem
+            label="Preset"
+            value={fullBypass ? "pentra-ft (all modules)" : `${selectedPreset.name} · ${selectedPreset.eta}`}
+            accent={fullBypass}
+          />
+          <SummaryItem
+            label="Model"
+            value={effectiveModel}
+            accent={fullBypass}
+          />
+          <SummaryItem
+            label="Mode"
+            value={effectiveMode === "agentic" ? "Agentic (no HITL)" : "Semi-Auto (HITL)"}
+            accent={fullBypass && effectiveMode === "agentic"}
+          />
+          <SummaryItem
+            label="Approval"
+            value={effectiveAutoApprove ? "Auto (bypass)" : "Manual at exploit gate"}
+            accent={effectiveAutoApprove}
+          />
+          <SummaryItem
+            label="Auth"
+            value={auth.enabled ? auth.authType : "None"}
+          />
+          {effectiveJitter > 0 && (
+            <SummaryItem
+              label="Jitter"
+              value={`≤${effectiveJitter}ms`}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Step progress */}
+      <div className="rounded-ds-lg border border-pentra-border bg-pentra-bg-panel p-4">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-pentra-text-muted block mb-3">
+          Progress
+        </span>
+        <div className="space-y-1.5">
+          {stepLabels.map((label, i) => (
+            <div key={i} className="flex items-center gap-2.5">
+              <div className={cn(
+                "flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold border transition-colors",
+                i < step
+                  ? "bg-pentra-accent border-pentra-accent text-white"
+                  : i === step
+                  ? "border-pentra-accent text-pentra-accent bg-pentra-accent/10"
+                  : "border-pentra-border text-pentra-text-muted"
+              )}>
+                {i < step ? "✓" : i + 1}
+              </div>
+              <span className={cn(
+                "text-[12px] transition-colors",
+                i === step ? "text-pentra-text-primary font-medium" : "text-pentra-text-muted"
+              )}>
+                {label}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Wizard ──────────────────────────────────────────────────────────────
 
 export default function ScanWizard() {
@@ -815,8 +943,10 @@ export default function ScanWizard() {
   };
 
   return (
-    <div className="flex min-h-full items-start justify-center bg-pentra-bg-base p-8">
-      <div className="w-full max-w-2xl">
+    <div className="flex min-h-full items-start justify-center bg-pentra-bg-base px-4 py-6 sm:px-6 lg:px-8">
+      <div className="w-full max-w-2xl lg:max-w-5xl xl:max-w-6xl">
+
+        {/* Header */}
         <div className="mb-6 flex items-start justify-between">
           <div>
             <h1 className="text-[22px] font-bold text-pentra-text-primary">New Scan</h1>
@@ -830,138 +960,158 @@ export default function ScanWizard() {
           )}
         </div>
 
-        <StepIndicator current={step} />
+        {/* Responsive two-column layout: form left, summary right on lg+ */}
+        <div className="lg:grid lg:grid-cols-[1fr_260px] xl:grid-cols-[1fr_290px] lg:gap-8 lg:items-start">
 
-        <div className={cn(
-          "rounded-ds-lg border bg-pentra-bg-panel p-6 transition-colors",
-          fullBypass ? "border-orange-500/40" : "border-pentra-border"
-        )}>
-          {step === 0 && <Step1 data={target} onChange={setTarget} fullBypass={fullBypass} />}
-          {step === 1 && (
-            <Step2
-              selected={preset}
-              onSelect={setPreset}
-              fullBypass={fullBypass}
-              onToggleFullBypass={handleToggleFullBypass}
-            />
-          )}
-          {step === 2 && <Step3 data={auth} onChange={setAuth} />}
-          {step === 3 && (
-            <div>
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-[14px] font-semibold text-pentra-text-primary">Review Configuration</h3>
-                {fullBypass && (
-                  <span className="flex items-center gap-1.5 rounded-full bg-orange-900/50 border border-orange-500/40 px-3 py-1 text-[10px] font-bold text-orange-300">
-                    <Bot className="h-3 w-3" />
-                    FULL BYPASS ACTIVE
-                  </span>
-                )}
-              </div>
-              <div className="rounded-ds-md border border-pentra-border bg-pentra-bg-card px-4">
-                <ReviewRow label="Target" value={target.domain || "—"} />
-                <ReviewRow label="Name" value={target.engagementName || `${target.domain} scan`} />
-                <ReviewRow
-                  label="In-Scope"
-                  value={(() => {
-                    const extra = target.inScope ? target.inScope.split("\n").map(s => s.trim()).filter(Boolean) : [];
-                    const all = extra.includes(target.domain) ? extra : [target.domain, ...extra].filter(Boolean);
-                    return all.join(", ") || target.domain;
-                  })()}
-                />
-                {target.outScope && (
-                  <ReviewRow label="Out-of-Scope" value={target.outScope.split("\n").filter(Boolean).join(", ")} />
-                )}
-                <ReviewRow
-                  label="Preset"
-                  value={fullBypass ? "Full Bypass (all modules)" : `${selectedPreset.name} (${selectedPreset.eta})`}
-                  highlight={fullBypass}
-                />
-                <ReviewRow label="Model" value={effectiveModel} highlight={fullBypass} />
-                <ReviewRow label="Mode" value={effectiveMode === "agentic" ? "Agentic (zero HITL)" : "Semi-auto"} highlight={fullBypass && effectiveMode === "agentic"} />
-                <ReviewRow
-                  label="Auto-Approve"
-                  value={effectiveAutoApprove ? "All gates bypassed — LLM decides" : "Manual exploit approval"}
-                  highlight={fullBypass}
-                />
-                <ReviewRow
-                  label="Scan Mode"
-                  value={effectiveSequential ? "Sequential (per-subdomain)" : "Concurrent (all parallel)"}
-                />
-                <ReviewRow label="Jitter" value={effectiveJitter === 0 ? "None (0ms)" : `Up to ${effectiveJitter}ms`} />
-                <ReviewRow label="Auth" value={auth.enabled ? auth.authType : "None (unauthenticated)"} />
-                {fullBypass && (
-                  <ReviewRow
-                    label="Techniques"
-                    value={`${ALL_TECHNIQUES.length} modules · ${ALL_TECHNIQUES.filter(t => t.phase === "active").length} active attack tools · LLM ReAct loop`}
-                    highlight
-                  />
-                )}
-              </div>
+          {/* Left: wizard steps */}
+          <div className="min-w-0">
+            <StepIndicator current={step} />
 
-              {/* Warning box on review if fullBypass */}
-              {fullBypass && (
-                <div className="mt-4 flex items-start gap-3 rounded-ds-md bg-orange-950/40 border border-orange-500/30 p-3">
-                  <AlertTriangle className="h-4 w-4 flex-shrink-0 text-orange-400 mt-0.5" />
-                  <div>
-                    <p className="text-[12px] font-semibold text-orange-300">Full Bypass Mode — No human gates</p>
-                    <p className="text-[11px] text-orange-400/80 mt-0.5">
-                      This engagement will run autonomously from start to finish. The LLM will plan, recon, hunt, exploit, and report without pausing for approval. Ensure you have written authorization.
-                    </p>
+            <div className={cn(
+              "rounded-ds-lg border bg-pentra-bg-panel p-6 transition-colors",
+              fullBypass ? "border-orange-500/40" : "border-pentra-border"
+            )}>
+              {step === 0 && <Step1 data={target} onChange={setTarget} fullBypass={fullBypass} />}
+              {step === 1 && (
+                <Step2
+                  selected={preset}
+                  onSelect={setPreset}
+                  fullBypass={fullBypass}
+                  onToggleFullBypass={handleToggleFullBypass}
+                />
+              )}
+              {step === 2 && <Step3 data={auth} onChange={setAuth} />}
+              {step === 3 && (
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-[14px] font-semibold text-pentra-text-primary">Review Configuration</h3>
+                    {fullBypass && (
+                      <span className="flex items-center gap-1.5 rounded-full bg-orange-900/50 border border-orange-500/40 px-3 py-1 text-[10px] font-bold text-orange-300">
+                        <Bot className="h-3 w-3" />
+                        FULL BYPASS ACTIVE
+                      </span>
+                    )}
                   </div>
+                  <div className="rounded-ds-md border border-pentra-border bg-pentra-bg-card px-4">
+                    <ReviewRow label="Target" value={target.domain || "—"} />
+                    <ReviewRow label="Name" value={target.engagementName || `${target.domain} scan`} />
+                    <ReviewRow
+                      label="In-Scope"
+                      value={(() => {
+                        const extra = target.inScope ? target.inScope.split("\n").map(s => s.trim()).filter(Boolean) : [];
+                        const all = extra.includes(target.domain) ? extra : [target.domain, ...extra].filter(Boolean);
+                        return all.join(", ") || target.domain;
+                      })()}
+                    />
+                    {target.outScope && (
+                      <ReviewRow label="Out-of-Scope" value={target.outScope.split("\n").filter(Boolean).join(", ")} />
+                    )}
+                    <ReviewRow
+                      label="Preset"
+                      value={fullBypass ? "Full Bypass (all modules)" : `${selectedPreset.name} (${selectedPreset.eta})`}
+                      highlight={fullBypass}
+                    />
+                    <ReviewRow label="Model" value={effectiveModel} highlight={fullBypass} />
+                    <ReviewRow label="Mode" value={effectiveMode === "agentic" ? "Agentic (zero HITL)" : "Semi-auto"} highlight={fullBypass && effectiveMode === "agentic"} />
+                    <ReviewRow
+                      label="Auto-Approve"
+                      value={effectiveAutoApprove ? "All gates bypassed — LLM decides" : "Manual exploit approval"}
+                      highlight={fullBypass}
+                    />
+                    <ReviewRow
+                      label="Scan Mode"
+                      value={effectiveSequential ? "Sequential (per-subdomain)" : "Concurrent (all parallel)"}
+                    />
+                    <ReviewRow label="Jitter" value={effectiveJitter === 0 ? "None (0ms)" : `Up to ${effectiveJitter}ms`} />
+                    <ReviewRow label="Auth" value={auth.enabled ? auth.authType : "None (unauthenticated)"} />
+                    {fullBypass && (
+                      <ReviewRow
+                        label="Techniques"
+                        value={`${ALL_TECHNIQUES.length} modules · ${ALL_TECHNIQUES.filter(t => t.phase === "active").length} active attack tools · LLM ReAct loop`}
+                        highlight
+                      />
+                    )}
+                  </div>
+
+                  {fullBypass && (
+                    <div className="mt-4 flex items-start gap-3 rounded-ds-md bg-orange-950/40 border border-orange-500/30 p-3">
+                      <AlertTriangle className="h-4 w-4 flex-shrink-0 text-orange-400 mt-0.5" />
+                      <div>
+                        <p className="text-[12px] font-semibold text-orange-300">Full Bypass Mode — No human gates</p>
+                        <p className="text-[11px] text-orange-400/80 mt-0.5">
+                          This engagement will run autonomously from start to finish. The LLM will plan, recon, hunt, exploit, and report without pausing for approval. Ensure you have written authorization.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {fullBypass && <TechniquesPanel />}
                 </div>
               )}
-
-              {/* Technique summary on review */}
-              {fullBypass && <TechniquesPanel />}
             </div>
-          )}
-        </div>
 
-        {/* Navigation */}
-        <div className="flex items-center justify-between mt-4">
-          <button
-            type="button"
-            onClick={() => setStep((s) => Math.max(0, s - 1))}
-            disabled={step === 0}
-            className="flex items-center gap-1.5 rounded-ds-md border border-pentra-border px-4 py-2 text-[13px] text-pentra-text-secondary transition-colors hover:bg-pentra-bg-hover hover:text-pentra-text-primary disabled:opacity-40"
-          >
-            <ChevronLeft className="h-4 w-4" />
-            Back
-          </button>
+            {/* Navigation */}
+            <div className="flex items-center justify-between mt-4">
+              <button
+                type="button"
+                onClick={() => setStep((s) => Math.max(0, s - 1))}
+                disabled={step === 0}
+                className="flex items-center gap-1.5 rounded-ds-md border border-pentra-border px-4 py-2 text-[13px] text-pentra-text-secondary transition-colors hover:bg-pentra-bg-hover hover:text-pentra-text-primary disabled:opacity-40"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Back
+              </button>
 
-          {step < 3 ? (
-            <button
-              type="button"
-              onClick={() => setStep((s) => Math.min(3, s + 1))}
-              disabled={!canNext()}
-              className={cn(
-                "flex items-center gap-1.5 rounded-ds-md px-4 py-2 text-[13px] font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-40",
-                fullBypass ? "bg-orange-500" : "bg-pentra-accent"
-              )}
-            >
-              Next
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={handleLaunch}
-              disabled={create.isPending}
-              className={cn(
-                "flex items-center gap-2 rounded-ds-md px-5 py-2 text-[13px] font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-50",
-                fullBypass ? "bg-orange-500 shadow-lg shadow-orange-500/30" : "bg-pentra-accent"
-              )}
-            >
-              {create.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : fullBypass ? (
-                <Bot className="h-4 w-4" />
+              {step < 3 ? (
+                <button
+                  type="button"
+                  onClick={() => setStep((s) => Math.min(3, s + 1))}
+                  disabled={!canNext()}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-ds-md px-4 py-2 text-[13px] font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-40",
+                    fullBypass ? "bg-orange-500" : "bg-pentra-accent"
+                  )}
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </button>
               ) : (
-                <CheckCircle2 className="h-4 w-4" />
+                <button
+                  type="button"
+                  onClick={handleLaunch}
+                  disabled={create.isPending}
+                  className={cn(
+                    "flex items-center gap-2 rounded-ds-md px-5 py-2 text-[13px] font-medium text-white transition-opacity hover:opacity-80 disabled:opacity-50",
+                    fullBypass ? "bg-orange-500 shadow-lg shadow-orange-500/30" : "bg-pentra-accent"
+                  )}
+                >
+                  {create.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : fullBypass ? (
+                    <Bot className="h-4 w-4" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4" />
+                  )}
+                  {fullBypass ? "Launch Full Bypass" : "Launch Scan"}
+                </button>
               )}
-              {fullBypass ? "Launch Full Bypass" : "Launch Scan"}
-            </button>
-          )}
+            </div>
+          </div>
+
+          {/* Right: live summary panel — visible on lg+ only */}
+          <div className="hidden lg:block mt-[52px]">
+            <ScanSummaryPanel
+              target={target}
+              preset={preset}
+              auth={auth}
+              fullBypass={fullBypass}
+              effectiveMode={effectiveMode}
+              effectiveAutoApprove={effectiveAutoApprove}
+              effectiveModel={effectiveModel}
+              effectiveJitter={effectiveJitter}
+              step={step}
+            />
+          </div>
         </div>
       </div>
     </div>
