@@ -1129,7 +1129,7 @@ async def generate_payloads(
     )
 
     ollama_url = getattr(settings, "ollama_url", "http://localhost:11434")
-    model = getattr(settings, "ollama_model_default", "qwen2.5-coder:32b")
+    model = getattr(settings, "ollama_model_default", "qwen2.5:32b")
     generator = PayloadGenerator(ollama_url=ollama_url, model=model)
     payloads = await generator.generate(ctx, knowledge_dicts, count=data.count)
 

@@ -55,9 +55,9 @@ class ApiSettings(BaseSettings):
 
     # ── Ollama ────────────────────────────────────────────────────────────
     ollama_url: str = Field(default="http://localhost:11434")
-    ollama_model_default: str = Field(default="qwen2.5-coder:32b")
-    ollama_model_reasoning: str = Field(default="deepseek-r1:32b")
-    ollama_model_fast: str = Field(default="qwen3:8b")
+    ollama_model_default: str = Field(default="qwen2.5:32b")
+    ollama_model_reasoning: str = Field(default="qwen2.5:32b")
+    ollama_model_fast: str = Field(default="qwen2.5:7b")
     # ── Qdrant ────────────────────────────────────────────────────────────
     qdrant_url: str = Field(default="http://localhost:6333")
     qdrant_collection_knowledge: str = Field(default="knowledge")

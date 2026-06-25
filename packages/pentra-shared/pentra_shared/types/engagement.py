@@ -102,7 +102,7 @@ class EngagementCreate(BaseModel):
     in_scope: list[str] = Field(min_length=1)
     out_of_scope: list[str] = Field(default_factory=list)
     llm_model: str = Field(
-        default="qwen2.5-coder:32b",
+        default="qwen2.5:32b",
         description="Ollama model tag to use for this engagement",
     )
     opsec_mode: bool = Field(default=False)

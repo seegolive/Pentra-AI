@@ -25,9 +25,9 @@ KNOWLEDGE_SEARCH_MAX_TOP_K = 50
 
 # ── LLM Model Tags (defaults — overridden by env vars) ───────────────────────
 
-OLLAMA_MODEL_DEFAULT = "qwen2.5-coder:32b"
-OLLAMA_MODEL_REASONING = "deepseek-r1:32b"
-OLLAMA_MODEL_FAST = "qwen2.5-coder:7b"
+OLLAMA_MODEL_DEFAULT = "qwen2.5:32b"
+OLLAMA_MODEL_REASONING = "qwen2.5:32b"
+OLLAMA_MODEL_FAST = "qwen2.5:7b"
 OLLAMA_MODEL_EMBEDDING = "bge-m3"
 
 # ── LangGraph ─────────────────────────────────────────────────────────────────

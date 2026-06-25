@@ -83,7 +83,7 @@ function CreateEngagementForm({ workspaceId, onClose }: CreateEngagementFormProp
   const [mode, setMode] = useState<"semi_auto" | "agentic">("semi_auto");
   const [inScopeRaw, setInScopeRaw] = useState("");
   const [outOfScopeRaw, setOutOfScopeRaw] = useState("");
-  const [llmModel, setLlmModel] = useState("qwen2.5-coder:32b");
+  const [llmModel, setLlmModel] = useState("qwen2.5:32b");
   const [opsecMode, setOpsecMode] = useState(false);
   const [jitterMs, setJitterMs] = useState(500);
 
@@ -200,8 +200,8 @@ function CreateEngagementForm({ workspaceId, onClose }: CreateEngagementFormProp
               onChange={(e) => setLlmModel(e.target.value)}
               className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             >
-              <option value="qwen2.5-coder:32b">qwen2.5-coder:32b</option>
-              <option value="qwen2.5-coder:7b">qwen2.5-coder:7b (fast)</option>
+              <option value="qwen2.5:32b">qwen2.5:32b</option>
+              <option value="qwen2.5:7b">qwen2.5:7b (fast)</option>
               <option value="deepseek-r1:32b">deepseek-r1:32b (reasoning)</option>
             </select>
           </div>

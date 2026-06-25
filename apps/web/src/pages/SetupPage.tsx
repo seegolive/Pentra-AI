@@ -215,8 +215,8 @@ function StepOllama({
         </p>
         {[
           { cmd: "ollama pull bge-m3", desc: "Embedding (required)" },
-          { cmd: "ollama pull qwen2.5-coder:7b", desc: "Fast LLM" },
-          { cmd: "ollama pull qwen2.5-coder:32b", desc: "Default LLM" },
+          { cmd: "ollama pull qwen2.5:7b", desc: "Fast LLM" },
+          { cmd: "ollama pull qwen2.5:32b", desc: "Default LLM" },
         ].map(({ cmd, desc }) => (
           <div key={cmd} className="flex items-center justify-between">
             <code className="text-xs font-mono text-primary">{cmd}</code>

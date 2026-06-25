@@ -53,7 +53,7 @@ const PRESETS: ScanPreset[] = [
     description: "Rapid surface scan — subdomain enum + port scan only",
     eta: "~5 min",
     icon: <Zap className="h-5 w-5" />,
-    model: "qwen2.5-coder:7b",
+    model: "qwen2.5:7b",
   },
   {
     id: "fast",
@@ -61,7 +61,7 @@ const PRESETS: ScanPreset[] = [
     description: "Standard scan with lightweight vuln detection",
     eta: "~15 min",
     icon: <Wind className="h-5 w-5" />,
-    model: "qwen2.5-coder:7b",
+    model: "qwen2.5:7b",
   },
   {
     id: "full",
@@ -69,7 +69,7 @@ const PRESETS: ScanPreset[] = [
     description: "Comprehensive recon + vuln hunt + exploitation chains",
     eta: "~45 min",
     icon: <Globe className="h-5 w-5" />,
-    model: "qwen2.5-coder:32b",
+    model: "qwen2.5:32b",
   },
   {
     id: "stealth",
@@ -77,7 +77,7 @@ const PRESETS: ScanPreset[] = [
     description: "Low-noise scan with request jitter to evade detection",
     eta: "~60 min",
     icon: <EyeOff className="h-5 w-5" />,
-    model: "qwen2.5-coder:32b",
+    model: "qwen2.5:32b",
     opsec: true,
   },
   {
@@ -86,7 +86,7 @@ const PRESETS: ScanPreset[] = [
     description: "Scan with session auth — deeper endpoint coverage",
     eta: "~30 min",
     icon: <KeyRound className="h-5 w-5" />,
-    model: "qwen2.5-coder:32b",
+    model: "qwen2.5:32b",
   },
   {
     id: "pentra-ft",
