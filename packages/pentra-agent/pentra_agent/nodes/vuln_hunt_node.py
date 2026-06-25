@@ -248,60 +248,65 @@ async def vuln_hunt_node(state: PentraState) -> dict:
             request_jitter_ms=state.get("request_jitter_ms", 0),
         )
     else:
-        # ── 1–4.5. Run all passive/scan tools CONCURRENTLY (default) ─────────
-        # Each tool is I/O-bound (network/subprocess) and independent — running them
-        # in parallel cuts wall-clock time from ~sum(all timeouts) to ~max(longest).
-        # Task 18.11: preset flags gate individual tools on/off.
+        # ── 1–4.5. Run all tools CONCURRENTLY (default) ──────────────────────
+        # Endpoint-level tools (nuclei, ffuf, burp_scan, cors, ssrf, crlf, dalfox)
+        # are dispatched per-subdomain via _run_per_subdomain_tools() so every
+        # discovered subdomain receives equal treatment — no subdomain is skipped
+        # because of a global endpoint cap.
+        # Domain-level tools (graphql, jwt, soap_xxe, race_condition, biz_logic,
+        # burp_proxy, burp_extended) run once across the full engagement scope.
+        from urllib.parse import urlparse as _up_count
+        _num_hosts = len({
+            _up_count(ep.get("url", "")).hostname
+            for ep in endpoints if ep.get("url")
+        } - {None, ""})
         log.info(
-            "[vuln_hunt_node] Launching tools concurrently "
+            "[vuln_hunt_node] Launching concurrent scan across %d subdomain(s) "
             "[nuclei=%s ffuf=%s burp_scan=%s soap_xxe=%s csrf=%s]",
-            p_nuclei, p_ffuf, p_burp_scan, p_soap_xxe, p_csrf,
+            _num_hosts, p_nuclei, p_ffuf, p_burp_scan, p_soap_xxe, p_csrf,
         )
         (
-            nuclei_results,
-            ffuf_results,
-            burp_scan_results,
+            per_host_findings,
             burp_proxy_results,
             burp_extended,
             soap_xxe_results,
             graphql_results,
             race_condition_results,
-            cors_results,
             jwt_results,
             second_order_results,
             biz_logic_results,
-            ssrf_results,
-            crlf_results,
-            dalfox_results,
         ) = await asyncio.gather(
-            _run_nuclei(endpoints, state["scope"], tech_stack=state.get("tech_stack", [])) if p_nuclei else _noop_list(),
-            _run_ffuf(endpoints[:5]) if p_ffuf else _noop_list(),
-            _run_burp_active_scan(endpoints[:3], state["scope"]) if p_burp_scan else _noop_list(),
+            # Endpoint-level tools — one run per subdomain, all subdomains concurrent
+            _run_per_subdomain_tools(
+                endpoints=endpoints,
+                scope=state["scope"],
+                tech_stack=state.get("tech_stack", []),
+                auth_credentials=state.get("auth_credentials"),
+                p_nuclei=p_nuclei,
+                p_ffuf=p_ffuf,
+                p_burp_scan=p_burp_scan,
+            ),
+            # Domain-level tools — run once across full engagement scope
             _get_burp_proxy_findings(domain, state["scope"]),
             _run_burp_extended_checks(domain, state["scope"], endpoints),
             _run_soap_xxe_scan(domain, state["scope"], state.get("auth_credentials")) if p_soap_xxe else _noop_list(),
             _run_graphql_scan(domain, state["scope"], state.get("auth_credentials")),
             _run_race_condition_scan(endpoints, state["scope"], state.get("auth_credentials")),
-            _run_cors_scan(endpoints, state["scope"], state.get("auth_credentials")),
             _run_jwt_scan(domain, state["scope"], state.get("auth_credentials"), state),
             _run_second_order_sqli_scan(domain, state["scope"], state.get("auth_credentials")),
             _run_business_logic_scan(domain, state["scope"], state.get("auth_credentials")),
-            _run_ssrf_scan(endpoints, state["scope"], state.get("auth_credentials")),
-            _run_crlfuzz_scan(endpoints),
-            _run_dalfox_scan(endpoints),
-            return_exceptions=True,  # one tool failing must not kill all others
+            return_exceptions=True,
         )
 
         _TOOL_NAMES = [
-            "nuclei", "ffuf", "burp_scan", "burp_proxy", "burp_extended",
-            "soap_xxe", "graphql", "race_condition", "cors", "jwt",
-            "second_order", "biz_logic", "ssrf", "crlf", "dalfox",
+            "per_subdomain(nuclei+ffuf+cors+ssrf+crlf+dalfox)", "burp_proxy", "burp_extended",
+            "soap_xxe", "graphql", "race_condition", "jwt",
+            "second_order", "biz_logic",
         ]
         _tool_results = [
-            nuclei_results, ffuf_results, burp_scan_results, burp_proxy_results,
-            burp_extended, soap_xxe_results, graphql_results, race_condition_results,
-            cors_results, jwt_results, second_order_results, biz_logic_results,
-            ssrf_results, crlf_results, dalfox_results,
+            per_host_findings, burp_proxy_results, burp_extended,
+            soap_xxe_results, graphql_results, race_condition_results,
+            jwt_results, second_order_results, biz_logic_results,
         ]
         for _name, _result in zip(_TOOL_NAMES, _tool_results):
             if isinstance(_result, BaseException):
@@ -630,7 +635,7 @@ async def _run_nuclei(
     url_targets: list[str] = [
         e["url"] for e in endpoints
         if e.get("url") and _is_in_scope(e["url"], in_scope)
-    ][:20]
+    ][:50]
     if not url_targets:
         return []
 
@@ -3939,7 +3944,7 @@ async def _run_cors_scan(
     all_findings: list[dict] = []
     tested = 0
 
-    for ep in endpoints[:8]:  # cap at 8 endpoints
+    for ep in endpoints:  # caller controls size via _run_per_subdomain_tools()
         url = ep.get("url", "")
         if not url:
             continue
@@ -4177,6 +4182,81 @@ def _prioritize_hosts(groups: dict[str, list[dict]]) -> list[str]:
         has_auth  = any(kw in host.lower() for kw in ("auth", "login", "sso", "oauth"))
         return len(eps) * 2 + param_count * 3 + (10 if has_api else 0) + (10 if has_admin else 0) + (8 if has_auth else 0)
     return sorted(groups.keys(), key=_score, reverse=True)
+
+
+async def _run_per_subdomain_tools(
+    endpoints: list[dict],
+    scope: dict,
+    tech_stack: list[str],
+    auth_credentials: dict | None,
+    p_nuclei: bool,
+    p_ffuf: bool,
+    p_burp_scan: bool,
+) -> list[dict]:
+    """Run endpoint-level tools for EVERY subdomain concurrently.
+
+    Groups endpoints by hostname, then for each subdomain runs nuclei, ffuf,
+    burp_scan, cors, ssrf, crlfuzz, and dalfox in parallel — all subdomains
+    run at the same time. This guarantees equal treatment regardless of which
+    subdomain appears first in the flat endpoint list.
+
+    Domain-level tools (graphql, jwt, soap_xxe, race_condition, biz_logic,
+    burp_proxy, burp_extended) are intentionally excluded here — they are
+    called once at engagement level by the caller.
+    """
+    groups = _group_endpoints_by_host(endpoints)
+    if not groups:
+        log.warning("[per_subdomain_concurrent] No endpoint groups — skipping endpoint-level tools")
+        return []
+
+    log.info(
+        "[per_subdomain_concurrent] Scanning %d subdomain(s) with endpoint-level tools "
+        "[nuclei=%s ffuf=%s burp=%s]",
+        len(groups), p_nuclei, p_ffuf, p_burp_scan,
+    )
+
+    async def _scan_one_host(host: str, host_eps: list[dict]) -> list[dict]:
+        log.info(
+            "[per_subdomain_concurrent] [%s] → %d endpoints | tools: nuclei+ffuf+cors+ssrf+crlf+dalfox",
+            host, len(host_eps),
+        )
+        results = await asyncio.gather(
+            _run_nuclei(host_eps, scope, tech_stack=tech_stack) if p_nuclei else _noop_list(),
+            _run_ffuf(host_eps) if p_ffuf else _noop_list(),
+            _run_burp_active_scan(host_eps[:2], scope) if p_burp_scan else _noop_list(),
+            _run_cors_scan(host_eps, scope, auth_credentials),
+            _run_ssrf_scan(host_eps, scope, auth_credentials),
+            _run_crlfuzz_scan(host_eps),
+            _run_dalfox_scan(host_eps),
+            return_exceptions=True,
+        )
+        tool_names = ["nuclei", "ffuf", "burp_scan", "cors", "ssrf", "crlfuzz", "dalfox"]
+        merged: list[dict] = []
+        for name, r in zip(tool_names, results):
+            if isinstance(r, list):
+                merged.extend(r)
+            elif isinstance(r, BaseException):
+                log.debug("[per_subdomain_concurrent] [%s] %s error (non-fatal): %s", host, name, r)
+        log.info("[per_subdomain_concurrent] [%s] → %d finding(s)", host, len(merged))
+        return merged
+
+    host_results = await asyncio.gather(
+        *[_scan_one_host(host, eps) for host, eps in groups.items()],
+        return_exceptions=True,
+    )
+
+    all_findings: list[dict] = []
+    for r in host_results:
+        if isinstance(r, list):
+            all_findings.extend(r)
+        elif isinstance(r, BaseException):
+            log.warning("[per_subdomain_concurrent] host scan error: %s", r)
+
+    log.info(
+        "[per_subdomain_concurrent] All %d subdomain(s) scanned → %d total finding(s)",
+        len(groups), len(all_findings),
+    )
+    return all_findings
 
 
 async def _probe_host_limits(host: str) -> tuple[dict, dict]:
