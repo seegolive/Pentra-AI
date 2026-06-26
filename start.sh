@@ -1064,8 +1064,9 @@ show_status() {
     done
 
     local scan_count
-    scan_count=$(ls /tmp/pentra_scan_*.log 2>/dev/null | wc -l || echo 0)
-    [[ "$scan_count" -gt 0 ]] && \
+    scan_count=$(ls /tmp/pentra_scan_*.log 2>/dev/null | wc -l)
+    scan_count="${scan_count//[^0-9]/}"
+    [[ "${scan_count:-0}" -gt 0 ]] && \
         echo -e "    ${DIM}scan logs: ${scan_count} di /tmp  (./start.sh logs:scan)${RST}"
     echo ""
 }
