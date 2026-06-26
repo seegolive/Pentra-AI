@@ -71,7 +71,7 @@ CONCURRENT_CANDIDATES: int = int(os.getenv("PENTRA_CONCURRENT_CANDIDATES", "3"))
 # Polite inter-payload delay (seconds). Reduced vs sequential (was 0.5s).
 _PAYLOAD_PACING_S: float = float(os.getenv("PENTRA_PAYLOAD_PACING", "0.15"))
 # Task 18.11 preset-controlled limits
-_MAX_CANDIDATES: int = int(os.getenv("PENTRA_MAX_CANDIDATES", "20"))
+_MAX_CANDIDATES: int = int(os.getenv("PENTRA_MAX_CANDIDATES", "50"))
 _MAX_PAYLOADS_PER_CANDIDATE: int = int(os.getenv("PENTRA_MAX_PAYLOADS", "4"))
 _RUN_NUCLEI: bool = os.getenv("PENTRA_RUN_NUCLEI", "true").lower() == "true"
 _RUN_FFUF: bool = os.getenv("PENTRA_RUN_FFUF", "true").lower() == "true"
@@ -178,7 +178,7 @@ async def vuln_hunt_node(state: PentraState) -> dict:
     p_burp_scan: bool = os.getenv("PENTRA_RUN_BURP_SCAN", "true").lower() == "true"
     p_soap_xxe: bool = os.getenv("PENTRA_RUN_SOAP_XXE", "true").lower() == "true"
     p_csrf: bool = os.getenv("PENTRA_RUN_CSRF_CHECK", "true").lower() == "true"
-    p_max_candidates: int = int(os.getenv("PENTRA_MAX_CANDIDATES", "20"))
+    p_max_candidates: int = int(os.getenv("PENTRA_MAX_CANDIDATES", "50"))
     p_max_payloads: int = int(os.getenv("PENTRA_MAX_PAYLOADS", "4"))
     p_crawl_pages: int = int(os.getenv("PENTRA_CRAWL_PAGES", "49"))
     p_nuclei_timeout: int = int(os.getenv("PENTRA_NUCLEI_TIMEOUT", "300"))
@@ -225,6 +225,23 @@ async def vuln_hunt_node(state: PentraState) -> dict:
 
     raw_findings: list[dict] = []
 
+    # ── OOB setup: start interactsh as fallback when Burp Collaborator not available ──
+    # The OOB URL is passed to every SSRF scanner so blind SSRF can be detected via
+    # DNS/HTTP callbacks. Gracefully degrades if the binary is not installed.
+    _oob_url: str | None = None
+    _oob_client = None
+    try:
+        from pentra_tools.oob.interactsh_client import InteractshClient as _IC
+        _oob_client = _IC()
+        await _oob_client.__aenter__()
+        _oob_url = _oob_client.url
+        if _oob_url:
+            log.info("[vuln_hunt_node] OOB ready: %s (interactsh)", _oob_url)
+        else:
+            log.info("[vuln_hunt_node] interactsh started but no URL received — OOB disabled")
+    except Exception as _oob_exc:
+        log.debug("[vuln_hunt_node] interactsh unavailable (non-fatal): %s", _oob_exc)
+
     # Sequential mode: per-engagement flag overrides OR env var enables globally
     _use_sequential = state.get("scan_sequential", False) or _SUBDOMAIN_SEQUENTIAL
 
@@ -246,6 +263,7 @@ async def vuln_hunt_node(state: PentraState) -> dict:
             auth_credentials=state.get("auth_credentials"),
             inter_delay_s=_INTER_SUBDOMAIN_DELAY,
             request_jitter_ms=state.get("request_jitter_ms", 0),
+            oob_canary=_oob_url,
         )
     else:
         # ── 1–4.5. Run all tools CONCURRENTLY (default) ──────────────────────
@@ -277,6 +295,7 @@ async def vuln_hunt_node(state: PentraState) -> dict:
             biz_logic_results,
         ) = await asyncio.gather(
             # Endpoint-level tools — one run per subdomain, all subdomains concurrent
+            # Includes LLM per-subdomain reasoning as final step
             _run_per_subdomain_tools(
                 endpoints=endpoints,
                 scope=state["scope"],
@@ -285,6 +304,9 @@ async def vuln_hunt_node(state: PentraState) -> dict:
                 p_nuclei=p_nuclei,
                 p_ffuf=p_ffuf,
                 p_burp_scan=p_burp_scan,
+                oob_canary=_oob_url,
+                llm_model=state["llm_model"],
+                kb_context=knowledge_context,
             ),
             # Domain-level tools — run once across full engagement scope
             _get_burp_proxy_findings(domain, state["scope"]),
@@ -299,7 +321,7 @@ async def vuln_hunt_node(state: PentraState) -> dict:
         )
 
         _TOOL_NAMES = [
-            "per_subdomain(nuclei+ffuf+cors+ssrf+crlf+dalfox)", "burp_proxy", "burp_extended",
+            "per_subdomain(nuclei+ffuf+burp+cors+ssrf+crlf+dalfox+nuclei_host+llm_reasoning)", "burp_proxy", "burp_extended",
             "soap_xxe", "graphql", "race_condition", "jwt",
             "second_order", "biz_logic",
         ]
@@ -321,6 +343,26 @@ async def vuln_hunt_node(state: PentraState) -> dict:
         "sequential" if _use_sequential else "concurrent",
         len(raw_findings),
     )
+
+    # ── OOB: collect interactsh callbacks and terminate client ────────────────
+    if _oob_client is not None:
+        if _oob_url:
+            # Brief wait for delayed DNS/HTTP callbacks from recently triggered payloads
+            log.info("[vuln_hunt_node] Waiting 5s for OOB callbacks...")
+            await asyncio.sleep(5.0)
+        try:
+            await _oob_client.__aexit__(None, None, None)
+            for _interaction in _oob_client.interactions:
+                raw_findings.append(_interaction.to_finding(
+                    context=f"Triggered during scan of {domain}"
+                ))
+            if _oob_client.interactions:
+                log.info(
+                    "[vuln_hunt_node] OOB: %d interaction(s) → added as findings",
+                    len(_oob_client.interactions),
+                )
+        except Exception as _oob_exit_exc:
+            log.debug("[vuln_hunt_node] interactsh exit error (non-fatal): %s", _oob_exit_exc)
 
     # ── 5. Collaborator payload (expose in tool_outputs for LLM) ─────────────
     collaborator_output: list[dict] = []
@@ -635,7 +677,7 @@ async def _run_nuclei(
     url_targets: list[str] = [
         e["url"] for e in endpoints
         if e.get("url") and _is_in_scope(e["url"], in_scope)
-    ][:50]
+    ][:100]
     if not url_targets:
         return []
 
@@ -694,23 +736,157 @@ async def _run_nuclei(
     if any(t in _ts_lower for t in ("mssql", "sql server", "sqlserver")):
         _extra_tags += ["mssql"]
 
-    # Run HTTP and network scans concurrently — they target different protocols so
-    # there's no CPU/template contention.
-    # Task 20.3: raised HTTP timeout from 180s → 300s to accommodate:
-    #   30s per-request × 5 concurrent × ~8 targets × ~20 key templates = ~240s worst case
-    # Network scan timeout unchanged at 120s (no time-based templates).
-    (http_findings, http_timed_out), (net_findings, net_timed_out) = await asyncio.gather(
-        _nuclei_scan(nuclei_bin, url_targets, protocol_types=None, timeout=300, extra_tags=_extra_tags, tags_base=tags_override),
-        _nuclei_scan(nuclei_bin, network_targets, protocol_types=["tcp", "javascript"], timeout=120),
+    # Run three nuclei passes concurrently:
+    # 1. Standard templates (CVE, misconfig, exposure) — HTTP
+    # 2. Network/JS templates (Redis, PostgreSQL, service-level CVEs)
+    # 3. DAST mode (-dast) — parameter-level fuzzing: SQLi, XSS, SSRF, LFI, SSTI, CMDI, XXE
+    #    DAST templates are separate from the standard template set and require -dast flag.
+    #    This replaces standalone dalfox/crlfuzz for injection coverage at the nuclei level.
+    # 4. Headless templates (DOM XSS, prototype pollution) for JS-heavy targets
+    _burp_proxy = _get_burp_proxy()
+
+    (http_findings, http_timed_out), (net_findings, net_timed_out), \
+    (dast_findings, dast_timed_out), (headless_findings, _) = await asyncio.gather(
+        _nuclei_scan(nuclei_bin, url_targets, protocol_types=None, timeout=300, extra_tags=_extra_tags, tags_base=tags_override, burp_proxy=_burp_proxy),
+        _nuclei_scan(nuclei_bin, network_targets, protocol_types=["tcp", "javascript"], timeout=120, burp_proxy=_burp_proxy),
+        _nuclei_dast_scan(nuclei_bin, url_targets, tech_stack=tech_stack, timeout=300, burp_proxy=_burp_proxy),
+        _nuclei_headless_scan(nuclei_bin, url_targets, timeout=120, burp_proxy=_burp_proxy),
     )
-    findings = http_findings + net_findings
-    log.info("[vuln_hunt_node] nuclei: http=%d net=%d total=%d", len(http_findings), len(net_findings), len(findings))
+    findings = http_findings + net_findings + dast_findings + headless_findings
+    log.info(
+        "[vuln_hunt_node] nuclei: http=%d net=%d dast=%d headless=%d total=%d",
+        len(http_findings), len(net_findings), len(dast_findings), len(headless_findings), len(findings),
+    )
     if len(findings) == 0 and (http_timed_out or net_timed_out):
         log.info(
             "[nuclei] 0 findings + timeout (%s) — no templates matched this target, treated as skipped",
             f"http_timeout={http_timed_out} net_timeout={net_timed_out}",
         )
     return findings
+
+
+async def _run_nuclei_on_host(host: str, scope: dict, tech_stack: list[str]) -> list[dict]:
+    """Run nuclei directly against a host URL for CVEs / exposed panels / misconfigs.
+
+    This is separate from _run_nuclei (which requires endpoint dicts). It runs
+    nuclei on the host root URL to catch issues that endpoint crawling may miss:
+    exposed admin panels, CVEs on login pages, security header misconfigs, etc.
+    Always includes all tags — not gated by endpoint count.
+    """
+    import shutil
+
+    _NUCLEI_CANDIDATES = ["/home/mdilab/go/bin/nuclei", "/usr/local/bin/nuclei", "/usr/bin/nuclei"]
+    nuclei_bin = next(
+        (c for c in _NUCLEI_CANDIDATES if os.path.isfile(c)),
+        shutil.which("nuclei") or "nuclei",
+    )
+
+    targets = [f"https://{host}", f"http://{host}"]
+    _TAGS = "cve,misconfig,exposure,default-login,panel,takeover,ssl,cors,security-misconfiguration"
+
+    # Add tech-specific tags
+    tech_lower = " ".join(tech_stack).lower()
+    if any(t in tech_lower for t in ["wordpress", "wp", "drupal", "joomla"]):
+        _TAGS += ",wordpress"
+    if any(t in tech_lower for t in ["apache", "nginx", "iis"]):
+        _TAGS += ",webserver"
+    if "spring" in tech_lower or "java" in tech_lower:
+        _TAGS += ",spring,java"
+
+    _burp_proxy = _get_burp_proxy()
+    # Run standard + DAST scans on host-level concurrently
+    (findings, _), (dast_findings, _) = await asyncio.gather(
+        _nuclei_scan(nuclei_bin, targets, protocol_types=None, timeout=120, tags_base=_TAGS, burp_proxy=_burp_proxy),
+        _nuclei_dast_scan(nuclei_bin, targets, tech_stack=tech_stack, timeout=120, burp_proxy=_burp_proxy),
+    )
+    all_findings = findings + dast_findings
+    if all_findings:
+        log.info("[nuclei_host] [%s] %d finding(s) (standard=%d dast=%d)", host, len(all_findings), len(findings), len(dast_findings))
+    return all_findings
+
+
+async def _run_llm_subdomain_reasoning(
+    host: str,
+    host_endpoints: list[dict],
+    tech_stack: list[str],
+    tool_findings: list[dict],
+    llm_model: str,
+    scope: dict,
+    kb_context: list[dict] | None = None,
+) -> list[dict]:
+    """LLM deep reasoning per subdomain: hypothesis → targeted attack → exploit chain.
+
+    Uses the LLM (preferably reasoning model) to identify logic flaws, IDOR,
+    auth bypass, and business logic vulnerabilities that automated tools miss.
+    """
+    try:
+        llm = LLMClient(base_url=_ollama_url(), model=llm_model)
+
+        endpoint_summary = "\n".join(
+            f"  {ep.get('method', 'GET')} {ep.get('url', '')} params={ep.get('params', [])}"
+            for ep in host_endpoints[:30]
+        )
+        finding_summary = "\n".join(
+            f"  [{f.get('severity', '?').upper()}] {f.get('title', '?')}: {f.get('target_url', '')}"
+            for f in tool_findings[:15]
+        )
+        kb_hints = "\n".join(
+            f"  - [{r.get('vuln_class', '?')}] {r.get('key_insight', '')[:120]}"
+            for r in (kb_context or [])[:5]
+        )
+
+        system = (
+            "You are an expert penetration tester. Identify vulnerabilities that automated tools miss: "
+            "IDOR, logic flaws, auth bypass, exploit chains. Respond ONLY with a valid JSON array — no markdown, no prose."
+        )
+        user = f"""Analyze this subdomain:
+
+TARGET: {host}
+TECH STACK: {', '.join(tech_stack) or 'unknown'}
+
+ENDPOINTS ({len(host_endpoints)}, first 30):
+{endpoint_summary or '  (none)'}
+
+SCANNER FINDINGS:
+{finding_summary or '  (none)'}
+
+KB HINTS:
+{kb_hints or '  (none)'}
+
+Return JSON array of vulnerability candidates not covered by scanners.
+Schema: {{"title":"...", "vuln_class":"IDOR|SQLi|XSS|SSRF|RCE|Auth_Bypass|Business_Logic|Info_Disclosure|Misconfiguration|LFI|SSTI|other", "severity":"critical|high|medium|low", "target_url":"...", "description":"...", "attack_hypothesis":"...", "chain_potential":"...", "source":"llm_reasoning"}}
+Return [] if nothing additional."""
+
+        response = await llm.complete(system, user)
+        if not response:
+            return []
+
+        import re
+        import json as _json
+        json_match = re.search(r"\[.*\]", response, re.DOTALL)
+        if not json_match:
+            return []
+
+        candidates = _json.loads(json_match.group())
+        if not isinstance(candidates, list):
+            return []
+
+        results = []
+        for item in candidates:
+            if not isinstance(item, dict) or not item.get("title"):
+                continue
+            item["source"] = "llm_reasoning"
+            item.setdefault("severity", "medium")
+            item.setdefault("vuln_class", "other")
+            results.append(item)
+
+        if results:
+            log.info("[llm_reasoning] [%s] %d hypothesis(es) generated", host, len(results))
+        return results
+
+    except Exception as exc:
+        log.debug("[llm_reasoning] [%s] failed (non-fatal): %s", host, exc)
+        return []
 
 
 async def _nuclei_scan(
@@ -720,12 +896,13 @@ async def _nuclei_scan(
     timeout: int = 300,
     extra_tags: list[str] | None = None,
     tags_base: str | None = None,
+    burp_proxy: str | None = None,
 ) -> tuple[list[dict], bool]:
     """Internal helper: run one nuclei pass and return (findings, timed_out).
 
     Args:
-        tags_base: Override the default tag set (used by per-subdomain sequential
-                   scanner to separate passive vs active passes).
+        tags_base: Override the default tag set.
+        burp_proxy: If set, route all nuclei traffic through Burp for passive analysis.
     """
     if not targets:
         return [], False
@@ -746,30 +923,25 @@ async def _nuclei_scan(
         nuclei_bin,
         "-severity", "info,low,medium,high,critical",
         "-exclude-tags", "intrusive,dos",
-        # Use correct nuclei tag names (checked against ~/nuclei-templates/ tag index).
-        # vuln=6614 templates, cve=4179, xss=1401, lfi=846, rce=945,
-        # exposure=1426, misconfig=972, sqli=581, default-login=226.
         "-tags", _all_tags,
         "-jsonl",
         "-silent",
         "-duc",   # disable update check — avoids lock conflicts on concurrent runs
-        # Task 20.3 — nuclei 0-findings fix:
-        # Root cause: -ni disabled interactsh AND per-request timeout was too short
-        # for time-based SQLi (WAITFOR DELAY 10s + network overhead).
-        # Fix:
-        #   1. Remove -ni: interactsh is available and needed for blind/OOB detection
-        #   2. Raise -timeout from 15s → 30s: WAITFOR DELAY templates need room to fire
-        #   3. Add -retries 1: one retry for transient slow responses
-        #   4. Lower -c from 10 → 5: reduce concurrency so timing-based templates are reliable
         "-timeout", "30",   # per-request timeout — must exceed any SLEEP/WAITFOR delay
         "-retries", "1",    # one retry for transient failures
         "-c", "5",          # lower concurrency: timing attacks need stable measurements
-        # Add common WAF-bypass headers so templates see realistic responses
+        # WAF-bypass headers
         "-H", "X-Forwarded-For: 127.0.0.1",
         "-H", "X-Real-IP: 127.0.0.1",
     ]
     if protocol_types:
         cmd += ["-pt", ",".join(protocol_types)]
+    # Route all nuclei HTTP traffic through Burp when available:
+    # - Burp passive scanner analyzes every request/response nuclei sends
+    # - Findings visible in Burp's Scanner tab without extra config
+    # - Interesting requests can be replayed in Repeater
+    if burp_proxy:
+        cmd += ["-p", burp_proxy, "-pi"]  # -pi: also proxy internal requests
 
     # Write targets to a temp file — /dev/stdin is unreliable when nohup closes fd 0
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, prefix="nuclei-targets-") as tf:
@@ -824,6 +996,190 @@ async def _nuclei_scan(
         import os
         try:
             os.unlink(targets_file)
+        except OSError:
+            pass
+
+
+async def _nuclei_dast_scan(
+    nuclei_bin: str,
+    targets: list[str],
+    tech_stack: list[str] | None = None,
+    timeout: int = 300,
+    burp_proxy: str | None = None,
+) -> tuple[list[dict], bool]:
+    """Nuclei DAST mode: parameter-level fuzzing via -dast flag.
+
+    Uses templates from ~/nuclei-templates/dast/vulnerabilities/:
+    - sqli/ (time-based + error-based SQL injection)
+    - xss/ (reflected XSS + DOM XSS + CSP bypass)
+    - ssrf/ (blind SSRF + response-based SSRF)
+    - lfi/ (local file inclusion paths)
+    - ssti/ (server-side template injection)
+    - cmdi/ (command injection)
+    - crlf/ (CRLF header injection)
+    - xxe/ (XML external entity)
+    - injection/ (generic injection)
+    - ai/ (prompt injection for API targets)
+
+    Requires: nuclei v3.0+ with -dast flag support.
+    This is a SEPARATE pass from _nuclei_scan — the -dast templates inject
+    into request parameters and are not run by default without this flag.
+    """
+    if not targets:
+        return [], False
+
+    import tempfile
+
+    cmd = [
+        nuclei_bin,
+        "-dast",        # enable DAST template mode
+        "-severity", "medium,high,critical",  # skip info/low for DAST — too noisy
+        "-jsonl",
+        "-silent",
+        "-duc",
+        "-timeout", "30",
+        "-retries", "1",
+        "-c", "3",      # lower concurrency for DAST — fuzzing is request-heavy
+        "-H", "X-Forwarded-For: 127.0.0.1",
+        "-H", "X-Real-IP: 127.0.0.1",
+    ]
+
+    # Add AI injection templates for API targets
+    ts_lower = " ".join(tech_stack or []).lower()
+    if any(kw in ts_lower for kw in ("api", "rest", "graphql", "json", "fastapi", "flask", "django", "rails")):
+        # Include AI template directory for API targets that might have LLM endpoints
+        ai_tmpl_dir = os.path.expanduser("~/nuclei-templates/dast/ai")
+        if os.path.isdir(ai_tmpl_dir):
+            cmd += ["-t", ai_tmpl_dir]
+            log.info("[nuclei_dast] Including AI injection templates for API target")
+
+    if burp_proxy:
+        cmd += ["-p", burp_proxy, "-pi"]
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, prefix="nuclei-dast-") as tf:
+        tf.write("\n".join(targets))
+        targets_file = tf.name
+    cmd += ["-list", targets_file]
+
+    log.info("[nuclei_dast] Running DAST scan on %d targets (timeout=%ds)", len(targets), timeout)
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except asyncio.TimeoutError:
+            log.warning("[nuclei_dast] DAST scan timed out after %ds", timeout)
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+            await proc.wait()
+            return [], True
+
+        raw = stdout.decode(errors="replace") if stdout else ""
+        findings = _parse_nuclei_jsonl(raw)
+        if findings:
+            log.info("[nuclei_dast] %d DAST finding(s)", len(findings))
+        return findings, False
+
+    except FileNotFoundError:
+        log.warning("[nuclei_dast] nuclei binary not found")
+        return [], False
+    except Exception as exc:
+        log.warning("[nuclei_dast] DAST scan error: %s", exc)
+        return [], False
+    finally:
+        import os as _os
+        try:
+            _os.unlink(targets_file)
+        except OSError:
+            pass
+
+
+async def _nuclei_headless_scan(
+    nuclei_bin: str,
+    targets: list[str],
+    timeout: int = 120,
+    burp_proxy: str | None = None,
+) -> tuple[list[dict], bool]:
+    """Nuclei headless mode: browser-based templates for JS-heavy apps.
+
+    Covers templates from ~/nuclei-templates/headless/:
+    - prototype-pollution-check.yaml — JS prototype pollution
+    - postmessage-tracker.yaml — postMessage origin checks
+    - dom-xss via headless browser (complementing DAST xss/dom-xss.yaml)
+    - headless-open-redirect.yaml — JS redirect detection
+    - extract-urls.yaml — extract additional URLs from rendered JS
+
+    Requires: Chromium installed (chromium-browser or google-chrome).
+    Gracefully skips if chromium not found.
+    """
+    if not targets:
+        return [], False
+
+    # Check Chromium availability first — headless mode requires it
+    import shutil
+    chrome_bin = shutil.which("chromium-browser") or shutil.which("chromium") or shutil.which("google-chrome")
+    if not chrome_bin:
+        log.debug("[nuclei_headless] Chromium not found — skipping headless templates")
+        return [], False
+
+    import tempfile
+
+    cmd = [
+        nuclei_bin,
+        "-headless",         # enable headless browser mode
+        "-severity", "medium,high,critical",
+        "-jsonl",
+        "-silent",
+        "-duc",
+        "-timeout", "30",
+        "-retries", "0",     # no retries for headless — slow and resource-intensive
+        "-headc", "3",       # max 3 concurrent headless templates
+        "-hbs", "5",         # max 5 hosts per template in headless mode
+    ]
+    if burp_proxy:
+        cmd += ["-p", burp_proxy]
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, prefix="nuclei-headless-") as tf:
+        tf.write("\n".join(targets))
+        targets_file = tf.name
+    cmd += ["-list", targets_file]
+
+    log.info("[nuclei_headless] Running headless scan on %d targets", len(targets))
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        try:
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except asyncio.TimeoutError:
+            log.warning("[nuclei_headless] Headless scan timed out after %ds", timeout)
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+            await proc.wait()
+            return [], True
+
+        raw = stdout.decode(errors="replace") if stdout else ""
+        findings = _parse_nuclei_jsonl(raw)
+        if findings:
+            log.info("[nuclei_headless] %d headless finding(s)", len(findings))
+        return findings, False
+
+    except Exception as exc:
+        log.debug("[nuclei_headless] Headless scan failed (non-fatal): %s", exc)
+        return [], False
+    finally:
+        import os as _os
+        try:
+            _os.unlink(targets_file)
         except OSError:
             pass
 
@@ -1000,12 +1356,12 @@ async def _run_ffuf(endpoints: list[dict]) -> list[dict]:
 
 
 async def _run_crlfuzz_scan(endpoints: list[dict]) -> list[dict]:
-    """Run CRLFuzz against a small prioritized endpoint slice."""
+    """Run CRLFuzz against all endpoints per subdomain (no artificial cap)."""
     try:
         from pentra_tools.scanners.crlfuzz_scanner import CRLFuzzScanner
 
-        urls = [ep["url"] for ep in endpoints if ep.get("url")][:5]
-        findings = await CRLFuzzScanner().scan_batch(urls, max_concurrent=3)
+        urls = [ep["url"] for ep in endpoints if ep.get("url")]
+        findings = await CRLFuzzScanner().scan_batch(urls, max_concurrent=5)
         return [
             {
                 **asdict(finding),
@@ -1024,21 +1380,84 @@ async def _run_dalfox_scan(endpoints: list[dict]) -> list[dict]:
     """Run Dalfox on endpoints that already expose query parameters."""
     try:
         from pentra_tools.scanners.dalfox_scanner import DalfoxScanner
+        from urllib.parse import urlparse as _up, urlencode as _ue, parse_qs as _pq
 
         urls = [
             ep["url"] for ep in endpoints
             if ep.get("url") and ("?" in ep["url"] or ep.get("params"))
-        ][:5]
-        findings = await DalfoxScanner().scan_batch(urls, max_concurrent=2)
-        return [
-            {
-                **asdict(finding),
-                "title": "Cross-Site Scripting",
-                "target_url": finding.url,
-                "description": finding.evidence or f"Dalfox payload: {finding.payload}",
-            }
-            for finding in findings
         ]
+        findings = await DalfoxScanner().scan_batch(urls, max_concurrent=4)
+
+        results = []
+        for finding in findings:
+            parsed = _up(finding.url)
+            host = parsed.netloc or finding.url
+            path = parsed.path or "/"
+            payload_str = finding.payload or "<no payload captured>"
+            param_str = finding.param or "unknown"
+            xss_type = (finding.xss_type or "reflected").capitalize()
+
+            # Build rich description
+            description = (
+                f"{xss_type} XSS detected in parameter '{param_str}'.\n\n"
+                f"Parameter: {param_str} (query string)\n"
+                f"Payload:   {payload_str}\n"
+                f"Type:      {xss_type}\n"
+                f"Tool:      dalfox\n"
+            )
+            if finding.evidence:
+                description += f"\nEvidence:\n{finding.evidence}"
+
+            # Build PoC URL (inject payload into the parameter)
+            try:
+                qs = _pq(parsed.query, keep_blank_values=True)
+                qs[param_str] = [payload_str]
+                poc_url = parsed._replace(query=_ue(qs, doseq=True)).geturl()
+            except Exception:
+                poc_url = finding.url
+
+            # Build minimal PoC HTTP request
+            request_raw = (
+                f"GET {path}?{_ue({param_str: payload_str})} HTTP/1.1\n"
+                f"Host: {host}\n"
+                f"User-Agent: Mozilla/5.0 (PentraAI/dalfox)\n"
+                f"Accept: text/html,application/xhtml+xml\n"
+                f"Connection: close\n"
+            )
+
+            reproduction_steps = [
+                f"Open a browser and navigate to the target: https://{host}",
+                f"Locate the '{param_str}' parameter in the URL query string",
+                f"Inject the following XSS payload into '{param_str}':\n  {payload_str}",
+                f"Full PoC URL:\n  {poc_url}",
+                "Observe JavaScript execution (alert box, console error, or network request)",
+                "To confirm: use Browser DevTools → Console to verify script ran or DOM modification occurred",
+            ]
+
+            results.append({
+                **asdict(finding),
+                "title": f"Cross-Site Scripting ({xss_type})",
+                "target_url": finding.url,
+                "http_method": "GET",
+                "vuln_class": "xss",
+                "severity": finding.severity,
+                "description": description,
+                "request_raw": request_raw,
+                "response_raw": finding.evidence or "",
+                "reproduction_steps": reproduction_steps,
+                "impact": (
+                    "An attacker can execute arbitrary JavaScript in the victim's browser session. "
+                    "This may lead to session hijacking, credential theft, defacement, or "
+                    "redirection to malicious sites."
+                ),
+                "remediation": (
+                    f"Sanitize and encode all user-supplied input in the '{param_str}' parameter "
+                    "before reflecting it in HTML output. Apply Content-Security-Policy headers "
+                    "and use framework-native auto-escaping (e.g. Jinja2 autoescaping, React JSX). "
+                    "Validate input server-side using an allowlist approach."
+                ),
+            })
+        return results
     except Exception as exc:
         log.debug("[dalfox] scan failed (non-fatal): %s", exc)
         return []
@@ -1441,7 +1860,7 @@ async def _passive_csrf_check(domain: str, scope: dict) -> list[dict]:
                 # Extract visible input names for context
                 inputs = _re.findall(r'<input[^>]+name=["\']([^"\']+)["\']', form_html, _re.IGNORECASE)
                 findings.append({
-                    "title": f"CSRF — POST Form Missing Anti-CSRF Token",
+                    "title": "CSRF — POST Form Missing Anti-CSRF Token",
                     "description": (
                         f"A POST form on {page_url} (action={action}) has no CSRF token.\n"
                         f"Form fields detected: {', '.join(inputs[:8]) or 'none'}\n"
@@ -1618,30 +2037,51 @@ async def _run_llm_burp_active_testing(
         "/Search.aspx?tfSearch=test", "/comment.aspx?id=1",
         "/categories.aspx", "/artists.aspx",
     ]
-    base_url_for_crawl = ""
-    for ep in endpoints[:3]:
-        url = ep.get("url", "")
-        if url:
-            from urllib.parse import urlparse as _up
-            p = _up(url)
-            base_url_for_crawl = f"{p.scheme}://{p.netloc}"
-            break
+    # Collect ALL unique base URLs from endpoints — one per unique netloc.
+    # Previously only the first endpoint's base URL was crawled; now every
+    # discovered subdomain gets crawl coverage for high-value injection paths.
+    from urllib.parse import urlparse as _up
+    _seen_netlocs: dict[str, str] = {}  # netloc → base_url (scheme://netloc)
+    for ep in endpoints:
+        _ep_url = ep.get("url", "")
+        if not _ep_url:
+            continue
+        _p = _up(_ep_url)
+        if _p.netloc and _p.netloc not in _seen_netlocs:
+            _seen_netlocs[_p.netloc] = f"{_p.scheme}://{_p.netloc}"
+
+    # Cap at 20 unique subdomains to avoid blowing up crawl time/LLM context
+    _MAX_CRAWL_HOSTS = int(os.getenv("PENTRA_MAX_CRAWL_HOSTS", "20"))
+    base_url_for_crawl = next(iter(_seen_netlocs.values()), "")  # for backward compat
+    all_base_urls = list(_seen_netlocs.values())[:_MAX_CRAWL_HOSTS]
+    log.info(
+        "[llm_burp] Crawling %d unique subdomain(s) base URLs: %s",
+        len(all_base_urls), [u for u in all_base_urls[:5]],
+    )
 
     crawl_traffic: list[dict] = []
     discovered_urls: set[str] = set()
 
-    if base_url_for_crawl:
+    if all_base_urls:
         crawl_queue: list[str] = []
-        for path in crawl_paths:
-            u = f"{base_url_for_crawl}{path}"
-            if u not in discovered_urls:
-                crawl_queue.append(u)
-                discovered_urls.add(u)
-        crawl_queue = crawl_queue[:int(os.getenv("PENTRA_CRAWL_PAGES", "49"))]
+        # Per-subdomain page budget: split PENTRA_CRAWL_PAGES evenly across hosts
+        _total_pages = int(os.getenv("PENTRA_CRAWL_PAGES", "49"))
+        _pages_per_host = max(5, _total_pages // max(len(all_base_urls), 1))
+        for _base in all_base_urls:
+            _host_paths_added = 0
+            for path in crawl_paths:
+                if _host_paths_added >= _pages_per_host:
+                    break
+                u = f"{_base}{path}"
+                if u not in discovered_urls:
+                    crawl_queue.append(u)
+                    discovered_urls.add(u)
+                    _host_paths_added += 1
 
         log.info(
-            "[llm_burp] Crawling %d pages concurrently (sem=8, via %s)...",
+            "[llm_burp] Crawling %d pages across %d subdomains (sem=8, via %s)...",
             len(crawl_queue),
+            len(all_base_urls),
             "Burp proxy" if burp_proxy else "httpx direct",
         )
 
@@ -2081,7 +2521,7 @@ async def _run_llm_burp_active_testing(
                             "injected_value": raw_p,
                             "payload": raw_p,
                             "test_type": _first_test_type,
-                            "detection_hint": f"ExploitArsenal proven payload",
+                            "detection_hint": "ExploitArsenal proven payload",
                             "uses_collaborator": False,
                         }
                         for raw_p in arsenal_raw[:6]   # cap at 6 arsenal payloads
@@ -2513,7 +2953,7 @@ async def _run_llm_burp_active_testing(
                 cand_url, param_name, original_response,
                 vuln_found=memory.is_confirmed(cand_url, param_name),
             )
-    await asyncio.gather(*[_test_one(c) for c in candidates[:int(os.getenv("PENTRA_MAX_CANDIDATES", "20"))]], return_exceptions=True)
+    await asyncio.gather(*[_test_one(c) for c in candidates[:int(os.getenv("PENTRA_MAX_CANDIDATES", "50"))]], return_exceptions=True)
     log.info(
         "[memory] Stats: confirmed=%d exhausted=%d effective_classes=%s",
         memory.stats["confirmed"], memory.stats["exhausted"],
@@ -2854,8 +3294,8 @@ def detect_anomalies(
                 )
             else:
                 anomalies.append(
-                    f"REFLECTION: Payload reflected in response (not present in baseline) — "
-                    f"XSS or SSTI candidate"
+                    "REFLECTION: Payload reflected in response (not present in baseline) — "
+                    "XSS or SSTI candidate"
                 )
 
     # 4. Response became empty when it wasn't before — potential auth bypass / error
@@ -3300,7 +3740,6 @@ async def _test_http2_support(
     manipulation, H2-to-H1 desync, and priority attacks.
     """
     try:
-        from pentra_tools.burp.client import BurpHttpResponse
         resp = await burp.send_http2_request(
             hostname=host,
             port=port,
@@ -3685,14 +4124,14 @@ async def _run_burp_extended_checks(
                 log.debug("[vuln_hunt_node] H2 Repeater tab failed: %s", exc)
 
             findings.append({
-                "title": f"HTTP/2 Supported — Extended Attack Surface",
+                "title": "HTTP/2 Supported — Extended Attack Surface",
                 "severity": "info",
                 "vuln_class": "INFORMATION_DISCLOSURE",
                 "target_url": f"https://{primary_host}:{primary_port}/",
                 "description": (
-                    f"Target supports HTTP/2. Probe request saved to Burp Repeater "
-                    f"for manual H2-specific testing (header injection, TE desync, "
-                    f"stream manipulation). Launch from Burp UI."
+                    "Target supports HTTP/2. Probe request saved to Burp Repeater "
+                    "for manual H2-specific testing (header injection, TE desync, "
+                    "stream manipulation). Launch from Burp UI."
                 ),
                 "source": "burp_http2_probe",
             })
@@ -4100,6 +4539,7 @@ async def _run_ssrf_scan(
     endpoints: list[dict],
     scope: dict,
     auth_credentials: dict | None = None,
+    oob_canary: str | None = None,
 ) -> list[dict]:
     """Task 22.1 — SSRF + OOB callback detection on URL-parameter endpoints.
 
@@ -4145,7 +4585,7 @@ async def _run_ssrf_scan(
         findings = await scan_ssrf_on_endpoints(
             endpoints=scoped_endpoints,
             auth_headers=auth_headers or None,
-            oob_canary=None,  # OOB requires Collaborator — skipped unless configured
+            oob_canary=oob_canary,
             proxy_url=burp_proxy,
             max_endpoints=10,
         )
@@ -4192,17 +4632,21 @@ async def _run_per_subdomain_tools(
     p_nuclei: bool,
     p_ffuf: bool,
     p_burp_scan: bool,
+    oob_canary: str | None = None,
+    llm_model: str | None = None,
+    kb_context: list[dict] | None = None,
 ) -> list[dict]:
     """Run endpoint-level tools for EVERY subdomain concurrently.
 
-    Groups endpoints by hostname, then for each subdomain runs nuclei, ffuf,
-    burp_scan, cors, ssrf, crlfuzz, and dalfox in parallel — all subdomains
-    run at the same time. This guarantees equal treatment regardless of which
-    subdomain appears first in the flat endpoint list.
+    Groups endpoints by hostname, then for each subdomain runs:
+    - nuclei (templates + host-level)
+    - ffuf (dir/param fuzzing)
+    - burp active scan (ALL endpoints, no cap)
+    - cors, ssrf, crlfuzz, dalfox (all endpoints, no cap)
+    - LLM per-subdomain reasoning (hypothesis generation)
 
-    Domain-level tools (graphql, jwt, soap_xxe, race_condition, biz_logic,
-    burp_proxy, burp_extended) are intentionally excluded here — they are
-    called once at engagement level by the caller.
+    All subdomains run concurrently (up to PENTRA_CONCURRENT_SUBDOMAINS).
+    Domain-level tools run separately at engagement level.
     """
     groups = _group_endpoints_by_host(endpoints)
     if not groups:
@@ -4211,38 +4655,61 @@ async def _run_per_subdomain_tools(
 
     log.info(
         "[per_subdomain_concurrent] Scanning %d subdomain(s) with endpoint-level tools "
-        "[nuclei=%s ffuf=%s burp=%s]",
-        len(groups), p_nuclei, p_ffuf, p_burp_scan,
+        "[nuclei=%s ffuf=%s burp=%s llm_reasoning=%s]",
+        len(groups), p_nuclei, p_ffuf, p_burp_scan, bool(llm_model),
     )
 
     async def _scan_one_host(host: str, host_eps: list[dict]) -> list[dict]:
         log.info(
-            "[per_subdomain_concurrent] [%s] → %d endpoints | tools: nuclei+ffuf+cors+ssrf+crlf+dalfox",
+            "[per_subdomain_concurrent] [%s] → %d endpoints | nuclei+ffuf+burp(all)+cors+ssrf+crlf+dalfox+nuclei_host",
             host, len(host_eps),
         )
         results = await asyncio.gather(
+            # Nuclei: template-based on all discovered endpoints
             _run_nuclei(host_eps, scope, tech_stack=tech_stack) if p_nuclei else _noop_list(),
+            # ffuf: directory/param fuzzing on all endpoints
             _run_ffuf(host_eps) if p_ffuf else _noop_list(),
-            _run_burp_active_scan(host_eps[:2], scope) if p_burp_scan else _noop_list(),
+            # Burp: active scan on ALL endpoints per host (was [:2], now full list)
+            _run_burp_active_scan(host_eps, scope) if p_burp_scan else _noop_list(),
+            # CORS misconfiguration check
             _run_cors_scan(host_eps, scope, auth_credentials),
-            _run_ssrf_scan(host_eps, scope, auth_credentials),
+            # SSRF with OOB callback (interactsh / Burp Collaborator)
+            _run_ssrf_scan(host_eps, scope, auth_credentials, oob_canary=oob_canary),
+            # CRLF injection on all endpoints (was [:5], now full list)
             _run_crlfuzz_scan(host_eps),
+            # XSS via dalfox on all endpoints with params (was [:5], now full list)
             _run_dalfox_scan(host_eps),
+            # Nuclei host-level: directly on host URL for CVEs/exposed panels
+            _run_nuclei_on_host(host, scope, tech_stack) if p_nuclei else _noop_list(),
             return_exceptions=True,
         )
-        tool_names = ["nuclei", "ffuf", "burp_scan", "cors", "ssrf", "crlfuzz", "dalfox"]
+        tool_names = ["nuclei_endpoints", "ffuf", "burp_scan", "cors", "ssrf", "crlfuzz", "dalfox", "nuclei_host"]
         merged: list[dict] = []
         for name, r in zip(tool_names, results):
             if isinstance(r, list):
                 merged.extend(r)
             elif isinstance(r, BaseException):
                 log.debug("[per_subdomain_concurrent] [%s] %s error (non-fatal): %s", host, name, r)
-        log.info("[per_subdomain_concurrent] [%s] → %d finding(s)", host, len(merged))
+
+        # LLM per-subdomain reasoning: runs AFTER tools so it has tool findings as context
+        if llm_model:
+            llm_candidates = await _run_llm_subdomain_reasoning(
+                host=host,
+                host_endpoints=host_eps,
+                tech_stack=tech_stack,
+                tool_findings=merged,
+                llm_model=llm_model,
+                scope=scope,
+                kb_context=kb_context,
+            )
+            merged.extend(llm_candidates)
+
+        log.info("[per_subdomain_concurrent] [%s] → %d finding(s) (tools+llm)", host, len(merged))
         return merged
 
-    # Limit concurrent subdomain scans — each subdomain launches nuclei+ffuf+…
-    # simultaneously, so running too many at once starves CPU/network.
-    _max_concurrent_hosts = int(os.getenv("PENTRA_CONCURRENT_SUBDOMAINS", "3"))
+    # Default: 5 concurrent subdomain scans (was 3). Each scan is CPU/network intensive.
+    # Increase via PENTRA_CONCURRENT_SUBDOMAINS env var for machines with more resources.
+    _max_concurrent_hosts = int(os.getenv("PENTRA_CONCURRENT_SUBDOMAINS", "5"))
     _host_sem = asyncio.Semaphore(_max_concurrent_hosts)
 
     async def _scan_one_host_guarded(host: str, host_eps: list[dict]) -> list[dict]:
@@ -4342,6 +4809,7 @@ async def _active_host_scan(
     auth_credentials: dict | None,
     rl_info: dict,
     waf_info: dict,
+    oob_canary: str | None = None,
 ) -> list[dict]:
     """Active phase: nuclei vuln templates + ffuf + targeted scanners — all run in parallel."""
     log.info(
@@ -4357,7 +4825,7 @@ async def _active_host_scan(
             _run_ffuf(host_endpoints[:3]) if _seq_ffuf else _noop_list(),
             _run_cors_scan(host_endpoints, scope, auth_credentials),
             _run_csrf_host(host, host_endpoints, scope),
-            _run_ssrf_scan(host_endpoints, scope, auth_credentials),
+            _run_ssrf_scan(host_endpoints, scope, auth_credentials, oob_canary=oob_canary),
             return_exceptions=True,
         )
         for batch in results:
@@ -4376,7 +4844,6 @@ async def _run_csrf_host(host: str, endpoints: list[dict], scope: dict) -> list[
     if not (os.getenv("PENTRA_RUN_CSRF_CHECK", "true").lower() == "true"):
         return []
     try:
-        from urllib.parse import urlparse
         return await _passive_csrf_check(host, scope)
     except Exception as exc:
         log.debug("[per_subdomain] CSRF check failed for %s: %s", host, exc)
@@ -4391,6 +4858,7 @@ async def _sequential_subdomain_scan(
     auth_credentials: dict | None,
     inter_delay_s: float,
     request_jitter_ms: int,
+    oob_canary: str | None = None,
 ) -> list[dict]:
     """Iterate subdomains one-by-one: passive → sleep → active → sleep → next subdomain.
 
@@ -4443,7 +4911,8 @@ async def _sequential_subdomain_scan(
 
         # ── Step 4: Active scan ──────────────────────────────────────────────
         active_findings = await _active_host_scan(
-            host, host_endpoints, scope, tech_stack, auth_credentials, rl_info, waf_info
+            host, host_endpoints, scope, tech_stack, auth_credentials, rl_info, waf_info,
+            oob_canary=oob_canary,
         )
         all_findings.extend(active_findings)
 

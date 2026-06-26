@@ -118,6 +118,21 @@ async def osint_node(state: PentraState) -> dict:
 
     messages.append(AIMessage(content="\n".join(summary_parts)))
 
+    # Broadcast OSINT summary to live feed
+    try:
+        from app.api.ws import ws_manager
+        from datetime import datetime, UTC
+        await ws_manager.broadcast(state["engagement_id"], {
+            "type": "RECON_UPDATE",
+            "phase": "osint",
+            "subdomains_found": len(ct_subdomains),
+            "alive_count": 0,
+            "message": "\n".join(summary_parts[:4]),
+            "timestamp": datetime.now(UTC).isoformat(),
+        })
+    except Exception:
+        pass
+
     return {
         "osint_results": results,
         "messages": messages,

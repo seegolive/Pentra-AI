@@ -131,7 +131,7 @@ export function ReconSurfaceTab({ engagementId, engagementStatus }: ReconSurface
   const [showPorts, setShowPorts] = useState(false);
   const [showEndpoints, setShowEndpoints] = useState(false);
 
-  const subdomains = data?.subdomains ?? [];
+  const subdomains = useMemo(() => data?.subdomains ?? [], [data?.subdomains]);
   const ports = data?.open_ports ?? [];
   const endpoints = data?.endpoints ?? [];
 
@@ -296,7 +296,7 @@ export function ReconSurfaceTab({ engagementId, engagementStatus }: ReconSurface
                   onClick={() => toggleSort("host")}
                   className="flex items-center gap-1 font-semibold text-[10px] uppercase tracking-wider text-pentra-text-muted hover:text-pentra-text-primary transition-colors"
                 >
-                  Host \{sortIcon("\1")\}
+                  Host {sortIcon("host")}
                 </button>
               </th>
               <th className="text-left px-3 py-2 font-semibold text-[10px] uppercase tracking-wider text-pentra-text-muted">
@@ -307,7 +307,7 @@ export function ReconSurfaceTab({ engagementId, engagementStatus }: ReconSurface
                   onClick={() => toggleSort("status_code")}
                   className="flex items-center gap-1 font-semibold text-[10px] uppercase tracking-wider text-pentra-text-muted hover:text-pentra-text-primary transition-colors"
                 >
-                  Code \{sortIcon("\1")\}
+                  Code {sortIcon("status_code")}
                 </button>
               </th>
               <th className="text-left px-3 py-2 font-semibold text-[10px] uppercase tracking-wider text-pentra-text-muted">
@@ -321,7 +321,7 @@ export function ReconSurfaceTab({ engagementId, engagementStatus }: ReconSurface
                   onClick={() => toggleSort("findings_count")}
                   className="flex items-center gap-1 font-semibold text-[10px] uppercase tracking-wider text-pentra-text-muted hover:text-pentra-text-primary transition-colors"
                 >
-                  <Bug className="h-3 w-3" /> \{sortIcon("\1")\}
+                  <Bug className="h-3 w-3" /> {sortIcon("findings_count")}
                 </button>
               </th>
             </tr>

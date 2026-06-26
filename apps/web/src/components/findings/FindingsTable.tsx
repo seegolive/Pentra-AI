@@ -336,91 +336,127 @@ function PayloadPanel({
 
 function ExpandedDetail({ finding }: { finding: Finding }) {
   return (
-    <div className="px-4 pb-3 pt-1 grid grid-cols-2 gap-x-8 gap-y-3 text-xs border-t border-border bg-muted/10">
+    <div className="px-4 pb-4 pt-2 space-y-4 text-xs border-t border-border bg-muted/10">
+
+      {/* Description */}
       {finding.description && (
-        <div className="col-span-2">
-          <p className="text-muted-foreground mb-1 font-medium">Description</p>
-          <p className="text-foreground/80 leading-relaxed whitespace-pre-wrap">
+        <div>
+          <p className="text-muted-foreground mb-1 font-medium uppercase tracking-wide text-[10px]">Description</p>
+          <p className="text-foreground/80 leading-relaxed whitespace-pre-wrap font-mono text-[11px] bg-muted/20 rounded p-2">
             {finding.description}
           </p>
         </div>
       )}
-      <div>
-        <p className="text-muted-foreground mb-1 font-medium">Discovered by</p>
-        <p className="font-mono text-foreground/80">{finding.discovered_by}</p>
-      </div>
-      <div>
-        <p className="text-muted-foreground mb-1 font-medium">Discovered at</p>
-        <p className="font-mono text-foreground/80">
-          {new Date(finding.discovered_at).toLocaleString()}
-        </p>
-      </div>
-      {finding.cvss_score != null && (
+
+      {/* Meta row */}
+      <div className="grid grid-cols-2 gap-x-8 gap-y-3">
         <div>
-          <p className="text-muted-foreground mb-1 font-medium">CVSS Score</p>
+          <p className="text-muted-foreground mb-1 font-medium">Discovered by</p>
+          <p className="font-mono text-foreground/80">{finding.discovered_by}</p>
+        </div>
+        <div>
+          <p className="text-muted-foreground mb-1 font-medium">Discovered at</p>
           <p className="font-mono text-foreground/80">
-            {finding.cvss_score.toFixed(1)}
+            {new Date(finding.discovered_at).toLocaleString()}
           </p>
         </div>
-      )}
-      {finding.cvss_vector && (
-        <div className={finding.cvss_score != null ? "" : "col-span-2"}>
-          <p className="text-muted-foreground mb-1 font-medium">CVSS Vector</p>
-          <p className="font-mono text-[10px] text-foreground/70 break-all leading-relaxed">
-            {finding.cvss_vector}
-          </p>
+        {finding.cvss_score != null && (
+          <div>
+            <p className="text-muted-foreground mb-1 font-medium">CVSS Score</p>
+            <p className="font-mono text-foreground/80">{finding.cvss_score.toFixed(1)}</p>
+          </div>
+        )}
+        {finding.cvss_vector && (
+          <div className={finding.cvss_score != null ? "" : "col-span-2"}>
+            <p className="text-muted-foreground mb-1 font-medium">CVSS Vector</p>
+            <p className="font-mono text-[10px] text-foreground/70 break-all leading-relaxed">
+              {finding.cvss_vector}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* PoC Request */}
+      {finding.request_raw && (
+        <div>
+          <p className="text-muted-foreground mb-1 font-medium uppercase tracking-wide text-[10px]">PoC Request</p>
+          <pre className="text-[10px] font-mono text-green-300/80 bg-black/40 border border-border/50 rounded p-2 overflow-x-auto whitespace-pre leading-relaxed">
+            {finding.request_raw}
+          </pre>
         </div>
       )}
-      {finding.impact && (
-        <div className="col-span-2">
-          <p className="text-muted-foreground mb-1 font-medium">Impact</p>
-          <p className="text-foreground/80 leading-relaxed">{finding.impact}</p>
+
+      {/* Response / Evidence */}
+      {finding.response_raw && (
+        <div>
+          <p className="text-muted-foreground mb-1 font-medium uppercase tracking-wide text-[10px]">Evidence / Response</p>
+          <pre className="text-[10px] font-mono text-foreground/60 bg-black/30 border border-border/50 rounded p-2 overflow-x-auto whitespace-pre max-h-40 leading-relaxed">
+            {finding.response_raw}
+          </pre>
         </div>
       )}
-      {finding.remediation && (
-        <div className="col-span-2">
-          <p className="text-muted-foreground mb-1 font-medium">Remediation</p>
-          <p className="text-foreground/80 leading-relaxed">{finding.remediation}</p>
+
+      {/* Steps to Reproduce */}
+      {finding.reproduction_steps && finding.reproduction_steps.length > 0 && (
+        <div>
+          <p className="text-muted-foreground mb-1 font-medium uppercase tracking-wide text-[10px]">Steps to Reproduce</p>
+          <ol className="space-y-1 list-none">
+            {finding.reproduction_steps.map((step, i) => (
+              <li key={i} className="flex gap-2">
+                <span className="shrink-0 text-primary font-mono font-bold">{i + 1}.</span>
+                <span className="text-foreground/80 leading-relaxed whitespace-pre-wrap font-mono text-[10px]">{step}</span>
+              </li>
+            ))}
+          </ol>
         </div>
       )}
+
+      {/* Impact & Remediation */}
+      {(finding.impact || finding.remediation) && (
+        <div className="grid grid-cols-1 gap-3">
+          {finding.impact && (
+            <div>
+              <p className="text-muted-foreground mb-1 font-medium uppercase tracking-wide text-[10px]">Impact</p>
+              <p className="text-foreground/80 leading-relaxed">{finding.impact}</p>
+            </div>
+          )}
+          {finding.remediation && (
+            <div>
+              <p className="text-muted-foreground mb-1 font-medium uppercase tracking-wide text-[10px]">Remediation</p>
+              <p className="text-foreground/80 leading-relaxed">{finding.remediation}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Attack Chains */}
       {finding.chains && finding.chains.length > 0 && (
-        <div className="col-span-2">
-          <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-2">
-            ⛓️ Attack Chains
-          </p>
+        <div>
+          <p className="text-muted-foreground mb-2 font-medium uppercase tracking-wide text-[10px]">Attack Chains</p>
           <div className="space-y-2">
             {finding.chains.map((chain, i) => (
-              <div
-                key={i}
-                className="bg-red-950/30 border border-red-900/40 rounded p-3"
-              >
+              <div key={i} className="bg-red-950/30 border border-red-900/40 rounded p-3">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="inline-flex items-center rounded border border-red-800 px-1.5 py-0.5 text-xs font-semibold text-red-400">
                     {chain.upgraded_severity?.toUpperCase() ?? "CHAIN"}
                   </span>
-                  <span className="text-sm font-medium text-red-300">
-                    {chain.name}
-                  </span>
+                  <span className="text-sm font-medium text-red-300">{chain.name}</span>
                 </div>
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  {chain.scenario}
-                </p>
+                <p className="text-xs text-slate-300 leading-relaxed">{chain.scenario}</p>
                 {chain.business_impact && (
-                  <p className="text-xs text-red-400 mt-1">
-                    💥 {chain.business_impact}
-                  </p>
+                  <p className="text-xs text-red-400 mt-1">Impact: {chain.business_impact}</p>
                 )}
               </div>
             ))}
           </div>
         </div>
       )}
+
+      {/* CVE Details */}
       {finding.cve_data && (
-        <div className="col-span-2">
-          <p className="text-muted-foreground mb-1 font-medium">CVE Details</p>
-          <p className="text-foreground/80 leading-relaxed">
-            {finding.cve_data.description}
-          </p>
+        <div>
+          <p className="text-muted-foreground mb-1 font-medium uppercase tracking-wide text-[10px]">CVE Details</p>
+          <p className="text-foreground/80 leading-relaxed">{finding.cve_data.description}</p>
           {finding.cve_data.references.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-1">
               {finding.cve_data.references.slice(0, 3).map((ref) => (

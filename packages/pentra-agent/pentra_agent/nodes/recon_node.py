@@ -86,7 +86,23 @@ async def recon_node(state: PentraState) -> dict:
         log.debug("[recon_node] summarizer failed (non-fatal): %s", _sum_exc)
 
     subdomains: list[dict] = await _run_subfinder(domain, in_scope)
+    log.info("[recon_node] subfinder: %d subdomains found for %s", len(subdomains), domain)
+    await _broadcast_recon_update(state["engagement_id"], {
+        "phase": "subfinder",
+        "subdomains_found": len(subdomains),
+        "alive_count": 0,
+        "message": f"subfinder: {len(subdomains)} subdomains discovered",
+    })
+
     subdomains = await _run_httpx_probe(subdomains)
+    _alive = sum(1 for s in subdomains if s.get("is_alive"))
+    log.info("[recon_node] httpx probe: %d/%d alive", _alive, len(subdomains))
+    await _broadcast_recon_update(state["engagement_id"], {
+        "phase": "httpx",
+        "subdomains_found": len(subdomains),
+        "alive_count": _alive,
+        "message": f"httpx: {_alive}/{len(subdomains)} hosts alive",
+    })
 
     # ── Rate limit + WAF profiling (run concurrently after httpx probe) ──────
     primary_url = f"http://{domain}/"
@@ -160,6 +176,14 @@ async def recon_node(state: PentraState) -> dict:
         screenshots = []
 
     tech_stack: list[str] = _extract_tech_stack(subdomains)
+    await _broadcast_recon_update(state["engagement_id"], {
+        "phase": "nmap",
+        "subdomains_found": len(subdomains),
+        "alive_count": sum(1 for s in subdomains if s.get("is_alive")),
+        "ports_found": len(ports),
+        "tech_stack": tech_stack[:5],
+        "message": f"nmap: {len(ports)} open ports | tech: {', '.join(tech_stack[:3]) or 'unknown'}",
+    })
 
     # Defense-in-depth: drop any OOS subdomain before building endpoints
     out_of_scope = state["scope"]["out_of_scope"]
@@ -285,7 +309,7 @@ async def recon_node(state: PentraState) -> dict:
         f"- Open ports: {len(ports)}\n"
         f"- Tech stack: {', '.join(tech_stack) or 'unknown'}\n"
         f"- Safe RPS: {rate_limit_info['safe_rps']}"
-        + (f" ⚠️ rate limited" if rate_limit_info['is_limited'] else "")
+        + (" ⚠️ rate limited" if rate_limit_info['is_limited'] else "")
         + (f"\n- WAF: {waf_info['waf_type']} (blocking={waf_info['is_blocking']})" if waf_info.get('waf_type') else "")
         + f"\n\n**Analysis:** {hypothesis}"
     )
@@ -311,6 +335,16 @@ async def recon_node(state: PentraState) -> dict:
         except Exception as _tk_exc:
             log.debug("[recon_node] Takeover detection failed (non-fatal): %s", _tk_exc)
 
+    await _broadcast_recon_update(state["engagement_id"], {
+        "phase": "complete",
+        "subdomains_found": len(subdomains),
+        "alive_count": sum(1 for s in subdomains if s.get("is_alive")),
+        "ports_found": len(ports),
+        "endpoints_found": len(endpoints),
+        "tech_stack": tech_stack[:8],
+        "message": f"Recon complete: {len(subdomains)} subdomains, {len(ports)} ports, {len(endpoints)} endpoints",
+    })
+
     return {
         "subdomains": subdomains,
         "open_ports": ports,
@@ -326,6 +360,22 @@ async def recon_node(state: PentraState) -> dict:
         "screenshots": screenshots,
         "messages": [AIMessage(content=summary_msg)],
     }
+
+
+# ── WebSocket broadcast helper ────────────────────────────────────────────────
+
+async def _broadcast_recon_update(engagement_id: str, data: dict) -> None:
+    """Push recon progress event to the engagement's live feed (non-fatal)."""
+    try:
+        from app.api.ws import ws_manager
+        from datetime import datetime, UTC
+        await ws_manager.broadcast(engagement_id, {
+            "type": "RECON_UPDATE",
+            "timestamp": datetime.now(UTC).isoformat(),
+            **data,
+        })
+    except Exception:
+        pass  # never let WS errors break the scan
 
 
 # ── Tool helpers ──────────────────────────────────────────────────────────────
@@ -397,37 +447,80 @@ async def _run_httpx_probe(subdomains: list[dict]) -> list[dict]:
                     continue
             return sub
 
-        tasks = [probe_one(s) for s in subdomains[:50]]  # cap at 50
-        return list(await asyncio.gather(*tasks, return_exceptions=False))
+        # Probe ALL subdomains in batches of 50 to avoid exhausting connections.
+        # Each batch gets 120s; results accumulate across batches so no subdomain
+        # is skipped just because of position in the list.
+        _BATCH = 50
+        probed: list[dict] = []
+        for _batch_start in range(0, len(subdomains), _BATCH):
+            _batch = subdomains[_batch_start:_batch_start + _BATCH]
+            try:
+                _results = await asyncio.wait_for(
+                    asyncio.gather(*[probe_one(s) for s in _batch], return_exceptions=False),
+                    timeout=120.0,
+                )
+                probed.extend(_results)
+                _alive_in_batch = sum(1 for s in _results if s.get("is_alive"))
+                log.info(
+                    "[recon_node] httpx probe batch %d-%d: %d/%d alive",
+                    _batch_start, _batch_start + len(_batch) - 1,
+                    _alive_in_batch, len(_batch),
+                )
+            except asyncio.TimeoutError:
+                log.warning(
+                    "[recon_node] httpx probe batch %d-%d timed out — using partial results",
+                    _batch_start, _batch_start + len(_batch) - 1,
+                )
+                probed.extend(_batch)  # include unprobed ones as dead
+        return probed
     except ImportError:
         log.warning("[recon_node] httpx not available — skipping probe")
         return subdomains
 
 
 async def _run_nmap(subdomains: list[dict], ip_ranges: list[str] | None = None) -> list[dict]:
-    """Quick nmap scan on top alive hosts + any explicit IP CIDR ranges."""
-    alive = [s for s in subdomains if s.get("is_alive")][:10]
+    """Port scan ALL alive hosts in batches + any explicit IP CIDR ranges.
+
+    Previously capped at 10 hosts — now scans all alive hosts in parallel batches
+    of 25 so every subdomain gets port information.
+    """
+    alive = [s for s in subdomains if s.get("is_alive")]
     cidr_targets = list(ip_ranges or [])
-    targets = [s["host"] for s in alive] + cidr_targets
-    if not targets:
+    all_hosts = [s["host"] for s in alive] + cidr_targets
+    if not all_hosts:
         return []
+
+    log.info("[recon_node] nmap scanning %d alive host(s) + %d CIDR range(s)", len(alive), len(cidr_targets))
+
+    # Batch into groups of 25 to avoid nmap's argument list limits and reduce wall time
+    _BATCH = 25
+    batches = [all_hosts[i:i + _BATCH] for i in range(0, len(all_hosts), _BATCH)]
+
+    async def _scan_batch(targets: list[str]) -> list[dict]:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "nmap", "-T4", "--open", "-oX", "-",
+                "--top-ports", "1000",
+                *targets,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=300)
+            return _parse_nmap_xml(stdout.decode())
+        except asyncio.TimeoutError:
+            log.warning("[recon_node] nmap batch timeout on %d hosts — partial results", len(targets))
+            return []
+        except Exception as exc:
+            log.warning("[recon_node] nmap batch error: %s", exc)
+            return []
+
     try:
-        proc = await asyncio.create_subprocess_exec(
-            "nmap", "-T4", "--open", "-oX", "-",
-            "--top-ports", "1000",
-            *targets,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=300)
-        if cidr_targets:
-            log.info("[recon_node] nmap scanning %d hosts + %d CIDR range(s)", len(alive), len(cidr_targets))
-        return _parse_nmap_xml(stdout.decode())
+        results = await asyncio.gather(*[_scan_batch(b) for b in batches])
+        ports = [p for batch_result in results for p in batch_result]
+        log.info("[recon_node] nmap complete: %d open port(s) across %d host(s)", len(ports), len(alive))
+        return ports
     except FileNotFoundError:
         log.warning("[recon_node] nmap not found — skipping port scan")
-        return []
-    except Exception as exc:
-        log.warning("[recon_node] nmap error: %s", exc)
         return []
 
 
