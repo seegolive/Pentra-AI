@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import contextvars
 import logging
+import os
 import uuid
 from datetime import UTC, datetime, timezone
 from uuid import UUID
@@ -59,6 +60,9 @@ log = logging.getLogger(__name__)
 # Registry of active agent tasks, keyed by engagement_id (str).
 # Used by the /stop endpoint to cancel a running scan.
 _active_tasks: dict[str, asyncio.Task] = {}
+
+# Per-engagement locks — prevent concurrent /start requests racing past the DB status check.
+_start_locks: dict[str, asyncio.Lock] = {}
 
 # Per-engagement locks that prevent two concurrent /approve calls from
 # launching two simultaneous graph.astream_events() on the same thread_id.
@@ -276,31 +280,38 @@ async def start_engagement(
     current_user: UserORM = Depends(get_current_user),
 ) -> dict:
     """Launch the LangGraph agent for this engagement in a background task."""
-    eng = await db.get(EngagementORM, engagement_id)
-    if eng is None:
-        raise HTTPException(status_code=404, detail="Engagement not found")
-    if eng.status not in ("planning", "paused"):
-        raise HTTPException(status_code=409, detail=f"Engagement is already {eng.status}")
+    # Per-engagement lock prevents concurrent /start requests racing past status check
+    lock = _start_locks.setdefault(str(engagement_id), asyncio.Lock())
+    async with lock:
+        eng = await db.get(EngagementORM, engagement_id)
+        if eng is None:
+            raise HTTPException(status_code=404, detail="Engagement not found")
+        if eng.status not in ("planning", "paused"):
+            raise HTTPException(status_code=409, detail=f"Engagement is already {eng.status}")
+        if str(engagement_id) in _active_tasks:
+            raise HTTPException(status_code=409, detail="Agent task already running for this engagement")
 
-    # Update status
-    eng.status = "active"
-    # Fix: DB column is TIMESTAMP WITHOUT TIME ZONE — must use naive UTC datetime
-    eng.started_at = datetime.now(timezone.utc).replace(tzinfo=None)
-    await db.commit()
+        # Update status — inside lock so concurrent requests see active before spawning task
+        eng.status = "active"
+        eng.started_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        await db.commit()
 
-    # Audit log
-    db.add(AuditLogORM(
-        engagement_id=engagement_id,
-        actor="api",
-        action="engagement_started",
-        detail={"mode": eng.mode},
-    ))
-    await db.commit()
+        # Audit log
+        db.add(AuditLogORM(
+            engagement_id=engagement_id,
+            actor="api",
+            action="engagement_started",
+            detail={"mode": eng.mode},
+        ))
+        await db.commit()
 
-    # Launch agent in background and register task for cancellation via /stop
-    task = asyncio.create_task(_run_agent(eng))
-    _active_tasks[str(engagement_id)] = task
-    task.add_done_callback(lambda _: _active_tasks.pop(str(engagement_id), None))
+        # Clear stale WebSocket buffer from previous runs
+        ws_manager.clear_history(str(engagement_id))
+
+        # Launch agent in background and register task for cancellation via /stop
+        task = asyncio.create_task(_run_agent(eng))
+        _active_tasks[str(engagement_id)] = task
+        task.add_done_callback(lambda _: _active_tasks.pop(str(engagement_id), None))
 
     return {"status": "started", "engagement_id": str(engagement_id)}
 
@@ -1271,32 +1282,10 @@ async def _run_agent(eng: EngagementORM) -> None:
 
     _base_urls = [_to_base_url(s) for s in _non_cidr] if _non_cidr else []
 
-    # ── Model availability check ────────────────────────────────────────────
-    # Validate the requested LLM model exists in Ollama before starting the
-    # graph — Ollama returns 404 for unknown models, which surfaces as an
-    # opaque error deep in the agent. Fail fast with a clear message instead.
+    # ── Model selection ────────────────────────────────────────────────────
     _ollama_base = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-    _fallback_model = os.environ.get("OLLAMA_MODEL_DEFAULT", "qwen2.5:32b")
-    _requested_model = eng.llm_model
-    try:
-        import httpx as _httpx
-        async with _httpx.AsyncClient(timeout=5) as _hc:
-            _tags = (await _hc.get(f"{_ollama_base}/api/tags")).json()
-        _installed = {m["name"].split(":")[0] for m in _tags.get("models", [])}
-        _installed |= {m["name"] for m in _tags.get("models", [])}
-        if _requested_model not in _installed and _requested_model.split(":")[0] not in _installed:
-            log.warning(
-                "[_run_agent] Model '%s' not found in Ollama — falling back to '%s'",
-                _requested_model, _fallback_model,
-            )
-            await ws_manager.broadcast(engagement_id, {
-                "type": "error",
-                "message": f"Model '{_requested_model}' not installed. Falling back to '{_fallback_model}'.",
-            })
-            _requested_model = _fallback_model
-    except Exception as _model_check_exc:
-        log.warning("[_run_agent] Could not verify model availability: %s", _model_check_exc)
-        _requested_model = _requested_model  # keep original, let it fail naturally
+    _fallback_model = os.environ.get("OLLAMA_MODEL_DEFAULT", "qwen2.5-coder:32b")
+    _requested_model = eng.llm_model or _fallback_model
 
     initial_state = {
         "engagement_id": engagement_id,
@@ -1331,6 +1320,15 @@ async def _run_agent(eng: EngagementORM) -> None:
         "messages": [],
         "tool_outputs": [],
         "errors": [],
+        # ── Extended state fields (Sprint 16–32) ───────────────────────────
+        "rate_limit_info": {},
+        "waf_info": {},
+        "osint_results": {},
+        "triaged_findings": [],
+        "hunt_rounds": 0,
+        "auth_credentials": None,
+        "js_crawl_result": {},
+        "screenshots": [],
     }
 
     def _ts() -> str:
@@ -1358,6 +1356,11 @@ async def _run_agent(eng: EngagementORM) -> None:
             _preset_name = getattr(eng, "scan_preset", "fast") or "fast"
             _get_preset(_preset_name).apply_to_env()
             log.info("[_run_agent] Preset '%s' applied for engagement %s", _preset_name, engagement_id)
+            # If preset overrides the LLM model, propagate to initial_state
+            _preset_model = os.environ.get("PENTRA_LLM_MODEL", "")
+            if _preset_model:
+                initial_state["llm_model"] = _preset_model
+                log.info("[_run_agent] Preset LLM override: %s", _preset_model)
         except Exception as _preset_exc:
             log.warning("[_run_agent] Failed to apply preset (non-fatal): %s", _preset_exc)
 
