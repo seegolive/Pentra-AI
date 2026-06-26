@@ -5,6 +5,9 @@ import {
   BellOff,
   Filter,
   GitCompare,
+  Globe,
+  Server,
+  Link,
   Loader2,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
@@ -15,11 +18,12 @@ import {
   useMonitoringSchedule,
   useReconSnapshots,
   useScheduleMonitoring,
+  useReconState,
 } from "../../lib/api";
 import { AlertCard } from "./AlertCard";
 import { SnapshotDiff } from "./SnapshotDiff";
 
-type MonitoringView = "alerts" | "diff" | "schedule";
+type MonitoringView = "alerts" | "diff" | "schedule" | "surface";
 type AlertFilter = "all" | "unread" | "new_subdomain" | "new_port" | "new_endpoint" | "removed_subdomain";
 
 interface MonitoringPanelProps {
@@ -28,6 +32,7 @@ interface MonitoringPanelProps {
 
 export function MonitoringPanel({ engagementId }: MonitoringPanelProps) {
   const [view, setView] = useState<MonitoringView>("alerts");
+  const { data: reconState } = useReconState(engagementId);
   const [filter, setFilter] = useState<AlertFilter>("all");
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
   const [scheduleInterval, setScheduleInterval] = useState(24);
@@ -119,6 +124,23 @@ export function MonitoringPanel({ engagementId }: MonitoringPanelProps) {
             <Activity className="h-3.5 w-3.5" />
             Schedule
           </button>
+          <button
+            onClick={() => setView("surface")}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-colors",
+              view === "surface"
+                ? "bg-primary/20 text-primary"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Globe className="h-3.5 w-3.5" />
+            Surface
+            {(reconState?.total_subdomains ?? 0) > 0 && (
+              <span className="text-[10px] text-muted-foreground">
+                ({reconState?.total_subdomains})
+              </span>
+            )}
+          </button>
         </div>
 
         {view === "alerts" && unreadCount > 0 && (
@@ -205,6 +227,84 @@ export function MonitoringPanel({ engagementId }: MonitoringPanelProps) {
               engagementId={engagementId}
               snapshots={snapshots ?? []}
             />
+          )}
+        </div>
+      )}
+
+      {/* Surface summary view */}
+      {view === "surface" && (
+        <div className="flex-1 overflow-y-auto space-y-4">
+          {!reconState || reconState.total_subdomains === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+              <Globe className="h-8 w-8 mb-2 opacity-20" />
+              <p className="text-sm">No recon data available yet</p>
+              <p className="text-xs mt-1 opacity-60">Run a scan to populate the attack surface.</p>
+            </div>
+          ) : (
+            <>
+              {/* Summary stats */}
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { label: "Subdomains", value: reconState.total_subdomains, sub: `${reconState.alive_count} alive`, icon: <Globe className="h-3.5 w-3.5" /> },
+                  { label: "Ports", value: reconState.total_ports, icon: <Server className="h-3.5 w-3.5" /> },
+                  { label: "Endpoints", value: reconState.total_endpoints, icon: <Link className="h-3.5 w-3.5" /> },
+                ].map(({ label, value, sub, icon }) => (
+                  <div key={label} className="rounded-md border border-border bg-muted/20 px-3 py-2">
+                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground mb-1">
+                      {icon} {label}
+                    </div>
+                    <p className="text-lg font-bold text-foreground">{value}</p>
+                    {sub && <p className="text-[10px] text-muted-foreground">{sub}</p>}
+                  </div>
+                ))}
+              </div>
+
+              {/* Snapshot history */}
+              {(snapshots?.length ?? 0) > 0 && (
+                <div>
+                  <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                    Snapshot History
+                  </h3>
+                  <div className="space-y-1.5">
+                    {snapshots?.slice(0, 5).map((snap, i) => (
+                      <div
+                        key={snap.id}
+                        className="flex items-center gap-3 px-3 py-2 rounded border border-border bg-muted/20 text-xs"
+                      >
+                        <span className="text-[10px] text-muted-foreground font-mono">
+                          #{snapshots.length - i}
+                        </span>
+                        <span className="text-muted-foreground flex-1">
+                          {new Date(snap.snapshot_at).toLocaleString()}
+                        </span>
+                        <span className="text-foreground font-medium">
+                          {snap.subdomains?.length ?? 0} hosts
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Tech stack */}
+              {reconState.tech_stack.length > 0 && (
+                <div>
+                  <h3 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                    Detected Technologies
+                  </h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    {reconState.tech_stack.map((t) => (
+                      <span
+                        key={t}
+                        className="text-[10px] px-2 py-0.5 rounded border border-cyan-400/20 bg-cyan-400/5 text-cyan-300/80"
+                      >
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

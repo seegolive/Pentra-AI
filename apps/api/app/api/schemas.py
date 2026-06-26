@@ -76,6 +76,46 @@ class HitlDecision(BaseModel):
     modified_data: dict | None = None
 
 
+# ── Recon Surface ─────────────────────────────────────────────────────────────
+
+class SubdomainInfo(BaseModel):
+    host: str
+    ip: str | None = None
+    source: str = ""
+    is_alive: bool = False
+    status_code: int | None = None
+    tech_stack: list[str] = Field(default_factory=list)
+    findings_count: int = 0
+
+
+class PortInfo(BaseModel):
+    host: str
+    port: int
+    protocol: str = "tcp"
+    service: str = ""
+    version: str | None = None
+    state: str = "open"
+
+
+class EndpointInfo(BaseModel):
+    url: str
+    method: str = "GET"
+    params: list[str] = Field(default_factory=list)
+    source: str = ""
+
+
+class ReconStateResponse(BaseModel):
+    subdomains: list[SubdomainInfo] = Field(default_factory=list)
+    open_ports: list[PortInfo] = Field(default_factory=list)
+    endpoints: list[EndpointInfo] = Field(default_factory=list)
+    tech_stack: list[str] = Field(default_factory=list)
+    osint_summary: dict = Field(default_factory=dict)
+    total_subdomains: int = 0
+    alive_count: int = 0
+    total_ports: int = 0
+    total_endpoints: int = 0
+
+
 # ── Finding ───────────────────────────────────────────────────────────────────
 
 class FindingResponse(BaseModel):
@@ -94,11 +134,14 @@ class FindingResponse(BaseModel):
     discovered_by: str
     discovered_at: datetime
     description: str | None = None
+    impact: str | None = None
+    remediation: str | None = None
+    request_raw: str = ""
+    response_raw: str = ""
+    reproduction_steps: list = Field(default_factory=list)
     cve_ids: list[str] = []
     cve_data: dict | None = None
     chains: list | None = None
-    impact: str | None = None
-    remediation: str | None = None
 
 
 # ── Export / Import ───────────────────────────────────────────────────────────

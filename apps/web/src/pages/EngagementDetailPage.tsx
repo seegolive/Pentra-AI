@@ -20,11 +20,13 @@ import {
   AlertCircle,
   Square,
   Terminal,
+  Globe,
 } from "lucide-react";
 import { useEngagement, useStartEngagement, useApproveAction, useFindings, downloadEngagementExport, useUpdateEngagementMode, useWorkspaces, useMonitoringAlerts, useStopEngagement } from "../lib/api";
 import { MonitoringPanel } from "../components/monitoring/MonitoringPanel";
 import { FindingsTable } from "../components/findings/FindingsTable";
 import { ReportViewer } from "../components/engagement/ReportViewer";
+import { ReconSurfaceTab } from "../components/engagement/ReconSurfaceTab";
 import type { FeedEvent, EngagementStatus } from "../lib/types";
 import { useEngagementFeed } from "../hooks/useEngagementFeed";
 import { cn } from "../lib/utils";
@@ -94,6 +96,26 @@ const TYPE_META: Record<
     label: "Terminal",
     color: "text-cyan-300",
     icon: <Terminal className="h-3 w-3" />,
+  },
+  RECON_UPDATE: {
+    label: "Recon",
+    color: "text-sky-400",
+    icon: <Wifi className="h-3 w-3" />,
+  },
+  subscan_started: {
+    label: "Subscan",
+    color: "text-blue-400",
+    icon: <Zap className="h-3 w-3" />,
+  },
+  subscan_complete: {
+    label: "Subscan",
+    color: "text-emerald-400",
+    icon: <CheckCircle2 className="h-3 w-3" />,
+  },
+  agent_cancelled: {
+    label: "Cancelled",
+    color: "text-red-400",
+    icon: <Square className="h-3 w-3" />,
   },
 };
 
@@ -490,7 +512,7 @@ function ReportsPanel({ engagementId }: { engagementId: string }) {
 
 // ── Main page ──────────────────────────────────────────────────────────────────
 
-type Tab = "feed" | "findings" | "monitoring" | "reports";
+type Tab = "feed" | "findings" | "recon" | "monitoring" | "reports";
 
 export default function EngagementDetailPage() {
   const { engagementId } = useParams<{ engagementId: string }>();
@@ -740,6 +762,12 @@ export default function EngagementDetailPage() {
             count: findingsCount > 0 ? findingsCount : undefined,
           },
           {
+            key: "recon" as Tab,
+            label: "Recon Surface",
+            icon: <Globe className="h-3.5 w-3.5" />,
+            count: undefined,
+          },
+          {
             key: "monitoring" as Tab,
             label: "Monitoring",
             icon: <ShieldAlert className="h-3.5 w-3.5" />,
@@ -837,6 +865,15 @@ export default function EngagementDetailPage() {
         {tab === "findings" && engagementId && (
           <div className="h-full">
             <FindingsPanel engagementId={engagementId} />
+          </div>
+        )}
+
+        {tab === "recon" && engagementId && (
+          <div className="h-full">
+            <ReconSurfaceTab
+              engagementId={engagementId}
+              engagementStatus={engagement?.status ?? "planning"}
+            />
           </div>
         )}
 

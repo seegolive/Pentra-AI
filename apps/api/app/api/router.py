@@ -45,6 +45,10 @@ from app.api.schemas import (
     PayloadGenerateAPIRequest,
     PayloadGenerateAPIResponse,
     PayloadItem,
+    ReconStateResponse,
+    SubdomainInfo,
+    PortInfo,
+    EndpointInfo,
     SubscanRequest,
     WorkspaceCreate,
     WorkspaceResponse,
@@ -311,7 +315,13 @@ async def start_engagement(
         # Launch agent in background and register task for cancellation via /stop
         task = asyncio.create_task(_run_agent(eng))
         _active_tasks[str(engagement_id)] = task
-        task.add_done_callback(lambda _: _active_tasks.pop(str(engagement_id), None))
+
+        def _task_done_cb(t: asyncio.Task, eid: str = str(engagement_id)) -> None:
+            _active_tasks.pop(eid, None)
+            if not t.cancelled() and t.exception() is not None:
+                log.error("[_run_agent] Task for %s ended with unhandled exception: %s", eid, t.exception(), exc_info=t.exception())
+
+        task.add_done_callback(_task_done_cb)
 
     return {"status": "started", "engagement_id": str(engagement_id)}
 
@@ -524,6 +534,119 @@ async def list_findings(
         .order_by(FindingORM.discovered_at.desc())
     )
     return [FindingResponse.model_validate(f) for f in result.scalars().all()]
+
+
+@router.get(
+    "/engagements/{engagement_id}/recon/state",
+    response_model=ReconStateResponse,
+    summary="Get recon surface state",
+    description="Return live recon state from the LangGraph checkpoint: subdomains, ports, endpoints, tech stack.",
+)
+async def get_recon_state(
+    engagement_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserORM = Depends(get_current_user),
+) -> ReconStateResponse:
+    from sqlalchemy import func as _func
+    from app.core.agent import get_agent_service
+
+    # Verify engagement exists
+    result = await db.execute(select(EngagementORM).where(EngagementORM.id == engagement_id))
+    eng = result.scalar_one_or_none()
+    if eng is None:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+
+    # Pull recon data from LangGraph checkpoint
+    subdomains_raw: list[dict] = []
+    ports_raw: list[dict] = []
+    endpoints_raw: list[dict] = []
+    tech_stack_raw: list[str] = []
+    osint_results: dict = {}
+
+    try:
+        agent_service = get_agent_service()
+        graph = agent_service.graph
+        config = {"configurable": {"thread_id": str(engagement_id)}}
+        graph_state = await graph.aget_state(config)
+        if graph_state and graph_state.values:
+            vals = graph_state.values
+            subdomains_raw = vals.get("subdomains") or []
+            ports_raw = vals.get("open_ports") or []
+            endpoints_raw = vals.get("endpoints") or []
+            tech_stack_raw = vals.get("tech_stack") or []
+            osint_results = vals.get("osint_results") or {}
+    except Exception as _gs_exc:
+        log.debug("[recon_state] Could not read graph state: %s", _gs_exc)
+
+    # Build findings count per subdomain host
+    host_finding_counts: dict[str, int] = {}
+    if subdomains_raw:
+        hosts = [s.get("host", "") for s in subdomains_raw if s.get("host")]
+        if hosts:
+            # Count findings whose target_url contains the host
+            findings_result = await db.execute(
+                select(FindingORM.target_url)
+                .where(FindingORM.engagement_id == engagement_id)
+            )
+            all_findings = findings_result.scalars().all()
+            for host in hosts:
+                host_finding_counts[host] = sum(1 for url in all_findings if host in (url or ""))
+
+    # Build clean subdomain list (deduplicate by host)
+    seen_hosts: set[str] = set()
+    subdomains: list[SubdomainInfo] = []
+    for s in subdomains_raw:
+        host = s.get("host", "")
+        if not host or host in seen_hosts:
+            continue
+        seen_hosts.add(host)
+        subdomains.append(SubdomainInfo(
+            host=host,
+            ip=s.get("ip"),
+            source=s.get("source", ""),
+            is_alive=bool(s.get("is_alive", False)),
+            status_code=s.get("status_code"),
+            tech_stack=s.get("tech_stack") or [],
+            findings_count=host_finding_counts.get(host, 0),
+        ))
+
+    ports: list[PortInfo] = [
+        PortInfo(
+            host=p.get("host", ""),
+            port=int(p.get("port", 0)),
+            protocol=p.get("protocol", "tcp"),
+            service=p.get("service", ""),
+            version=p.get("version"),
+            state=p.get("state", "open"),
+        )
+        for p in ports_raw
+        if p.get("host") and p.get("port")
+    ]
+
+    endpoints: list[EndpointInfo] = [
+        EndpointInfo(
+            url=e.get("url", ""),
+            method=e.get("method", "GET"),
+            params=e.get("params") or [],
+            source=e.get("source", ""),
+        )
+        for e in endpoints_raw
+        if e.get("url")
+    ]
+
+    alive_count = sum(1 for s in subdomains if s.is_alive)
+
+    return ReconStateResponse(
+        subdomains=subdomains,
+        open_ports=ports,
+        endpoints=endpoints,
+        tech_stack=sorted(set(tech_stack_raw)),
+        osint_summary=osint_results,
+        total_subdomains=len(subdomains),
+        alive_count=alive_count,
+        total_ports=len(ports),
+        total_endpoints=len(endpoints),
+    )
 
 
 @router.get(
@@ -1253,10 +1376,13 @@ async def _run_agent(eng: EngagementORM) -> None:
     from app.core.agent import get_agent_service
 
     engagement_id = str(eng.id)
-    agent_service = get_agent_service()
+    try:
+        agent_service = get_agent_service()
+    except Exception as _svc_exc:
+        log.error("[_run_agent] FATAL: get_agent_service() failed for %s: %s", engagement_id, _svc_exc, exc_info=True)
+        return
     live_log_token = _live_feed_engagement_id.set(engagement_id)
     live_log_handler = _attach_live_feed_log_handler(engagement_id)
-    log.info("[live_feed] terminal output attached for engagement %s", engagement_id)
 
     # Derive the primary domain for tools (subfinder, crt.sh, etc.) from in_scope.
     # Rules:

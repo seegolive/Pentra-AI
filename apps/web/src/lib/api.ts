@@ -15,6 +15,7 @@ import type {
   Finding,
   FindingStatus,
   HitlDecision,
+  ReconState,
 } from "./types";
 import { useAuthStore } from "./authStore";
 
@@ -580,6 +581,23 @@ export function useSnapshotDiff(
       return res.data;
     },
     enabled: !!engagementId && !!snapshotA && !!snapshotB,
+  });
+}
+
+// ── Recon Surface ─────────────────────────────────────────────────────────────
+
+export function useReconState(engagementId: string, enabled = true) {
+  return useQuery<ReconState>({
+    queryKey: ["recon-state", engagementId],
+    queryFn: async () => {
+      const res = await apiClient.get<ReconState>(
+        `/api/v1/engagements/${engagementId}/recon/state`
+      );
+      return res.data;
+    },
+    enabled: enabled && !!engagementId,
+    refetchInterval: 10_000,
+    staleTime: 5_000,
   });
 }
 

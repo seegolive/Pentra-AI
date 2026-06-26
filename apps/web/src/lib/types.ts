@@ -127,6 +127,46 @@ export interface EngagementCreate {
   auto_approve_exploit_validation?: boolean;
 }
 
+// ── Recon Surface ─────────────────────────────────────────────────────────────
+
+export interface SubdomainInfo {
+  host: string;
+  ip: string | null;
+  source: string;
+  is_alive: boolean;
+  status_code: number | null;
+  tech_stack: string[];
+  findings_count: number;
+}
+
+export interface PortInfo {
+  host: string;
+  port: number;
+  protocol: string;
+  service: string;
+  version: string | null;
+  state: string;
+}
+
+export interface EndpointInfo {
+  url: string;
+  method: string;
+  params: string[];
+  source: string;
+}
+
+export interface ReconState {
+  subdomains: SubdomainInfo[];
+  open_ports: PortInfo[];
+  endpoints: EndpointInfo[];
+  tech_stack: string[];
+  osint_summary: Record<string, unknown>;
+  total_subdomains: number;
+  alive_count: number;
+  total_ports: number;
+  total_endpoints: number;
+}
+
 // ── Finding ───────────────────────────────────────────────────────────────────
 
 export type FindingStatus = "open" | "confirmed" | "false_positive" | "wont_fix" | "resolved";
@@ -155,6 +195,9 @@ export interface Finding {
   description?: string | null;
   impact?: string | null;
   remediation?: string | null;
+  request_raw?: string | null;
+  response_raw?: string | null;
+  reproduction_steps?: string[] | null;
   cve_ids: string[];
   cve_data?: {
     cve_id: string;
@@ -194,7 +237,9 @@ export type FeedEventType =
   // subscan events
   | "subscan_started"
   | "subscan_complete"
-  | "subscan_error";
+  | "subscan_error"
+  // recon live updates
+  | "RECON_UPDATE";
 
 export interface FeedEvent {
   type: FeedEventType;
