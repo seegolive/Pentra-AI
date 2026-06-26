@@ -46,11 +46,11 @@ async def crawler_node(state: dict) -> dict[str, Any]:
 
     cookies = _parse_cookies(auth_cookies_str) if auth_cookies_str else None
 
-    for host in live_hosts[:5]:
+    for host in live_hosts[:15]:
         url = host if host.startswith("http") else f"https://{host}"
         logger.info(f"[crawler_node] JS crawling: {url}")
 
-        result = await crawler.crawl(url, cookies=cookies, timeout_ms=25000)
+        result = await crawler.crawl(url, cookies=cookies, timeout_ms=30000)
 
         if result.error:
             if "Playwright not installed" in (result.error or ""):

@@ -135,7 +135,30 @@ async def recon_node(state: PentraState) -> dict:
 
     await asyncio.gather(_probe_rl(), _probe_waf())
 
-    ports: list[dict] = await _run_nmap(subdomains, ip_ranges=state["target"].get("ip_ranges", []))
+    # Build live host list for screenshots/crawl (requires httpx_probe results)
+    live_host_urls = [
+        f"https://{s['host']}" if s.get("is_alive") else None
+        for s in subdomains
+        if s.get("is_alive")
+    ]
+    live_host_urls = [u for u in live_host_urls if u]
+
+    # nmap, wayback, and screenshots are independent after httpx_probe — run concurrently.
+    # wayback only needs domain; screenshots need live hosts; nmap needs subdomains.
+    # Running them in parallel cuts recon wall-clock time by up to nmap's full 300s.
+    log.info("[recon_node] Running nmap / wayback / screenshots concurrently")
+    _nmap_result, _wayback_result, screenshots = await asyncio.gather(
+        _run_nmap(subdomains, ip_ranges=state["target"].get("ip_ranges", [])),
+        _run_wayback(domain, in_scope=in_scope),
+        _run_screenshots(live_host_urls, engagement_id=state["engagement_id"]),
+        return_exceptions=True,
+    )
+    ports: list[dict] = _nmap_result if isinstance(_nmap_result, list) else []
+    wayback_urls: list[str] = _wayback_result if isinstance(_wayback_result, list) else []
+    if isinstance(screenshots, Exception):
+        log.warning("[recon_node] Screenshots failed (non-fatal): %s", screenshots)
+        screenshots = []
+
     tech_stack: list[str] = _extract_tech_stack(subdomains)
 
     # Defense-in-depth: drop any OOS subdomain before building endpoints
@@ -185,7 +208,6 @@ async def recon_node(state: PentraState) -> dict:
             tech_stack.append(t)
 
     # ── Wayback URL mining (historical endpoints) ──────────────────────────
-    wayback_urls = await _run_wayback(domain, in_scope=in_scope)
     if wayback_urls:
         existing_keys = {(e["url"], e.get("method", "GET")) for e in endpoints}
         added = 0
@@ -201,15 +223,6 @@ async def recon_node(state: PentraState) -> dict:
             len(wayback_urls),
             len(endpoints),
         )
-
-    # ── Screenshot capture of live hosts (Sprint 32.2) ───────────────────────
-    live_host_urls = [
-        f"https://{s['host']}" if s.get("is_alive") else None
-        for s in subdomains
-        if s.get("is_alive")
-    ]
-    live_host_urls = [u for u in live_host_urls if u]
-    screenshots = await _run_screenshots(live_host_urls, engagement_id=state["engagement_id"])
 
     # ── Smart dedup (18.2) then GF prioritization (18.1) ─────────────────────
     try:

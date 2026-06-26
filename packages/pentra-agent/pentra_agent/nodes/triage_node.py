@@ -355,8 +355,10 @@ async def _reprobe_request(
             return False, "No file content in response"
 
         elif "ssrf" in vuln_class:
-            # Can't easily verify blind SSRF without OOB — mark as unverified
-            return False, "SSRF requires OOB verification (Collaborator)"
+            # SSRF requires OOB (Collaborator/interactsh) to confirm — can't verify
+            # via response inspection alone. Preserve severity rather than downgrading;
+            # mark for manual OOB validation so the hunter can confirm with Burp/interactsh.
+            return True, "SSRF detected — verify with OOB (Burp Collaborator or interactsh)"
 
         else:
             # Unknown class — if response differs significantly, accept as verified

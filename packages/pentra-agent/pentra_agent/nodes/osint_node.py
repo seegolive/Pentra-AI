@@ -36,57 +36,47 @@ async def osint_node(state: PentraState) -> dict:
 
     log.info("[osint_node] Starting passive OSINT for %s", domain)
 
-    # ── 1. Certificate Transparency (crt.sh) ────────────────────────────────
-    ct_subdomains = await _query_crt_sh(domain)
+    # Run all OSINT sources in parallel with a hard 30-second wall-clock cap.
+    shodan_key = os.getenv("SHODAN_API_KEY")
+    tasks = [
+        _query_crt_sh(domain),
+        _lookup_h1_program(domain),
+        _query_shodan(domain, shodan_key) if shodan_key else asyncio.sleep(0, result=None),
+        _run_dorking(domain),
+        _run_email_osint(domain),
+    ]
+    try:
+        ct_subdomains, h1_program, shodan_data, dorking, email_osint = await asyncio.wait_for(
+            asyncio.gather(*tasks, return_exceptions=True),
+            timeout=60.0,
+        )
+    except asyncio.TimeoutError:
+        log.warning("[osint_node] OSINT timed out after 60s — using partial results")
+        ct_subdomains, h1_program, shodan_data, dorking, email_osint = [], None, None, {}, {}
+
+    # Normalize exceptions from gather to empty/None
+    if isinstance(ct_subdomains, Exception): ct_subdomains = []
+    if isinstance(h1_program, Exception): h1_program = None
+    if isinstance(shodan_data, Exception): shodan_data = None
+    if isinstance(dorking, Exception): dorking = {}
+    if isinstance(email_osint, Exception): email_osint = {}
+
     if ct_subdomains:
         results["ct_subdomains"] = ct_subdomains
-        log.info(
-            "[osint_node] crt.sh: %d subdomains via certificate transparency",
-            len(ct_subdomains),
-        )
-
-    # ── 2. H1 Bug Bounty Program Lookup ─────────────────────────────────────
-    h1_program = await _lookup_h1_program(domain)
+        log.info("[osint_node] crt.sh: %d subdomains via certificate transparency", len(ct_subdomains))
     if h1_program:
         results["h1_program"] = h1_program
-        log.info(
-            "[osint_node] H1 program found: %s (scope: %d items)",
-            h1_program.get("name", "unknown"),
-            len(h1_program.get("in_scope", [])),
-        )
-
-    # ── 3. Shodan Summary (optional — requires SHODAN_API_KEY) ──────────────
-    shodan_key = os.getenv("SHODAN_API_KEY")
-    if shodan_key:
-        shodan_data = await _query_shodan(domain, shodan_key)
-        if shodan_data:
-            results["shodan"] = shodan_data
-            log.info(
-                "[osint_node] Shodan: %d ports, org=%s",
-                len(shodan_data.get("ports", [])),
-                shodan_data.get("org", "unknown"),
-            )
-    else:
-        log.debug("[osint_node] SHODAN_API_KEY not set — skipping Shodan")
-
-    # ── 4. Security dorking (optional — dependency may be absent) ───────────
-    dorking = await _run_dorking(domain)
+        log.info("[osint_node] H1 program found: %s", h1_program.get("name", "unknown"))
+    if shodan_data:
+        results["shodan"] = shodan_data
+        log.info("[osint_node] Shodan: %d ports, org=%s", len(shodan_data.get("ports", [])), shodan_data.get("org", "unknown"))
     if dorking:
         results["dorking"] = dorking
-        log.info(
-            "[osint_node] Dorking: %d high-risk URLs",
-            len(dorking.get("high_risk_urls", [])),
-        )
-
-    # ── 5. Email OSINT + optional breach check ─────────────────────────────
-    email_osint = await _run_email_osint(domain)
+        log.info("[osint_node] Dorking: %d high-risk URLs", len(dorking.get("high_risk_urls", [])))
     if email_osint:
         results["email_osint"] = email_osint
-        log.info(
-            "[osint_node] Email OSINT: %d emails, %d critical",
-            len(email_osint.get("emails", [])),
-            len(email_osint.get("critical_emails", [])),
-        )
+        log.info("[osint_node] Email OSINT: %d emails, %d critical",
+                 len(email_osint.get("emails", [])), len(email_osint.get("critical_emails", [])))
 
     # ── Summary message ──────────────────────────────────────────────────────
     summary_parts = [f"OSINT complete for {domain}:"]
@@ -262,7 +252,7 @@ async def _run_dorking(domain: str) -> dict:
         from pentra_tools.osint.dorking import DorkScanner
 
         scanner = DorkScanner(delay_between_dorks=2.0, max_results_per_dork=5)
-        result = await asyncio.wait_for(scanner.run_dorks(domain), timeout=120.0)
+        result = await asyncio.wait_for(scanner.run_dorks(domain), timeout=20.0)
         if result.total_results == 0 and not result.high_risk_urls:
             return {}
         return {
@@ -295,7 +285,7 @@ async def _run_email_osint(domain: str) -> dict:
                 hibp_api_key=hibp_key,
                 check_breaches=bool(hibp_key),
             ),
-            timeout=120.0,
+            timeout=20.0,
         )
         if not result.emails and not result.critical_emails:
             return {}
