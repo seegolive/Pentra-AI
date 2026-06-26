@@ -137,6 +137,8 @@ export interface SubdomainInfo {
   status_code: number | null;
   tech_stack: string[];
   findings_count: number;
+  interest_score: number;
+  is_interesting: boolean;
 }
 
 export interface PortInfo {
@@ -239,7 +241,9 @@ export type FeedEventType =
   | "subscan_complete"
   | "subscan_error"
   // recon live updates
-  | "RECON_UPDATE";
+  | "RECON_UPDATE"
+  // nuclei scan progress
+  | "NUCLEI_PROGRESS";
 
 export interface FeedEvent {
   type: FeedEventType;

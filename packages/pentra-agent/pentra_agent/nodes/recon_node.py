@@ -41,6 +41,35 @@ from urllib.parse import parse_qs, urlparse
 
 log = logging.getLogger(__name__)
 
+# ── Interesting subdomain scoring ────────────────────────────────────────────
+_INTERESTING_KEYWORDS: dict[str, int] = {
+    "admin": 10, "administrator": 10, "root": 10, "superuser": 10,
+    "api": 8, "internal": 8, "intranet": 8, "vpn": 8, "ssh": 8,
+    "staging": 7, "stage": 7, "dev": 7, "development": 7,
+    "test": 6, "beta": 6, "uat": 6, "qa": 6,
+    "db": 8, "database": 8, "mysql": 8, "postgres": 8, "redis": 8, "mongo": 8,
+    "backup": 9, "bak": 9, "old": 5,
+    "mail": 6, "smtp": 6, "pop": 6, "imap": 6,
+    "ftp": 7, "sftp": 7, "files": 6,
+    "jenkins": 9, "jira": 7, "confluence": 7, "gitlab": 9, "git": 8,
+    "kibana": 9, "grafana": 9, "elastic": 8, "prometheus": 8,
+    "auth": 8, "login": 7, "sso": 8, "oauth": 8,
+    "payment": 10, "pay": 9, "billing": 9, "invoice": 8,
+    "secret": 10, "private": 9, "priv": 9,
+    "monitor": 6, "status": 5,
+}
+
+
+def _compute_interest_score(host: str) -> tuple[int, bool]:
+    """Return (score, is_interesting). is_interesting = score >= 6."""
+    parts = host.lower().split(".")
+    score = 0
+    for part in parts[:-2]:  # skip TLD + domain
+        for kw, kw_score in _INTERESTING_KEYWORDS.items():
+            if kw in part:
+                score = max(score, kw_score)
+    return score, score >= 6
+
 
 # ── Burp MCP config helper ───────────────────────────────────────────────────
 
@@ -472,6 +501,11 @@ async def _run_httpx_probe(subdomains: list[dict]) -> list[dict]:
                     _batch_start, _batch_start + len(_batch) - 1,
                 )
                 probed.extend(_batch)  # include unprobed ones as dead
+        # Compute interest scores for all probed subdomains
+        for sub in probed:
+            score, interesting = _compute_interest_score(sub.get("host", ""))
+            sub["interest_score"] = score
+            sub["is_interesting"] = interesting
         return probed
     except ImportError:
         log.warning("[recon_node] httpx not available — skipping probe")

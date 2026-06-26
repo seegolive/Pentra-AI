@@ -12,6 +12,7 @@ import {
   Network,
   Bug,
   RefreshCw,
+  Star,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useReconState } from "../../lib/api";
@@ -23,8 +24,8 @@ interface ReconSurfaceTabProps {
   engagementStatus: string;
 }
 
-type AliveFilter = "all" | "alive" | "dead";
-type SortField = "host" | "findings_count" | "status_code";
+type AliveFilter = "all" | "alive" | "dead" | "interesting";
+type SortField = "host" | "findings_count" | "status_code" | "interest_score";
 
 const METHOD_COLORS: Record<string, string> = {
   GET: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20",
@@ -140,6 +141,7 @@ export function ReconSurfaceTab({ engagementId, engagementStatus }: ReconSurface
 
     if (aliveFilter === "alive") list = list.filter((s) => s.is_alive);
     else if (aliveFilter === "dead") list = list.filter((s) => !s.is_alive);
+    else if (aliveFilter === "interesting") list = list.filter((s) => s.is_interesting);
 
     if (search.trim()) {
       const q = search.trim().toLowerCase();
@@ -150,6 +152,7 @@ export function ReconSurfaceTab({ engagementId, engagementStatus }: ReconSurface
       let av: string | number, bv: string | number;
       if (sortField === "host") { av = a.host; bv = b.host; }
       else if (sortField === "findings_count") { av = a.findings_count; bv = b.findings_count; }
+      else if (sortField === "interest_score") { av = a.interest_score ?? 0; bv = b.interest_score ?? 0; }
       else { av = a.status_code ?? 9999; bv = b.status_code ?? 9999; }
       if (sortDir === "asc") return av < bv ? -1 : av > bv ? 1 : 0;
       return av > bv ? -1 : av < bv ? 1 : 0;
@@ -246,20 +249,29 @@ export function ReconSurfaceTab({ engagementId, engagementStatus }: ReconSurface
       <div className="flex items-center gap-2 flex-shrink-0">
         {/* Alive filter */}
         <div className="flex items-center bg-pentra-bg-base border border-pentra-border rounded-md p-0.5">
-          {(["all", "alive", "dead"] as AliveFilter[]).map((f) => (
-            <button
-              key={f}
-              onClick={() => setAliveFilter(f)}
-              className={cn(
-                "px-3 py-1 text-xs font-medium rounded transition-colors capitalize",
-                aliveFilter === f
-                  ? "bg-pentra-accent/20 text-pentra-accent"
-                  : "text-pentra-text-muted hover:text-pentra-text-primary"
-              )}
-            >
-              {f === "all" ? `All (${subdomains.length})` : f === "alive" ? `Alive (${data.alive_count})` : `Dead (${subdomains.length - data.alive_count})`}
-            </button>
-          ))}
+          {(["all", "alive", "dead", "interesting"] as AliveFilter[]).map((f) => {
+            const label =
+              f === "all" ? `All (${subdomains.length})`
+              : f === "alive" ? `Alive (${data.alive_count})`
+              : f === "dead" ? `Dead (${subdomains.length - data.alive_count})`
+              : `★ Interesting (${subdomains.filter((s) => s.is_interesting).length})`;
+            return (
+              <button
+                key={f}
+                onClick={() => setAliveFilter(f)}
+                className={cn(
+                  "px-3 py-1 text-xs font-medium rounded transition-colors",
+                  aliveFilter === f
+                    ? f === "interesting"
+                      ? "bg-yellow-400/20 text-yellow-400"
+                      : "bg-pentra-accent/20 text-pentra-accent"
+                    : "text-pentra-text-muted hover:text-pentra-text-primary"
+                )}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
 
         {/* Search */}
@@ -324,12 +336,21 @@ export function ReconSurfaceTab({ engagementId, engagementStatus }: ReconSurface
                   <Bug className="h-3 w-3" /> {sortIcon("findings_count")}
                 </button>
               </th>
+              <th className="text-left px-3 py-2">
+                <button
+                  onClick={() => toggleSort("interest_score")}
+                  className="flex items-center gap-1 font-semibold text-[10px] uppercase tracking-wider text-pentra-text-muted hover:text-pentra-text-primary transition-colors"
+                  title="Interest score — based on subdomain keywords (admin, api, dev, db, etc.)"
+                >
+                  <Star className="h-3 w-3 text-yellow-400" /> {sortIcon("interest_score")}
+                </button>
+              </th>
             </tr>
           </thead>
           <tbody>
             {filteredSubdomains.length === 0 && (
               <tr>
-                <td colSpan={7} className="text-center py-12 text-pentra-text-muted text-xs">
+                <td colSpan={8} className="text-center py-12 text-pentra-text-muted text-xs">
                   No subdomains match the current filter.
                 </td>
               </tr>
@@ -354,7 +375,10 @@ export function ReconSurfaceTab({ engagementId, engagementStatus }: ReconSurface
 
                 {/* Host */}
                 <td className="px-3 py-2.5">
-                  <span className="font-mono text-pentra-text-primary group-hover:text-pentra-accent transition-colors">
+                  <span className="flex items-center gap-1.5 font-mono text-pentra-text-primary group-hover:text-pentra-accent transition-colors">
+                    {sub.is_interesting && (
+                      <Star className="h-3 w-3 text-yellow-400 flex-shrink-0" title={`Interest score: ${sub.interest_score}`} />
+                    )}
                     {sub.host}
                   </span>
                 </td>
@@ -412,6 +436,21 @@ export function ReconSurfaceTab({ engagementId, engagementStatus }: ReconSurface
                     <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded border text-red-400 bg-red-400/10 border-red-400/30">
                       <Bug className="h-2.5 w-2.5" />
                       {sub.findings_count}
+                    </span>
+                  ) : (
+                    <span className="text-pentra-text-muted/30 text-[10px]">—</span>
+                  )}
+                </td>
+
+                {/* Interest score */}
+                <td className="px-3 py-2.5">
+                  {sub.is_interesting ? (
+                    <span
+                      className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded border text-yellow-400 bg-yellow-400/10 border-yellow-400/30"
+                      title={`Interest score: ${sub.interest_score}`}
+                    >
+                      <Star className="h-2.5 w-2.5" />
+                      {sub.interest_score}
                     </span>
                   ) : (
                     <span className="text-pentra-text-muted/30 text-[10px]">—</span>

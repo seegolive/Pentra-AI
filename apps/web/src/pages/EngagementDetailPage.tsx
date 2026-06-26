@@ -117,6 +117,11 @@ const TYPE_META: Record<
     color: "text-red-400",
     icon: <Square className="h-3 w-3" />,
   },
+  NUCLEI_PROGRESS: {
+    label: "Nuclei",
+    color: "text-purple-400",
+    icon: <Zap className="h-3 w-3" />,
+  },
 };
 
 // ── Grouped item type ─────────────────────────────────────────────────────────
@@ -238,8 +243,18 @@ function FeedRow({ event }: { event: FeedEvent }) {
     if (event.type === "NODE_START") content = "Started";
     else if (event.type === "NODE_COMPLETE") content = "Completed";
     else if (event.type === "FINDINGS_UPDATED") content = `${event.count ?? "?"} finding(s) discovered`;
+    else if (event.type === "NUCLEI_PROGRESS") {
+      const d = event.data as Record<string, unknown> | undefined;
+      const pct = Number(d?.percent ?? 0).toFixed(1);
+      const matched = Number(d?.matched ?? 0);
+      const rps = Number(d?.rps ?? 0);
+      content = `${pct}% — ${matched} matched — ${rps} req/s`;
+    }
     else content = meta?.label ?? event.type;
   }
+
+  const isNucleiProgress = event.type === "NUCLEI_PROGRESS";
+  const nucleiPct = isNucleiProgress ? Number((event.data as Record<string, unknown> | undefined)?.percent ?? 0) : 0;
 
   const ts = event.timestamp
     ? new Date(event.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
@@ -266,12 +281,20 @@ function FeedRow({ event }: { event: FeedEvent }) {
             )}
           >
             {content}
-            {event.data && Object.keys(event.data).length > 0 && (
+            {event.data && !isNucleiProgress && Object.keys(event.data).length > 0 && (
               <span className="ml-2 text-[10px] opacity-60">
                 {JSON.stringify(event.data).slice(0, 100)}
               </span>
             )}
           </span>
+        )}
+        {isNucleiProgress && (
+          <div className="mt-1 h-1 w-full rounded-full bg-pentra-border overflow-hidden">
+            <div
+              className="h-full rounded-full bg-purple-400 transition-all duration-300"
+              style={{ width: `${Math.min(100, nucleiPct)}%` }}
+            />
+          </div>
         )}
       </span>
     </div>

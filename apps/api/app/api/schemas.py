@@ -86,6 +86,8 @@ class SubdomainInfo(BaseModel):
     status_code: int | None = None
     tech_stack: list[str] = Field(default_factory=list)
     findings_count: int = 0
+    interest_score: int = 0
+    is_interesting: bool = False
 
 
 class PortInfo(BaseModel):

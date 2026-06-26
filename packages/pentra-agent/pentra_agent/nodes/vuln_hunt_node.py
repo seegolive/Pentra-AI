@@ -59,10 +59,22 @@ except ImportError:
     probe_rate_limit = None  # type: ignore[assignment]
     _RL_AVAILABLE = False
 
+import re
+
 from pentra_scope import ScopeEnforcer
 from pentra_scope.errors import ScopeViolationError
 
 log = logging.getLogger(__name__)
+
+# ── GF pattern fallback regexes (used when gf binary not installed) ───────────
+_GF_PATTERNS: dict[str, re.Pattern[str]] = {
+    "sqli": re.compile(r"[?&](id|user|item|order|product|cat|category|page|sort|num|search)=", re.I),
+    "ssrf": re.compile(r"[?&](url|redirect|next|target|dest|destination|uri|path|return|callback|load|fetch|open|link)=", re.I),
+    "xss": re.compile(r"[?&](q|query|search|s|text|input|term|name|message|comment|content|data|value|error|msg|callback)=", re.I),
+    "lfi": re.compile(r"[?&](file|path|dir|page|folder|include|src|root|template|theme|view|layout|doc|document|conf|config|read|log|lang|locale)=", re.I),
+    "redirect": re.compile(r"[?&](url|redirect|redir|next|target|dest|destination|return|returnUrl|return_url|goto|jump|forward|location|go|out|view|route)=", re.I),
+    "idor": re.compile(r"[?&](id|user_id|account|account_id|number|num|doc_id|doc|order_id|item_id|product_id|key|token|ref|ref_id)=", re.I),
+}
 
 # ── Task 18.9: Concurrent testing constants (overridden by Task 18.11 presets) ─
 # Number of candidates tested in parallel. Semaphore limits burst to target/Burp.
@@ -307,6 +319,7 @@ async def vuln_hunt_node(state: PentraState) -> dict:
                 oob_canary=_oob_url,
                 llm_model=state["llm_model"],
                 kb_context=knowledge_context,
+                engagement_id=state["engagement_id"],
             ),
             # Domain-level tools — run once across full engagement scope
             _get_burp_proxy_findings(domain, state["scope"]),
@@ -657,6 +670,7 @@ async def _run_nuclei(
     scope: dict,
     tech_stack: list[str] | None = None,
     tags_override: str | None = None,
+    engagement_id: str | None = None,
 ) -> list[dict]:
     """Run nuclei with non-destructive templates on in-scope endpoints.
 
@@ -747,7 +761,7 @@ async def _run_nuclei(
 
     (http_findings, http_timed_out), (net_findings, net_timed_out), \
     (dast_findings, dast_timed_out), (headless_findings, _) = await asyncio.gather(
-        _nuclei_scan(nuclei_bin, url_targets, protocol_types=None, timeout=300, extra_tags=_extra_tags, tags_base=tags_override, burp_proxy=_burp_proxy),
+        _nuclei_scan(nuclei_bin, url_targets, protocol_types=None, timeout=300, extra_tags=_extra_tags, tags_base=tags_override, burp_proxy=_burp_proxy, engagement_id=engagement_id),
         _nuclei_scan(nuclei_bin, network_targets, protocol_types=["tcp", "javascript"], timeout=120, burp_proxy=_burp_proxy),
         _nuclei_dast_scan(nuclei_bin, url_targets, tech_stack=tech_stack, timeout=300, burp_proxy=_burp_proxy),
         _nuclei_headless_scan(nuclei_bin, url_targets, timeout=120, burp_proxy=_burp_proxy),
@@ -889,6 +903,134 @@ Return [] if nothing additional."""
         return []
 
 
+async def _run_gf_filtered_dast_scan(
+    endpoints: list[dict],
+    scope: dict,
+    tech_stack: list[str],
+    burp_proxy: str | None = None,
+) -> list[dict]:
+    """GF pattern filtering → targeted nuclei DAST per vulnerability class.
+
+    1. Extract URLs from endpoints.
+    2. Try gf binary first; if not installed, apply regex fallback (_GF_PATTERNS).
+    3. Group URLs by vulnerability class (sqli, ssrf, xss, lfi, redirect, idor).
+    4. Run a targeted nuclei DAST scan for each non-empty group.
+
+    This produces higher-signal DAST results than scanning all endpoints with all
+    templates — each URL is tested only with templates relevant to its parameter
+    names, reducing false positives and scan time.
+    """
+    import shutil
+    import tempfile
+
+    urls = [ep["url"] for ep in endpoints if ep.get("url") and "?" in ep.get("url", "")]
+    if not urls:
+        return []
+
+    in_scope = scope.get("in_scope", [])
+    urls = [u for u in urls if _is_in_scope(u, in_scope)]
+    if not urls:
+        return []
+
+    _nuclei_bin = next(
+        (c for c in ["/home/mdilab/go/bin/nuclei", "/usr/local/bin/nuclei", "/usr/bin/nuclei"] if os.path.isfile(c)),
+        shutil.which("nuclei") or "nuclei",
+    )
+    _gf_bin = shutil.which("gf")
+
+    # Classify URLs per vuln class
+    classified: dict[str, list[str]] = {k: [] for k in _GF_PATTERNS}
+
+    if _gf_bin:
+        # Try gf binary for each pattern
+        for vuln_class, pattern_name in [
+            ("sqli", "sqli"), ("ssrf", "ssrf"), ("xss", "xss"),
+            ("lfi", "lfi"), ("redirect", "redirect"), ("idor", "idor"),
+        ]:
+            try:
+                url_input = "\n".join(urls)
+                proc = await asyncio.create_subprocess_exec(
+                    _gf_bin, pattern_name,
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+                stdout, _ = await asyncio.wait_for(
+                    proc.communicate(url_input.encode()), timeout=10.0
+                )
+                matched = [u.strip() for u in stdout.decode().splitlines() if u.strip()]
+                classified[vuln_class] = matched
+            except Exception:
+                # Fall back to regex for this class
+                classified[vuln_class] = [u for u in urls if _GF_PATTERNS[vuln_class].search(u)]
+    else:
+        # No gf binary — apply all regex patterns
+        for vuln_class, pattern in _GF_PATTERNS.items():
+            classified[vuln_class] = [u for u in urls if pattern.search(u)]
+
+    # Log classification summary
+    for vc, matched_urls in classified.items():
+        if matched_urls:
+            log.info("[gf_dast] %s: %d URL(s) matched", vc, len(matched_urls))
+
+    # Map vuln class → nuclei DAST template tags
+    _class_to_tags = {
+        "sqli": "sqli",
+        "ssrf": "ssrf",
+        "xss": "xss",
+        "lfi": "lfi",
+        "redirect": "redirect",
+        "idor": "idor",
+    }
+
+    all_findings: list[dict] = []
+    for vuln_class, matched_urls in classified.items():
+        if not matched_urls:
+            continue
+        tags = _class_to_tags.get(vuln_class, vuln_class)
+        cmd = [
+            _nuclei_bin,
+            "-dast",
+            "-tags", tags,
+            "-severity", "medium,high,critical",
+            "-jsonl", "-silent", "-duc",
+            "-timeout", "25",
+            "-retries", "1",
+            "-c", "2",
+            "-H", "X-Forwarded-For: 127.0.0.1",
+        ]
+        if burp_proxy:
+            cmd += ["-p", burp_proxy, "-pi"]
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, prefix=f"gf-{vuln_class}-") as tf:
+            tf.write("\n".join(matched_urls))
+            targets_file = tf.name
+        cmd += ["-list", targets_file]
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=120)
+            findings = _parse_nuclei_jsonl(stdout.decode(errors="replace"))
+            if findings:
+                log.info("[gf_dast] [%s] %d finding(s)", vuln_class, len(findings))
+            all_findings.extend(findings)
+        except asyncio.TimeoutError:
+            log.warning("[gf_dast] [%s] timed out", vuln_class)
+        except Exception as exc:
+            log.debug("[gf_dast] [%s] scan failed (non-fatal): %s", vuln_class, exc)
+        finally:
+            try:
+                os.unlink(targets_file)
+            except OSError:
+                pass
+
+    return all_findings
+
+
 async def _nuclei_scan(
     nuclei_bin: str,
     targets: list[str],
@@ -897,12 +1039,14 @@ async def _nuclei_scan(
     extra_tags: list[str] | None = None,
     tags_base: str | None = None,
     burp_proxy: str | None = None,
+    engagement_id: str | None = None,
 ) -> tuple[list[dict], bool]:
     """Internal helper: run one nuclei pass and return (findings, timed_out).
 
     Args:
         tags_base: Override the default tag set.
         burp_proxy: If set, route all nuclei traffic through Burp for passive analysis.
+        engagement_id: If set, stream nuclei stats progress to the WebSocket live feed.
     """
     if not targets:
         return [], False
@@ -942,6 +1086,9 @@ async def _nuclei_scan(
     # - Interesting requests can be replayed in Repeater
     if burp_proxy:
         cmd += ["-p", burp_proxy, "-pi"]  # -pi: also proxy internal requests
+    # Stream stats to WebSocket live feed when engagement_id provided
+    if engagement_id:
+        cmd += ["-stats", "-sj", "-si", "5"]  # stats JSON every 5s to stderr
 
     # Write targets to a temp file — /dev/stdin is unreliable when nohup closes fd 0
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, prefix="nuclei-targets-") as tf:
@@ -955,19 +1102,76 @@ async def _nuclei_scan(
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        except asyncio.TimeoutError:
-            log.warning(
-                "[vuln_hunt_node] nuclei timed out after %ds (%s) — killing process",
-                timeout, protocol_types,
-            )
+
+        if engagement_id:
+            # Read stdout (findings) and stderr (stats) concurrently
+            stdout_lines: list[bytes] = []
+            stderr_lines: list[bytes] = []
+
+            async def _read_stdout() -> None:
+                assert proc.stdout is not None
+                async for line in proc.stdout:
+                    stdout_lines.append(line)
+
+            async def _read_stderr_stats() -> None:
+                assert proc.stderr is not None
+                from datetime import datetime, UTC
+                async for line in proc.stderr:
+                    stderr_lines.append(line)
+                    raw = line.decode(errors="replace").strip()
+                    if not raw:
+                        continue
+                    try:
+                        stats = json.loads(raw)
+                        if "percent" in stats:
+                            try:
+                                from app.api.ws import ws_manager
+                                await ws_manager.broadcast(engagement_id, {
+                                    "type": "NUCLEI_PROGRESS",
+                                    "timestamp": datetime.now(UTC).isoformat(),
+                                    "percent": float(stats.get("percent", 0)),
+                                    "matched": int(stats.get("matched", 0)),
+                                    "requests": int(stats.get("requests", 0)),
+                                    "templates": int(stats.get("templates", 0)),
+                                    "rps": int(stats.get("rps", 0)),
+                                })
+                            except Exception:
+                                pass
+                    except (json.JSONDecodeError, ValueError):
+                        pass
+
             try:
-                proc.kill()
-            except ProcessLookupError:
-                pass
-            await proc.wait()
-            return [], True  # (findings, timed_out=True)
+                await asyncio.wait_for(
+                    asyncio.gather(_read_stdout(), _read_stderr_stats()),
+                    timeout=timeout,
+                )
+                await proc.wait()
+            except asyncio.TimeoutError:
+                log.warning("[vuln_hunt_node] nuclei timed out after %ds (%s)", timeout, protocol_types)
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    pass
+                await proc.wait()
+                return [], True
+
+            stdout = b"".join(stdout_lines)
+            stderr = b"".join(stderr_lines)
+        else:
+            try:
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            except asyncio.TimeoutError:
+                log.warning(
+                    "[vuln_hunt_node] nuclei timed out after %ds (%s) — killing process",
+                    timeout, protocol_types,
+                )
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    pass
+                await proc.wait()
+                return [], True  # (findings, timed_out=True)
+
         if stderr:
             log.info("[vuln_hunt_node] nuclei stderr (%s): %s", protocol_types, stderr[:500].decode(errors="replace"))
         findings = _parse_nuclei_jsonl(stdout.decode())
@@ -993,9 +1197,9 @@ async def _nuclei_scan(
         log.warning("[vuln_hunt_node] nuclei scan error (%s): %s", protocol_types, exc)
         return [], False
     finally:
-        import os
+        import os as _os_unlink
         try:
-            os.unlink(targets_file)
+            _os_unlink.unlink(targets_file)
         except OSError:
             pass
 
@@ -1044,14 +1248,16 @@ async def _nuclei_dast_scan(
         "-H", "X-Real-IP: 127.0.0.1",
     ]
 
-    # Add AI injection templates for API targets
+    # Add AI injection templates for API/LLM targets
+    # Trigger on: tech stack keywords OR URL path patterns indicating AI/API endpoints
     ts_lower = " ".join(tech_stack or []).lower()
-    if any(kw in ts_lower for kw in ("api", "rest", "graphql", "json", "fastapi", "flask", "django", "rails")):
-        # Include AI template directory for API targets that might have LLM endpoints
-        ai_tmpl_dir = os.path.expanduser("~/nuclei-templates/dast/ai")
-        if os.path.isdir(ai_tmpl_dir):
-            cmd += ["-t", ai_tmpl_dir]
-            log.info("[nuclei_dast] Including AI injection templates for API target")
+    _ai_url_keywords = ["/api/", "/v1/", "/v2/", "/chat/", "/completions/", "/generate/", "/llm/", "/ai/", "/ml/", "/infer"]
+    _has_ai_urls = any(kw in target for target in targets for kw in _ai_url_keywords)
+    _has_api_stack = any(kw in ts_lower for kw in ("api", "rest", "graphql", "json", "fastapi", "flask", "django", "rails", "openai", "llm"))
+    ai_tmpl_dir = os.path.expanduser("~/nuclei-templates/dast/ai")
+    if os.path.isdir(ai_tmpl_dir) and (_has_ai_urls or _has_api_stack):
+        cmd += ["-t", ai_tmpl_dir]
+        log.info("[nuclei_dast] AI templates enabled (api_stack=%s ai_urls=%s)", _has_api_stack, _has_ai_urls)
 
     if burp_proxy:
         cmd += ["-p", burp_proxy, "-pi"]
@@ -4635,6 +4841,7 @@ async def _run_per_subdomain_tools(
     oob_canary: str | None = None,
     llm_model: str | None = None,
     kb_context: list[dict] | None = None,
+    engagement_id: str | None = None,
 ) -> list[dict]:
     """Run endpoint-level tools for EVERY subdomain concurrently.
 
@@ -4665,8 +4872,8 @@ async def _run_per_subdomain_tools(
             host, len(host_eps),
         )
         results = await asyncio.gather(
-            # Nuclei: template-based on all discovered endpoints
-            _run_nuclei(host_eps, scope, tech_stack=tech_stack) if p_nuclei else _noop_list(),
+            # Nuclei: template-based on all discovered endpoints (stats streamed to WS)
+            _run_nuclei(host_eps, scope, tech_stack=tech_stack, engagement_id=engagement_id) if p_nuclei else _noop_list(),
             # ffuf: directory/param fuzzing on all endpoints
             _run_ffuf(host_eps) if p_ffuf else _noop_list(),
             # Burp: active scan on ALL endpoints per host (was [:2], now full list)
@@ -4681,9 +4888,11 @@ async def _run_per_subdomain_tools(
             _run_dalfox_scan(host_eps),
             # Nuclei host-level: directly on host URL for CVEs/exposed panels
             _run_nuclei_on_host(host, scope, tech_stack) if p_nuclei else _noop_list(),
+            # GF pattern filtering → targeted nuclei DAST per vuln class
+            _run_gf_filtered_dast_scan(host_eps, scope, tech_stack, burp_proxy=_get_burp_proxy()) if p_nuclei else _noop_list(),
             return_exceptions=True,
         )
-        tool_names = ["nuclei_endpoints", "ffuf", "burp_scan", "cors", "ssrf", "crlfuzz", "dalfox", "nuclei_host"]
+        tool_names = ["nuclei_endpoints", "ffuf", "burp_scan", "cors", "ssrf", "crlfuzz", "dalfox", "nuclei_host", "gf_dast"]
         merged: list[dict] = []
         for name, r in zip(tool_names, results):
             if isinstance(r, list):
