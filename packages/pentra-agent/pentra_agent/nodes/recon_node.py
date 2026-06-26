@@ -202,6 +202,15 @@ async def recon_node(state: PentraState) -> dict:
             len(endpoints),
         )
 
+    # ── Screenshot capture of live hosts (Sprint 32.2) ───────────────────────
+    live_host_urls = [
+        f"https://{s['host']}" if s.get("is_alive") else None
+        for s in subdomains
+        if s.get("is_alive")
+    ]
+    live_host_urls = [u for u in live_host_urls if u]
+    screenshots = await _run_screenshots(live_host_urls, engagement_id=state["engagement_id"])
+
     # ── Smart dedup (18.2) then GF prioritization (18.1) ─────────────────────
     try:
         from pentra_tools.recon.dedup import smart_dedup_endpoints
@@ -301,6 +310,7 @@ async def recon_node(state: PentraState) -> dict:
         "rate_limit_info": rate_limit_info,
         "waf_info": waf_info,
         "findings": takeover_findings,  # early findings from recon (takeover)
+        "screenshots": screenshots,
         "messages": [AIMessage(content=summary_msg)],
     }
 
@@ -436,6 +446,42 @@ async def _run_wayback(domain: str, in_scope: list[str]) -> list[str]:
         return []
     except Exception as exc:
         log.warning("[wayback] Failed — skipping: %s", exc)
+        return []
+
+
+async def _run_screenshots(live_hosts: list[str], engagement_id: str) -> list[dict]:
+    """Capture screenshots of live hosts (max 10, max 3 concurrent)."""
+    try:
+        from pentra_tools.crawlers.screenshot_capture import ScreenshotCapture
+
+        targets = live_hosts[:10]
+        capture = ScreenshotCapture(headless=True)
+        results = await capture.capture_batch(targets, max_concurrent=3)
+
+        out: list[dict] = []
+        for r in results:
+            minio_url: str | None = None
+            if r.screenshot_bytes:
+                try:
+                    minio_url = await capture.save_to_minio(r, engagement_id)
+                except Exception:
+                    pass
+            out.append(
+                {
+                    "url": r.url,
+                    "host": r.host,
+                    "title": r.title,
+                    "status_code": r.status_code,
+                    "minio_url": minio_url,
+                    "error": r.error,
+                }
+            )
+
+        successful = sum(1 for r in results if r.screenshot_bytes)
+        log.info("[screenshot] Captured %d/%d screenshots", successful, len(targets))
+        return out
+    except Exception as exc:
+        log.warning("[screenshot] Failed — skipping: %s", exc)
         return []
 
 

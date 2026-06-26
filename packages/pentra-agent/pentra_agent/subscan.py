@@ -163,6 +163,8 @@ def build_subscan_state(
         "rate_limit_info": {"safe_rps": 5, "delay_ms": 200, "is_limited": False, "notes": []},
         "waf_info": {"waf_type": "unknown", "is_blocking": False, "bypass_strategies": [], "safe_rps": 5},
         "osint_results": {},
+        "js_crawl_result": {},
+        "screenshots": [],
     }
 
     # Merge optional fields from a base state (e.g. tech_stack, knowledge_context)

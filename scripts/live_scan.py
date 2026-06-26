@@ -114,6 +114,7 @@ def _build_initial_state(domain: str, engagement_id: str, mode: str, auth_creden
         ),
         "auth_credentials": auth_credentials,
         "js_crawl_result": {},
+        "screenshots": [],
     }
 
 

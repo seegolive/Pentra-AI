@@ -165,3 +165,7 @@ class PentraState(TypedDict):
     # ── JS/SPA crawler (Sprint 30.5) ──────────────────────────────────
     # Populated by crawler_node; read by vuln_hunt_node for extra endpoints.
     js_crawl_result: dict  # {endpoints: [...], summary: [...]}
+
+    # ── Screenshot recon (Sprint 32.2) ────────────────────────────────
+    # Populated by recon_node; list of {url, host, title, status_code, minio_url, error}
+    screenshots: list[dict]
