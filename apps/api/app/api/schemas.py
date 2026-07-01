@@ -146,6 +146,17 @@ class FindingResponse(BaseModel):
     chains: list | None = None
 
 
+class FindingWithEngagementResponse(FindingResponse):
+    engagement_name: str
+
+
+class PaginatedFindingsResponse(BaseModel):
+    results: list[FindingWithEngagementResponse]
+    total: int
+    page: int
+    page_size: int
+
+
 # ── Export / Import ───────────────────────────────────────────────────────────
 
 class FindingExport(BaseModel):
