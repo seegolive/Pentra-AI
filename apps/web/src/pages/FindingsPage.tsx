@@ -1,7 +1,6 @@
 import { useSearchParams } from "react-router-dom";
 import { Bug, AlertTriangle } from "lucide-react";
-import { useAllFindings } from "../lib/api";
-import { useEngagements } from "../lib/api";
+import { useAllFindings, useEngagements } from "../lib/api";
 import { FindingsTable } from "../components/findings/FindingsTable";
 import type { FindingFilters, Severity, FindingStatus } from "../lib/types";
 import { cn } from "../lib/utils";
@@ -34,7 +33,7 @@ function useFiltersFromUrl(): [FindingFilters & { page: number; sortBy: string; 
   const filters: FindingFilters & { page: number; sortBy: string; sortDir: "asc" | "desc" } = {
     severity: sp.getAll("severity") as Severity[],
     status: sp.getAll("status") as FindingStatus[],
-    vuln_class: sp.getAll("vuln_class"),
+    vuln_class: sp.get("vuln_class") ? [sp.get("vuln_class")!] : [],
     engagement_id: sp.get("engagement_id"),
     discovered_after: sp.get("discovered_after"),
     discovered_before: sp.get("discovered_before"),
@@ -89,12 +88,6 @@ export default function FindingsPage() {
   const results = data?.results ?? [];
   const totalPages = Math.max(1, Math.ceil(total / 25));
 
-  // Severity summary from current page (or from total — use total when available)
-  const severityCounts = results.reduce<Partial<Record<Severity, number>>>((acc, f) => {
-    acc[f.severity as Severity] = (acc[f.severity as Severity] ?? 0) + 1;
-    return acc;
-  }, {});
-
   const clearFilters = () => {
     setFilters({
       severity: [],
@@ -139,23 +132,19 @@ export default function FindingsPage() {
           {total}
         </span>
         <div className="flex items-center gap-1.5 ml-2">
-          {(["critical", "high", "medium", "low"] as const).map((sev) => {
-            const count = severityCounts[sev];
-            if (!count) return null;
-            return (
-              <button
-                key={sev}
-                onClick={() => toggleSeverity(sev)}
-                className={cn(
-                  "text-[10px] font-medium px-1.5 py-0.5 rounded border transition-colors",
-                  SEVERITY_CHIP_STYLES[sev],
-                  filters.severity.includes(sev) && "ring-1 ring-current",
-                )}
-              >
-                {sev.charAt(0).toUpperCase() + sev.slice(1)} {count}
-              </button>
-            );
-          })}
+          {(["critical", "high", "medium", "low"] as const).map((sev) => (
+            <button
+              key={sev}
+              onClick={() => toggleSeverity(sev)}
+              className={cn(
+                "text-[10px] font-medium px-1.5 py-0.5 rounded border transition-colors",
+                SEVERITY_CHIP_STYLES[sev],
+                filters.severity.includes(sev) ? "ring-1 ring-current" : "opacity-50",
+              )}
+            >
+              {sev.charAt(0).toUpperCase() + sev.slice(1)}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -297,6 +286,10 @@ export default function FindingsPage() {
                   Clear filters
                 </button>
               )}
+            </div>
+          ) : isLoading ? (
+            <div className="flex-1 flex items-center justify-center text-muted-foreground text-xs">
+              Loading…
             </div>
           ) : (
             <>
