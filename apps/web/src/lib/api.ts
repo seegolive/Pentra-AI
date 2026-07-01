@@ -618,6 +618,56 @@ export function useSubscan(engagementId: string) {
   });
 }
 
+// ── Worker Health ─────────────────────────────────────────────────────────────
+
+export interface WorkerTaskInfo {
+  id: string;
+  name: string;
+  worker: string;
+  started_at: string;
+}
+
+export interface WorkerInfo {
+  hostname: string;
+  status: string;
+  active_tasks: number;
+  concurrency: number;
+}
+
+export interface WorkerHealth {
+  healthy: boolean;
+  workers: WorkerInfo[];
+  active_tasks: WorkerTaskInfo[];
+  scheduled_tasks: number;
+  checked_at: string;
+}
+
+export function useWorkerHealth() {
+  return useQuery<WorkerHealth>({
+    queryKey: ["worker-health"],
+    queryFn: async () => {
+      const res = await apiClient.get<WorkerHealth>("/api/v1/admin/worker/health");
+      return res.data;
+    },
+    refetchInterval: 30_000,
+    retry: false,
+  });
+}
+
+// ── Recent Findings (cross-engagement) ───────────────────────────────────────
+
+export function useRecentFindings(limit = 20) {
+  return useQuery<Finding[]>({
+    queryKey: ["findings-recent", limit],
+    queryFn: async () => {
+      const res = await apiClient.get<Finding[]>(`/api/v1/findings/recent?limit=${limit}`);
+      return res.data;
+    },
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+}
+
 // ── Version ──────────────────────────────────────────────────────────────────
 
 export interface VersionInfo {
