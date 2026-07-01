@@ -12,7 +12,7 @@ import type { Finding } from "../lib/types";
 import {
   Target,
   Shield,
-  BookOpen,
+  Bug,
   TrendingUp,
   ChevronRight,
   Plus,
@@ -400,6 +400,11 @@ function EngagementCard({
         </div>
       </div>
       <div className="flex items-center gap-2.5 shrink-0 ml-3">
+        {(engagement.status === "active" || engagement.status === "awaiting_approval") && engagement.started_at && (
+          <span className="text-[10px] font-mono text-pentra-text-muted/60 hidden sm:block">
+            {formatDuration(engagement.started_at)}
+          </span>
+        )}
         {(engagement.findings_count ?? 0) > 0 && (
           <span className="text-xs border border-orange-900 text-orange-400 rounded px-1.5 py-0.5">
             {engagement.findings_count}
@@ -459,6 +464,9 @@ function SeverityBreakdown({ bySeverity }: { bySeverity: Record<string, number> 
               <span className="w-6 text-right text-[11px] font-mono text-pentra-text-muted flex-shrink-0">
                 {count}
               </span>
+              <span className="w-9 text-right text-[10px] font-mono text-pentra-text-muted/40 flex-shrink-0">
+                {pct.toFixed(0)}%
+              </span>
             </div>
           );
         })}
@@ -501,6 +509,7 @@ export function DashboardPage() {
   const pendingCount = (engagements ?? []).filter(
     (e) => e.status === "awaiting_approval"
   ).length;
+  const completedCount = (engagements ?? []).filter((e) => e.status === "completed").length;
   const firstPending = (engagements ?? []).find(
     (e) => e.status === "awaiting_approval"
   );
@@ -519,7 +528,7 @@ export function DashboardPage() {
 
   const totalEngagements =
     stats?.total_engagements ?? (engagements?.length ?? 0);
-  const kbRecords = stats?.total_knowledge_records ?? 0;
+  const totalFindings = stats?.total_findings ?? 0;
 
   return (
     <div className="flex-1 w-full p-6 space-y-5">
@@ -555,26 +564,26 @@ export function DashboardPage() {
         <StatCard
           title="Engagements"
           value={totalEngagements}
-          subtitle={`${activeCount} active`}
+          subtitle={`${activeCount} active · ${completedCount} done`}
           icon={Target}
           color="text-blue-400"
           onClick={() => navigate("/engagements")}
         />
         <StatCard
-          title="Critical + High"
-          value={criticalCount + highCount > 0 ? criticalCount + highCount : "—"}
+          title="Total Findings"
+          value={totalFindings}
           subtitle={`${criticalCount} critical · ${highCount} high`}
-          icon={Shield}
+          icon={Bug}
           color={criticalCount > 0 ? "text-red-400" : "text-orange-400"}
           onClick={() => navigate("/engagements")}
         />
         <StatCard
-          title="KB Records"
-          value={kbRecords > 0 ? kbRecords.toLocaleString() : "—"}
-          subtitle="H1 + curated patterns"
-          icon={BookOpen}
-          color="text-purple-400"
-          onClick={() => navigate("/knowledge")}
+          title="Critical + High"
+          value={criticalCount + highCount}
+          subtitle={criticalCount + highCount > 0 ? `${criticalCount} critical · ${highCount} high` : "all clear"}
+          icon={Shield}
+          color={criticalCount > 0 ? "text-red-400" : "text-green-400"}
+          onClick={() => navigate("/engagements")}
         />
         <StatCard
           title="Pending Approval"
