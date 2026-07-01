@@ -218,6 +218,26 @@ export interface Finding {
   chains?: ChainInfo[] | null;
 }
 
+export interface FindingWithEngagement extends Finding {
+  engagement_name: string;
+}
+
+export interface PaginatedFindings {
+  results: FindingWithEngagement[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface FindingFilters {
+  severity: Severity[];
+  status: FindingStatus[];
+  vuln_class: string[];
+  engagement_id: string | null;
+  discovered_after: string | null;
+  discovered_before: string | null;
+}
+
 // ── Live Feed ─────────────────────────────────────────────────────────────────
 
 export type FeedEventType =

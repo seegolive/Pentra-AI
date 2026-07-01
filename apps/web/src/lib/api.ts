@@ -1,5 +1,10 @@
 import axios from "axios";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import {
+  useQuery,
+  useMutation,
+  useQueryClient,
+  keepPreviousData,
+} from "@tanstack/react-query";
 import { toastError } from "./toast";
 import type {
   KnowledgeRecord,
@@ -14,6 +19,9 @@ import type {
   EngagementCreate,
   Finding,
   FindingStatus,
+  FindingWithEngagement,
+  PaginatedFindings,
+  FindingFilters,
   HitlDecision,
   ReconState,
 } from "./types";
@@ -333,6 +341,45 @@ export function usePatchFinding(engagementId: string) {
       return res.data;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["findings", engagementId] }),
+  });
+}
+
+// ── Global findings (all engagements) ────────────────────────────────────────
+
+async function fetchAllFindings(
+  filters: FindingFilters,
+  sortBy: string,
+  sortDir: "asc" | "desc",
+  page: number,
+  pageSize: number,
+): Promise<PaginatedFindings> {
+  const qp = new URLSearchParams();
+  filters.severity.forEach((s) => qp.append("severity", s));
+  filters.status.forEach((s) => qp.append("status", s));
+  filters.vuln_class.forEach((v) => qp.append("vuln_class", v));
+  if (filters.engagement_id) qp.set("engagement_id", filters.engagement_id);
+  if (filters.discovered_after) qp.set("discovered_after", filters.discovered_after);
+  if (filters.discovered_before) qp.set("discovered_before", filters.discovered_before);
+  qp.set("sort_by", sortBy);
+  qp.set("sort_dir", sortDir);
+  qp.set("page", String(page));
+  qp.set("page_size", String(pageSize));
+  const res = await apiClient.get<PaginatedFindings>(`/api/v1/findings?${qp.toString()}`);
+  return res.data;
+}
+
+export function useAllFindings(
+  filters: FindingFilters,
+  sortBy: string,
+  sortDir: "asc" | "desc",
+  page: number,
+  pageSize = 25,
+) {
+  return useQuery<PaginatedFindings>({
+    queryKey: ["findings", "all", filters, sortBy, sortDir, page],
+    queryFn: () => fetchAllFindings(filters, sortBy, sortDir, page, pageSize),
+    staleTime: 15_000,
+    placeholderData: keepPreviousData,
   });
 }
 
