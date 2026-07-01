@@ -22,6 +22,7 @@ import {
   Activity,
   Server,
   ArrowRight,
+  Database,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -731,7 +732,7 @@ export function DashboardPage() {
         </h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label: "Browse Knowledge Base", icon: BookOpen, path: "/knowledge", color: "text-purple-400" },
+            { label: "Browse Knowledge Base", icon: Database, path: "/knowledge", color: "text-purple-400" },
             { label: "New Scan", icon: Plus, path: "/scan/new", color: "text-pentra-accent" },
             { label: "All Engagements", icon: Shield, path: "/engagements", color: "text-blue-400" },
             { label: "Admin Panel", icon: TrendingUp, path: "/admin", color: "text-orange-400" },
