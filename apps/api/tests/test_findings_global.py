@@ -223,14 +223,14 @@ async def test_list_all_findings_page_offset():
 
 # ── HTTP-level tests (require AsyncClient fixtures — skipped) ─────────────────
 
-@pytest.mark.skip(reason="Requires 'client: AsyncClient' fixture — wire conftest.py first")
+@pytest.mark.xfail(reason="requires conftest.py HTTP test fixtures", strict=False)
 @pytest.mark.asyncio
 async def test_list_all_findings_requires_auth(client):
     resp = await client.get("/api/v1/findings")
     assert resp.status_code == 401
 
 
-@pytest.mark.skip(reason="Requires 'auth_client: AsyncClient' fixture — wire conftest.py first")
+@pytest.mark.xfail(reason="requires conftest.py HTTP test fixtures", strict=False)
 @pytest.mark.asyncio
 async def test_list_all_findings_invalid_sort_by(auth_client):
     resp = await auth_client.get("/api/v1/findings?sort_by=invalid_field")
