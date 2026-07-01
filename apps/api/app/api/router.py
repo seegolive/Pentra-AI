@@ -26,7 +26,7 @@ from datetime import UTC, datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
-from sqlalchemy import select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.schemas import (
@@ -37,11 +37,13 @@ from app.api.schemas import (
     FindingExport,
     FindingPatch,
     FindingResponse,
+    FindingWithEngagementResponse,
     HitlDecision,
     KBManualInjectRequest,
     KBUrlInjectRequest,
     KnowledgeInjectRequest,
     KnowledgeInjectResponse,
+    PaginatedFindingsResponse,
     PayloadGenerateAPIRequest,
     PayloadGenerateAPIResponse,
     PayloadItem,
@@ -646,6 +648,91 @@ async def get_recon_state(
         alive_count=alive_count,
         total_ports=len(ports),
         total_endpoints=len(endpoints),
+    )
+
+
+# ── Global findings list (ALL engagements) ─────────────────────────────────────
+
+@router.get(
+    "/findings",
+    response_model=PaginatedFindingsResponse,
+    summary="List all findings (global)",
+    description="Return paginated findings across all engagements the user can access.",
+)
+async def list_all_findings(
+    severity: list[str] | None = Query(default=None),
+    status: list[str] | None = Query(default=None),
+    vuln_class: list[str] | None = Query(default=None),
+    engagement_id: UUID | None = Query(default=None),
+    discovered_after: datetime | None = Query(default=None),
+    discovered_before: datetime | None = Query(default=None),
+    sort_by: str = Query(default="discovered_at", pattern="^(discovered_at|severity|cvss_score|title)$"),
+    sort_dir: str = Query(default="desc", pattern="^(asc|desc)$"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: UserORM = Depends(get_current_user),
+) -> PaginatedFindingsResponse:
+    severity_case = case(
+        (FindingORM.severity == "critical", 0),
+        (FindingORM.severity == "high", 1),
+        (FindingORM.severity == "medium", 2),
+        (FindingORM.severity == "low", 3),
+        (FindingORM.severity == "info", 4),
+        else_=5,
+    )
+
+    base = (
+        select(FindingORM, EngagementORM.name.label("engagement_name"))
+        .join(EngagementORM, FindingORM.engagement_id == EngagementORM.id)
+        .join(WorkspaceORM, EngagementORM.workspace_id == WorkspaceORM.id)
+        .where(WorkspaceORM.owner_id == current_user.id)
+    )
+
+    if severity:
+        base = base.where(FindingORM.severity.in_(severity))
+    if status:
+        base = base.where(FindingORM.status.in_(status))
+    if vuln_class:
+        base = base.where(FindingORM.vuln_class.in_(vuln_class))
+    if engagement_id:
+        base = base.where(FindingORM.engagement_id == engagement_id)
+    if discovered_after:
+        base = base.where(FindingORM.discovered_at >= discovered_after)
+    if discovered_before:
+        base = base.where(FindingORM.discovered_at <= discovered_before)
+
+    count_result = await db.execute(select(func.count()).select_from(base.subquery()))
+    total = count_result.scalar_one()
+
+    if sort_by == "severity":
+        order_col = severity_case if sort_dir == "desc" else severity_case.desc()
+    elif sort_by == "cvss_score":
+        col = FindingORM.cvss_score
+        order_col = col.asc() if sort_dir == "asc" else col.desc()
+    elif sort_by == "title":
+        col = FindingORM.title
+        order_col = col.asc() if sort_dir == "asc" else col.desc()
+    else:
+        col = FindingORM.discovered_at
+        order_col = col.asc() if sort_dir == "asc" else col.desc()
+
+    rows_result = await db.execute(
+        base.order_by(order_col).offset((page - 1) * page_size).limit(page_size)
+    )
+
+    results = []
+    for row in rows_result:
+        finding_orm, eng_name = row[0], row[1]
+        data = FindingResponse.model_validate(finding_orm).model_dump()
+        data["engagement_name"] = eng_name
+        results.append(FindingWithEngagementResponse(**data))
+
+    return PaginatedFindingsResponse(
+        results=results,
+        total=total,
+        page=page,
+        page_size=page_size,
     )
 
 
