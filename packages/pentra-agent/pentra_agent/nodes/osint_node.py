@@ -41,7 +41,7 @@ async def osint_node(state: PentraState) -> dict:
     tasks = [
         _query_crt_sh(domain),
         _lookup_h1_program(domain),
-        _query_shodan(domain, shodan_key) if shodan_key else asyncio.sleep(0, result=None),
+        _query_shodan(domain, shodan_key) if shodan_key else asyncio.sleep(0),
         _run_dorking(domain),
         _run_email_osint(domain),
     ]

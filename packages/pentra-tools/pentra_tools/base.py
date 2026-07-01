@@ -44,15 +44,17 @@ class RateLimiter:
         self._lock = asyncio.Lock()
 
     async def acquire(self) -> None:
-        async with self._lock:
-            now = time.monotonic()
-            # Purge timestamps older than the window
-            while self._calls and self._calls[0] < now - self.period:
-                self._calls.popleft()
-            if len(self._calls) >= self.max_calls:
+        while True:
+            async with self._lock:
+                now = time.monotonic()
+                while self._calls and self._calls[0] < now - self.period:
+                    self._calls.popleft()
+                if len(self._calls) < self.max_calls:
+                    self._calls.append(time.monotonic())
+                    return
                 sleep_for = self.period - (now - self._calls[0])
-                await asyncio.sleep(max(sleep_for, 0))
-            self._calls.append(time.monotonic())
+            # Sleep outside the lock so other callers aren't blocked
+            await asyncio.sleep(max(sleep_for, 0))
 
 
 class AsyncToolWrapper(ABC):

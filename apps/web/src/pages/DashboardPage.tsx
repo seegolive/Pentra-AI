@@ -1,8 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 
-import { apiClient } from "../lib/api";
-import type { Finding } from "../lib/types";
+import { apiClient, useFindings } from "../lib/api";
 import {
   Target,
   Shield,
@@ -240,7 +239,7 @@ export function DashboardPage() {
     queryFn: () =>
       apiClient.get<AdminStats>("/api/v1/admin/stats").then((r) => r.data),
     refetchInterval: 30_000,
-    retry: false, // non-admin gets 403 — fail silently
+    retry: false,
   });
 
   const { data: engagements } = useQuery<EngagementSummary[]>({
@@ -252,22 +251,25 @@ export function DashboardPage() {
     refetchInterval: 30_000,
   });
 
-  const { data: recentFindings } = useQuery<Finding[]>({
-    queryKey: ["recent-findings"],
-    queryFn: () =>
-      apiClient
-        .get<Finding[]>("/api/v1/findings/recent?limit=5")
-        .then((r) => r.data),
-    refetchInterval: 60_000,
-  });
+  // Latest completed or active engagement
+  const latestEng = (engagements ?? []).find(
+    (e) => e.status === "completed" || e.status === "active"
+  );
+
+  const { data: latestFindings } = useFindings(latestEng?.id ?? "");
 
   const activeCount = (engagements ?? []).filter(
     (e) => e.status === "active"
   ).length;
 
-  const totalFindings = stats?.total_findings ?? 0;
   const kbRecords = stats?.total_knowledge_records ?? 0;
   const totalEngagements = stats?.total_engagements ?? (engagements?.length ?? 0);
+
+  // Severity breakdown from latest scan
+  const latestBySeverity = (latestFindings ?? []).reduce<Record<string, number>>(
+    (acc, f) => { acc[f.severity] = (acc[f.severity] ?? 0) + 1; return acc; },
+    {}
+  );
 
   return (
     <div className="flex-1 w-full p-6 space-y-6">
@@ -299,8 +301,8 @@ export function DashboardPage() {
         />
         <StatCard
           title="Findings"
-          value={totalFindings}
-          subtitle="across all engagements"
+          value={latestFindings?.length ?? "—"}
+          subtitle={latestEng ? `from ${latestEng.name}` : "latest scan"}
           icon={Shield}
           color="text-orange-400"
         />
@@ -320,9 +322,21 @@ export function DashboardPage() {
         />
       </div>
 
-      {/* Severity breakdown */}
-      {stats?.findings_by_severity && (
-        <SeverityBreakdown bySeverity={stats.findings_by_severity} />
+      {/* Severity breakdown — latest scan only */}
+      {latestFindings && latestFindings.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-[11px] text-pentra-text-muted font-medium">
+            Scan:{" "}
+            <span
+              className="text-pentra-accent cursor-pointer hover:underline"
+              onClick={() => latestEng && navigate(`/engagements/${latestEng.id}?tab=findings`)}
+            >
+              {latestEng?.name}
+            </span>
+            {" "}— {latestFindings.length} findings
+          </p>
+          <SeverityBreakdown bySeverity={latestBySeverity} />
+        </div>
       )}
 
       {/* Two column layout */}
@@ -368,15 +382,23 @@ export function DashboardPage() {
           </div>
         </div>
 
-        {/* Recent findings */}
+        {/* Recent findings — latest scan */}
         <div>
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-[11px] font-semibold text-pentra-text-muted uppercase tracking-wider">
-              Recent Findings
+              Latest Scan Findings
             </h2>
+            {latestEng && (
+              <button
+                onClick={() => navigate(`/engagements/${latestEng.id}?tab=findings`)}
+                className="text-xs text-pentra-text-muted hover:text-pentra-text-secondary transition-colors"
+              >
+                View all →
+              </button>
+            )}
           </div>
           <div className="space-y-2">
-            {!recentFindings || recentFindings.length === 0 ? (
+            {!latestFindings || latestFindings.length === 0 ? (
               <div
                 className="text-center py-10 text-pentra-text-muted text-sm
                               border border-dashed border-pentra-border rounded-ds-lg"
@@ -389,31 +411,37 @@ export function DashboardPage() {
                 </span>
               </div>
             ) : (
-              recentFindings.map((f) => (
-                <div
-                  key={f.id}
-                  onClick={() =>
-                    navigate(`/engagements/${f.engagement_id}?tab=findings`)
-                  }
-                  className="flex items-center gap-3 p-3 rounded-ds-md
-                             bg-pentra-bg-panel border border-pentra-border
-                             hover:border-pentra-border-light hover:bg-pentra-bg-hover
-                             cursor-pointer transition-all"
-                >
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded font-medium capitalize
-                    ${SEV_COLORS[f.severity] ?? SEV_COLORS.info}`}
+              [...latestFindings]
+                .sort((a, b) => {
+                  const order = ["critical", "high", "medium", "low", "info"];
+                  return order.indexOf(a.severity) - order.indexOf(b.severity);
+                })
+                .slice(0, 8)
+                .map((f) => (
+                  <div
+                    key={f.id}
+                    onClick={() =>
+                      navigate(`/engagements/${f.engagement_id}?tab=findings`)
+                    }
+                    className="flex items-center gap-3 p-3 rounded-ds-md
+                               bg-pentra-bg-panel border border-pentra-border
+                               hover:border-pentra-border-light hover:bg-pentra-bg-hover
+                               cursor-pointer transition-all"
                   >
-                    {f.severity}
-                  </span>
-                  <p className="text-sm text-pentra-text-primary truncate flex-1">
-                    {f.title}
-                  </p>
-                  <p className="text-xs text-pentra-text-muted shrink-0 font-mono">
-                    {f.vuln_class}
-                  </p>
-                </div>
-              ))
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded font-medium capitalize flex-shrink-0
+                      ${SEV_COLORS[f.severity] ?? SEV_COLORS.info}`}
+                    >
+                      {f.severity}
+                    </span>
+                    <p className="text-sm text-pentra-text-primary truncate flex-1">
+                      {f.title}
+                    </p>
+                    <p className="text-xs text-pentra-text-muted shrink-0 font-mono hidden sm:block">
+                      {f.vuln_class}
+                    </p>
+                  </div>
+                ))
             )}
           </div>
         </div>

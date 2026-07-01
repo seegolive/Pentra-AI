@@ -178,7 +178,7 @@ async def recon_node(state: PentraState) -> dict:
         except Exception as exc:
             log.warning("[recon_node] WAF profile failed (non-fatal): %s", exc)
 
-    await asyncio.gather(_probe_rl(), _probe_waf())
+    await asyncio.gather(_probe_rl(), _probe_waf(), return_exceptions=True)
 
     # Build live host list for screenshots/crawl (requires httpx_probe results)
     live_host_urls = [
@@ -504,10 +504,15 @@ async def _run_httpx_probe(subdomains: list[dict]) -> list[dict]:
         for _batch_start in range(0, len(subdomains), _BATCH):
             _batch = subdomains[_batch_start:_batch_start + _BATCH]
             try:
-                _results = await asyncio.wait_for(
-                    asyncio.gather(*[probe_one(s) for s in _batch], return_exceptions=False),
+                _raw = await asyncio.wait_for(
+                    asyncio.gather(*[probe_one(s) for s in _batch], return_exceptions=True),
                     timeout=120.0,
                 )
+                # Filter out exceptions — treat failed probes as dead subdomains
+                _results = [r for r in _raw if not isinstance(r, BaseException)]
+                _failed = sum(1 for r in _raw if isinstance(r, BaseException))
+                if _failed:
+                    log.warning("[recon_node] httpx probe batch: %d probe(s) failed silently", _failed)
                 probed.extend(_results)
                 _alive_in_batch = sum(1 for s in _results if s.get("is_alive"))
                 log.info(

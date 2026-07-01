@@ -257,125 +257,126 @@ async def vuln_hunt_node(state: PentraState) -> dict:
     # Sequential mode: per-engagement flag overrides OR env var enables globally
     _use_sequential = state.get("scan_sequential", False) or _SUBDOMAIN_SEQUENTIAL
 
-    if _use_sequential:
-        # ── Sequential per-subdomain mode ─────────────────────────────────────
-        # Scans one subdomain at a time: passive → sleep → active → sleep → next.
-        # Prevents traffic bursts, allows per-host rate-limit + WAF profiling.
-        log.info(
-            "[vuln_hunt_node] SEQUENTIAL mode (per_engagement=%s env=%s): "
-            "%d endpoints (inter_delay=%.1fs)",
-            state.get("scan_sequential", False), _SUBDOMAIN_SEQUENTIAL,
-            len(endpoints), _INTER_SUBDOMAIN_DELAY,
-        )
-        raw_findings = await _sequential_subdomain_scan(
-            domain=domain,
-            endpoints=endpoints,
-            scope=state["scope"],
-            tech_stack=tech_stack,
-            auth_credentials=state.get("auth_credentials"),
-            inter_delay_s=_INTER_SUBDOMAIN_DELAY,
-            request_jitter_ms=state.get("request_jitter_ms", 0),
-            oob_canary=_oob_url,
-        )
-    else:
-        # ── 1–4.5. Run all tools CONCURRENTLY (default) ──────────────────────
-        # Endpoint-level tools (nuclei, ffuf, burp_scan, cors, ssrf, crlf, dalfox)
-        # are dispatched per-subdomain via _run_per_subdomain_tools() so every
-        # discovered subdomain receives equal treatment — no subdomain is skipped
-        # because of a global endpoint cap.
-        # Domain-level tools (graphql, jwt, soap_xxe, race_condition, biz_logic,
-        # burp_proxy, burp_extended) run once across the full engagement scope.
-        from urllib.parse import urlparse as _up_count
-        _num_hosts = len({
-            _up_count(ep.get("url", "")).hostname
-            for ep in endpoints if ep.get("url")
-        } - {None, ""})
-        log.info(
-            "[vuln_hunt_node] Launching concurrent scan across %d subdomain(s) "
-            "[nuclei=%s ffuf=%s burp_scan=%s soap_xxe=%s csrf=%s]",
-            _num_hosts, p_nuclei, p_ffuf, p_burp_scan, p_soap_xxe, p_csrf,
-        )
-        (
-            per_host_findings,
-            burp_proxy_results,
-            burp_extended,
-            soap_xxe_results,
-            graphql_results,
-            race_condition_results,
-            jwt_results,
-            second_order_results,
-            biz_logic_results,
-        ) = await asyncio.gather(
-            # Endpoint-level tools — one run per subdomain, all subdomains concurrent
-            # Includes LLM per-subdomain reasoning as final step
-            _run_per_subdomain_tools(
+    try:
+        if _use_sequential:
+            # ── Sequential per-subdomain mode ─────────────────────────────────────
+            # Scans one subdomain at a time: passive → sleep → active → sleep → next.
+            # Prevents traffic bursts, allows per-host rate-limit + WAF profiling.
+            log.info(
+                "[vuln_hunt_node] SEQUENTIAL mode (per_engagement=%s env=%s): "
+                "%d endpoints (inter_delay=%.1fs)",
+                state.get("scan_sequential", False), _SUBDOMAIN_SEQUENTIAL,
+                len(endpoints), _INTER_SUBDOMAIN_DELAY,
+            )
+            raw_findings = await _sequential_subdomain_scan(
+                domain=domain,
                 endpoints=endpoints,
                 scope=state["scope"],
-                tech_stack=state.get("tech_stack", []),
+                tech_stack=tech_stack,
                 auth_credentials=state.get("auth_credentials"),
-                p_nuclei=p_nuclei,
-                p_ffuf=p_ffuf,
-                p_burp_scan=p_burp_scan,
+                inter_delay_s=_INTER_SUBDOMAIN_DELAY,
+                request_jitter_ms=state.get("request_jitter_ms", 0),
                 oob_canary=_oob_url,
-                llm_model=state["llm_model"],
-                kb_context=knowledge_context,
-                engagement_id=state["engagement_id"],
-            ),
-            # Domain-level tools — run once across full engagement scope
-            _get_burp_proxy_findings(domain, state["scope"]),
-            _run_burp_extended_checks(domain, state["scope"], endpoints),
-            _run_soap_xxe_scan(domain, state["scope"], state.get("auth_credentials")) if p_soap_xxe else _noop_list(),
-            _run_graphql_scan(domain, state["scope"], state.get("auth_credentials")),
-            _run_race_condition_scan(endpoints, state["scope"], state.get("auth_credentials")),
-            _run_jwt_scan(domain, state["scope"], state.get("auth_credentials"), state),
-            _run_second_order_sqli_scan(domain, state["scope"], state.get("auth_credentials")),
-            _run_business_logic_scan(domain, state["scope"], state.get("auth_credentials")),
-            return_exceptions=True,
+            )
+        else:
+            # ── 1–4.5. Run all tools CONCURRENTLY (default) ──────────────────────
+            # Endpoint-level tools (nuclei, ffuf, burp_scan, cors, ssrf, crlf, dalfox)
+            # are dispatched per-subdomain via _run_per_subdomain_tools() so every
+            # discovered subdomain receives equal treatment — no subdomain is skipped
+            # because of a global endpoint cap.
+            # Domain-level tools (graphql, jwt, soap_xxe, race_condition, biz_logic,
+            # burp_proxy, burp_extended) run once across the full engagement scope.
+            from urllib.parse import urlparse as _up_count
+            _num_hosts = len({
+                _up_count(ep.get("url", "")).hostname
+                for ep in endpoints if ep.get("url")
+            } - {None, ""})
+            log.info(
+                "[vuln_hunt_node] Launching concurrent scan across %d subdomain(s) "
+                "[nuclei=%s ffuf=%s burp_scan=%s soap_xxe=%s csrf=%s]",
+                _num_hosts, p_nuclei, p_ffuf, p_burp_scan, p_soap_xxe, p_csrf,
+            )
+            (
+                per_host_findings,
+                burp_proxy_results,
+                burp_extended,
+                soap_xxe_results,
+                graphql_results,
+                race_condition_results,
+                jwt_results,
+                second_order_results,
+                biz_logic_results,
+            ) = await asyncio.gather(
+                # Endpoint-level tools — one run per subdomain, all subdomains concurrent
+                # Includes LLM per-subdomain reasoning as final step
+                _run_per_subdomain_tools(
+                    endpoints=endpoints,
+                    scope=state["scope"],
+                    tech_stack=state.get("tech_stack", []),
+                    auth_credentials=state.get("auth_credentials"),
+                    p_nuclei=p_nuclei,
+                    p_ffuf=p_ffuf,
+                    p_burp_scan=p_burp_scan,
+                    oob_canary=_oob_url,
+                    llm_model=state["llm_model"],
+                    kb_context=knowledge_context,
+                    engagement_id=state["engagement_id"],
+                ),
+                # Domain-level tools — run once across full engagement scope
+                _get_burp_proxy_findings(domain, state["scope"]),
+                _run_burp_extended_checks(domain, state["scope"], endpoints),
+                _run_soap_xxe_scan(domain, state["scope"], state.get("auth_credentials")) if p_soap_xxe else _noop_list(),
+                _run_graphql_scan(domain, state["scope"], state.get("auth_credentials")),
+                _run_race_condition_scan(endpoints, state["scope"], state.get("auth_credentials")),
+                _run_jwt_scan(domain, state["scope"], state.get("auth_credentials"), state),
+                _run_second_order_sqli_scan(domain, state["scope"], state.get("auth_credentials")),
+                _run_business_logic_scan(domain, state["scope"], state.get("auth_credentials")),
+                return_exceptions=True,
+            )
+
+            _TOOL_NAMES = [
+                "per_subdomain(nuclei+ffuf+burp+cors+ssrf+crlf+dalfox+nuclei_host+llm_reasoning)", "burp_proxy", "burp_extended",
+                "soap_xxe", "graphql", "race_condition", "jwt",
+                "second_order", "biz_logic",
+            ]
+            _tool_results = [
+                per_host_findings, burp_proxy_results, burp_extended,
+                soap_xxe_results, graphql_results, race_condition_results,
+                jwt_results, second_order_results, biz_logic_results,
+            ]
+            for _name, _result in zip(_TOOL_NAMES, _tool_results):
+                if isinstance(_result, BaseException):
+                    log.warning(
+                        "[vuln_hunt_node] Tool '%s' raised exception (skipped): %s",
+                        _name, _result,
+                    )
+                elif isinstance(_result, list):
+                    raw_findings.extend(_result)
+        log.info(
+            "[vuln_hunt_node] Scan done (mode=%s): %d raw findings total",
+            "sequential" if _use_sequential else "concurrent",
+            len(raw_findings),
         )
-
-        _TOOL_NAMES = [
-            "per_subdomain(nuclei+ffuf+burp+cors+ssrf+crlf+dalfox+nuclei_host+llm_reasoning)", "burp_proxy", "burp_extended",
-            "soap_xxe", "graphql", "race_condition", "jwt",
-            "second_order", "biz_logic",
-        ]
-        _tool_results = [
-            per_host_findings, burp_proxy_results, burp_extended,
-            soap_xxe_results, graphql_results, race_condition_results,
-            jwt_results, second_order_results, biz_logic_results,
-        ]
-        for _name, _result in zip(_TOOL_NAMES, _tool_results):
-            if isinstance(_result, BaseException):
-                log.warning(
-                    "[vuln_hunt_node] Tool '%s' raised exception (skipped): %s",
-                    _name, _result,
-                )
-            elif isinstance(_result, list):
-                raw_findings.extend(_result)
-    log.info(
-        "[vuln_hunt_node] Scan done (mode=%s): %d raw findings total",
-        "sequential" if _use_sequential else "concurrent",
-        len(raw_findings),
-    )
-
-    # ── OOB: collect interactsh callbacks and terminate client ────────────────
-    if _oob_client is not None:
-        if _oob_url:
-            # Brief wait for delayed DNS/HTTP callbacks from recently triggered payloads
-            log.info("[vuln_hunt_node] Waiting 5s for OOB callbacks...")
-            await asyncio.sleep(5.0)
-        try:
-            await _oob_client.__aexit__(None, None, None)
-            for _interaction in _oob_client.interactions:
-                raw_findings.append(_interaction.to_finding(
-                    context=f"Triggered during scan of {domain}"
-                ))
-            if _oob_client.interactions:
-                log.info(
-                    "[vuln_hunt_node] OOB: %d interaction(s) → added as findings",
-                    len(_oob_client.interactions),
-                )
-        except Exception as _oob_exit_exc:
-            log.debug("[vuln_hunt_node] interactsh exit error (non-fatal): %s", _oob_exit_exc)
+    finally:
+        # ── OOB: collect interactsh callbacks and terminate client ────────────────
+        if _oob_client is not None:
+            if _oob_url:
+                # Brief wait for delayed DNS/HTTP callbacks from recently triggered payloads
+                log.info("[vuln_hunt_node] Waiting 5s for OOB callbacks...")
+                await asyncio.sleep(5.0)
+            try:
+                await _oob_client.__aexit__(None, None, None)
+                for _interaction in _oob_client.interactions:
+                    raw_findings.append(_interaction.to_finding(
+                        context=f"Triggered during scan of {domain}"
+                    ))
+                if _oob_client.interactions:
+                    log.info(
+                        "[vuln_hunt_node] OOB: %d interaction(s) → added as findings",
+                        len(_oob_client.interactions),
+                    )
+            except Exception as _oob_exit_exc:
+                log.debug("[vuln_hunt_node] interactsh exit error (non-fatal): %s", _oob_exit_exc)
 
     # ── 5. Collaborator payload (expose in tool_outputs for LLM) ─────────────
     collaborator_output: list[dict] = []
@@ -479,9 +480,13 @@ async def vuln_hunt_node(state: PentraState) -> dict:
         async with _sem:
             return await _classify_one(raw)
 
-    classified: list[dict] = list(
-        await asyncio.gather(*[_classify_guarded(r) for r in raw_findings])
-    )
+    classified: list[dict] = [
+        r for r in await asyncio.gather(
+            *[_classify_guarded(r) for r in raw_findings],
+            return_exceptions=True,
+        )
+        if not isinstance(r, BaseException)
+    ]
 
     # Deduplicate by title+url
     seen_keys: set[str] = set()
