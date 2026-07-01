@@ -339,7 +339,10 @@ export function usePatchFinding(engagementId: string) {
       const res = await apiClient.patch<Finding>(`/api/v1/findings/${id}`, { status });
       return res.data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["findings", engagementId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["findings", engagementId] });
+      qc.invalidateQueries({ queryKey: ["findings", "all"] });
+    },
   });
 }
 
