@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /**
  * livefeed.spec.ts — Task 23.6 (Sprint 23)
  * WebSocket Live Feed integration tests.

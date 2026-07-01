@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /**
  * full.spec.ts — Task 23.7 (Sprint 23)
  * Full regression suite covering all major UI flows.

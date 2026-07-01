@@ -42,7 +42,9 @@ export function MonitoringPanel({ engagementId }: MonitoringPanelProps) {
   // Hydrate local form state from server once data loads
   useEffect(() => {
     if (scheduleData) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setScheduleEnabled(scheduleData.enabled);
+       
       setScheduleInterval(scheduleData.interval_hours);
     }
   }, [scheduleData]);

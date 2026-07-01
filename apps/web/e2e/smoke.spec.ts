@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /**
  * smoke.spec.ts — Sprint 21.6 Playwright smoke tests
  * 5 tests: login, invalid login, protected route, dashboard, KB search

@@ -68,8 +68,11 @@ export function useEngagementFeed(engagementId: string | undefined) {
     if (!accessToken) return;
 
     // Reset state when engagement changes
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setEvents([]);
+     
     setPendingApproval(null);
+     
     setConnected(false);
     loadedRef.current = null;
 

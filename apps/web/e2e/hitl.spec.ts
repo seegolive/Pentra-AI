@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { test, expect, type Page } from "@playwright/test";
 import { apiLogin } from "./helpers";
 
