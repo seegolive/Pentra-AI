@@ -161,15 +161,19 @@ function groupFeedEvents(events: FeedEvent[]): FeedGroup[] {
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
 
-function StatCard({ label, value, color }: { label: string; value: number; color?: string }) {
+function StatCard({ label, value, color, onClick }: { label: string; value: number; color?: string; onClick?: () => void }) {
   return (
     <div
-      className="flex-1 min-w-0 rounded-ds-md border border-pentra-border bg-pentra-bg-pentra-bg-card px-3 py-2"
+      onClick={onClick}
+      className={cn(
+        "flex-1 min-w-0 rounded-ds-md border border-pentra-border bg-pentra-bg-card px-3 py-2",
+        onClick && "cursor-pointer hover:border-pentra-border-light hover:bg-pentra-bg-hover transition-colors"
+      )}
     >
       <p className="text-[10px] font-semibold uppercase tracking-wide text-pentra-text-muted">
         {label}
       </p>
-      <p className="mt-0.5 text-xl font-bold text-pentra-text-primary" style={{ color: color }}>
+      <p className="mt-0.5 text-xl font-bold text-pentra-text-primary" style={{ color }}>
         {value}
       </p>
     </div>
@@ -622,7 +626,11 @@ export default function EngagementDetailPage() {
           )}
           <ChevronRight className="h-3.5 w-3.5" />
           <button
-            onClick={() => navigate(-1)}
+            onClick={() =>
+              engagement.workspace_id
+                ? navigate(`/workspaces/${engagement.workspace_id}/engagements`)
+                : navigate(-1)
+            }
             className="hover:text-pentra-text-primary transition-colors"
           >
             Engagements
@@ -764,6 +772,26 @@ export default function EngagementDetailPage() {
             </span>
           ))}
         </div>
+
+        {/* Engagement metadata */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-2 text-xs text-pentra-text-muted">
+          <span className="font-mono border border-pentra-border rounded px-1.5 py-0.5">
+            {engagement.mode === "semi_auto" ? "Semi-Auto" : "Agentic"}
+          </span>
+          {engagement.scan_preset && (
+            <span className="text-pentra-accent font-mono border border-pentra-accent/30 rounded px-1.5 py-0.5">
+              {engagement.scan_preset}
+            </span>
+          )}
+          {engagement.llm_model && (
+            <span className="font-mono opacity-60">{engagement.llm_model}</span>
+          )}
+          {engagement.started_at && (
+            <span className="opacity-60">
+              Started {new Date(engagement.started_at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Phase pipeline — visible once scan has started */}
@@ -842,16 +870,25 @@ export default function EngagementDetailPage() {
                   label="Critical"
                   value={findings?.filter((f) => f.severity === "critical").length ?? 0}
                   color="var(--critical)"
+                  onClick={() => setTab("findings")}
                 />
                 <StatCard
                   label="High"
                   value={findings?.filter((f) => f.severity === "high").length ?? 0}
                   color="var(--high)"
+                  onClick={() => setTab("findings")}
                 />
                 <StatCard
                   label="Medium"
                   value={findings?.filter((f) => f.severity === "medium").length ?? 0}
                   color="var(--medium)"
+                  onClick={() => setTab("findings")}
+                />
+                <StatCard
+                  label="Low"
+                  value={findings?.filter((f) => f.severity === "low").length ?? 0}
+                  color="#60a5fa"
+                  onClick={() => setTab("findings")}
                 />
                 <StatCard
                   label="Events"
