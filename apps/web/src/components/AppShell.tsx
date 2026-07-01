@@ -2,6 +2,7 @@ import { useState } from "react";
 import { NavLink, useNavigate, useLocation, Outlet } from "react-router-dom";
 import {
   BookOpen,
+  Bug,
   Target,
   ShieldCheck,
   ChevronRight,
@@ -33,6 +34,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: <LayoutDashboard className="h-4 w-4" /> },
   { to: "/engagements", label: "Engagements", icon: <Target className="h-4 w-4" /> },
+  { to: "/findings", label: "Findings", icon: <Bug className="h-4 w-4" /> },
   { to: "/knowledge", label: "Knowledge Base", icon: <BookOpen className="h-4 w-4" /> },
   { to: "/attack-surface", label: "Attack Surface", icon: <Map className="h-4 w-4" /> },
   { to: "/trends", label: "Trends", icon: <BarChart2 className="h-4 w-4" /> },

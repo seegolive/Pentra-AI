@@ -576,7 +576,7 @@ export function DashboardPage() {
           subtitle={`${criticalCount} critical · ${highCount} high`}
           icon={Bug}
           color={criticalCount > 0 ? "text-red-400" : "text-orange-400"}
-          onClick={() => navigate("/engagements")}
+          onClick={() => navigate("/findings")}
         />
         <StatCard
           title="Critical + High"
@@ -648,7 +648,7 @@ export function DashboardPage() {
               Critical &amp; High Findings
             </h2>
             <button
-              onClick={() => navigate("/engagements")}
+              onClick={() => navigate("/findings")}
               className="text-xs text-pentra-text-muted hover:text-pentra-text-secondary transition-colors"
             >
               All findings →
@@ -667,7 +667,7 @@ export function DashboardPage() {
                   finding={f}
                   engagementName={engNameMap[f.engagement_id]}
                   onClick={() =>
-                    navigate(`/engagements/${f.engagement_id}?tab=findings`)
+                    navigate(`/findings?engagement_id=${f.engagement_id}`)
                   }
                 />
               ))

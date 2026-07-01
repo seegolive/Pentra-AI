@@ -8,6 +8,7 @@ import DashboardPage from "./pages/DashboardPage";
 import WorkspacesPage from "./pages/WorkspacesPage";
 import EngagementsPage from "./pages/EngagementsPage";
 import EngagementDetailPage from "./pages/EngagementDetailPage";
+import FindingsPage from "./pages/FindingsPage";
 import KnowledgeBrowser from "./pages/KnowledgeBrowser";
 import KnowledgeInject from "./pages/KnowledgeInject";
 import AdminPage from "./pages/AdminPage";
@@ -39,6 +40,7 @@ function App() {
               <Route path="/workspaces/:workspaceId/engagements" element={<EngagementsPage />} />
               <Route path="/engagements" element={<EngagementsPage />} />
               <Route path="/engagements/:engagementId" element={<EngagementDetailPage />} />
+              <Route path="/findings" element={<FindingsPage />} />
               <Route path="/knowledge" element={<KnowledgeBrowser />} />
               <Route path="/knowledge/inject" element={<KnowledgeInject />} />
               <Route path="/admin" element={<AdminPage />} />
