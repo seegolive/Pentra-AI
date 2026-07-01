@@ -88,6 +88,9 @@ async def lifespan(app: FastAPI):
         await checkpointer.setup()  # creates langgraph checkpoint tables if needed
         init_agent_service(checkpointer=checkpointer)
 
+        # Recover stale engagements from previous crashes (active but no heartbeat)
+        await _recover_stale_engagements()
+
         # Start Redis → WebSocket bridge as a background task
         bridge_task = asyncio.create_task(start_redis_bridge())
 
@@ -156,3 +159,53 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+
+async def _recover_stale_engagements() -> None:
+    """On startup, mark engagements stuck in 'active' as 'failed'.
+
+    This handles the case where the API process was killed mid-scan leaving
+    engagements permanently stuck. Any engagement that has been 'active' for
+    more than 4 hours without completing is considered crashed.
+    """
+    import logging
+    from datetime import datetime, timezone, timedelta
+    from sqlalchemy import select, update
+    from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+    from sqlalchemy.orm import sessionmaker
+    from app.core.config import get_api_settings
+    from app.db.models import EngagementORM
+
+    log = logging.getLogger(__name__)
+    settings = get_api_settings()
+    _STALE_HOURS = 4
+
+    try:
+        engine = create_async_engine(settings.database_url, echo=False, pool_size=1, max_overflow=0)
+        async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(hours=_STALE_HOURS)
+        async with async_session() as db:
+            result = await db.execute(
+                select(EngagementORM).where(
+                    EngagementORM.status == "active",
+                    EngagementORM.started_at < cutoff,
+                )
+            )
+            stale = result.scalars().all()
+            if stale:
+                for eng in stale:
+                    eng.status = "failed"
+                    eng.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                await db.commit()
+                log.warning(
+                    "[startup_recovery] Marked %d stale engagement(s) as failed: %s",
+                    len(stale),
+                    [str(e.id) for e in stale],
+                )
+            else:
+                log.info("[startup_recovery] No stale engagements found")
+
+        await engine.dispose()
+    except Exception as exc:
+        logging.getLogger(__name__).warning("[startup_recovery] Failed (non-fatal): %s", exc)

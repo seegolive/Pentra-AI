@@ -671,6 +671,7 @@ async def _run_nuclei(
     tech_stack: list[str] | None = None,
     tags_override: str | None = None,
     engagement_id: str | None = None,
+    rate_limit: int = 0,
 ) -> list[dict]:
     """Run nuclei with non-destructive templates on in-scope endpoints.
 
@@ -761,8 +762,8 @@ async def _run_nuclei(
 
     (http_findings, http_timed_out), (net_findings, net_timed_out), \
     (dast_findings, dast_timed_out), (headless_findings, _) = await asyncio.gather(
-        _nuclei_scan(nuclei_bin, url_targets, protocol_types=None, timeout=300, extra_tags=_extra_tags, tags_base=tags_override, burp_proxy=_burp_proxy, engagement_id=engagement_id),
-        _nuclei_scan(nuclei_bin, network_targets, protocol_types=["tcp", "javascript"], timeout=120, burp_proxy=_burp_proxy),
+        _nuclei_scan(nuclei_bin, url_targets, protocol_types=None, timeout=300, extra_tags=_extra_tags, tags_base=tags_override, burp_proxy=_burp_proxy, engagement_id=engagement_id, rate_limit=rate_limit),
+        _nuclei_scan(nuclei_bin, network_targets, protocol_types=["tcp", "javascript"], timeout=120, burp_proxy=_burp_proxy, rate_limit=rate_limit),
         _nuclei_dast_scan(nuclei_bin, url_targets, tech_stack=tech_stack, timeout=300, burp_proxy=_burp_proxy),
         _nuclei_headless_scan(nuclei_bin, url_targets, timeout=120, burp_proxy=_burp_proxy),
     )
@@ -1040,6 +1041,7 @@ async def _nuclei_scan(
     tags_base: str | None = None,
     burp_proxy: str | None = None,
     engagement_id: str | None = None,
+    rate_limit: int = 0,
 ) -> tuple[list[dict], bool]:
     """Internal helper: run one nuclei pass and return (findings, timed_out).
 
@@ -1063,6 +1065,7 @@ async def _nuclei_scan(
         "cve,vuln,sqli,xss,lfi,rce,exposure,misconfig,default-login,injection,ssti"
     )
     _all_tags = _BASE_TAGS + ("," + ",".join(extra_tags) if extra_tags else "")
+    _concurrency = "5"
     cmd = [
         nuclei_bin,
         "-severity", "info,low,medium,high,critical",
@@ -1073,11 +1076,17 @@ async def _nuclei_scan(
         "-duc",   # disable update check — avoids lock conflicts on concurrent runs
         "-timeout", "30",   # per-request timeout — must exceed any SLEEP/WAITFOR delay
         "-retries", "1",    # one retry for transient failures
-        "-c", "5",          # lower concurrency: timing attacks need stable measurements
+        "-c", _concurrency, # lower concurrency: timing attacks need stable measurements
         # WAF-bypass headers
         "-H", "X-Forwarded-For: 127.0.0.1",
         "-H", "X-Real-IP: 127.0.0.1",
     ]
+    if rate_limit > 0:
+        # Cap request rate to what the host allows; lower concurrency proportionally
+        # so connection-pool bursts don't bypass the rate limiter.
+        _safe_c = str(max(1, min(5, rate_limit // 4)))
+        cmd += ["-rate-limit", str(rate_limit)]
+        cmd[cmd.index("-c") + 1] = _safe_c
     if protocol_types:
         cmd += ["-pt", ",".join(protocol_types)]
     # Route all nuclei HTTP traffic through Burp when available:
@@ -2696,8 +2705,21 @@ async def _run_llm_burp_active_testing(
                     collaborator_url=collab_url,
                 )
             except Exception as exc:
-                log.warning("[llm_burp] craft_exploit_payloads failed: %s", exc)
-                payloads = []
+                log.warning("[llm_burp] craft_exploit_payloads failed: %s — retrying once", exc)
+                try:
+                    payloads = await llm.craft_exploit_payloads(
+                        url=cand_url,
+                        method=cand_method,
+                        param_name=param_name,
+                        param_location=param_location,
+                        original_value=original_value,
+                        test_types=test_types,
+                        tech_stack=tech_stack,
+                        collaborator_url=collab_url,
+                    )
+                except Exception as exc2:
+                    log.warning("[llm_burp] craft_exploit_payloads retry also failed: %s — using arsenal fallback only", exc2)
+                    payloads = []
     
             # ── ExploitArsenal supplement ─────────────────────────────────────────
             # Merge proven arsenal payloads with LLM payloads so we always have
@@ -2743,6 +2765,7 @@ async def _run_llm_burp_active_testing(
                 log.debug("[llm_burp] ExploitArsenal supplement failed (non-fatal): %s", _ea_exc)
     
             if not payloads:
+                log.warning("[llm_burp] No payloads available for %s[%s] (test_types=%s) — skipping", param_name, param_location, test_types)
                 return  # no payloads to test — exit _test_one
             # For reflection-based tests (XSS, SQLi, SSTI), also test URL-encoded
             # and double-URL-encoded variants to detect WAF bypass opportunities.
@@ -5029,8 +5052,9 @@ async def _active_host_scan(
     try:
         _seq_nuclei = os.getenv("PENTRA_RUN_NUCLEI", "true").lower() == "true"
         _seq_ffuf = os.getenv("PENTRA_RUN_FFUF", "true").lower() == "true"
+        _rl_safe_rps = int(rl_info.get("safe_rps", 0)) if rl_info.get("is_limited") else 0
         results = await asyncio.gather(
-            _run_nuclei(host_endpoints, scope, tech_stack=tech_stack, tags_override=_ACTIVE_TAGS) if _seq_nuclei else _noop_list(),
+            _run_nuclei(host_endpoints, scope, tech_stack=tech_stack, tags_override=_ACTIVE_TAGS, rate_limit=_rl_safe_rps) if _seq_nuclei else _noop_list(),
             _run_ffuf(host_endpoints[:3]) if _seq_ffuf else _noop_list(),
             _run_cors_scan(host_endpoints, scope, auth_credentials),
             _run_csrf_host(host, host_endpoints, scope),

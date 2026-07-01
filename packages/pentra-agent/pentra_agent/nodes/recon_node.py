@@ -474,6 +474,26 @@ async def _run_httpx_probe(subdomains: list[dict]) -> list[dict]:
                         return sub
                 except Exception:
                     continue
+            # TCP socket fallback — catches hosts that block HTTP but have open ports
+            # (e.g. behind WAF/proxy that rejects direct connections, slow TLS handshake)
+            for port, scheme in ((443, "https"), (80, "http")):
+                try:
+                    _reader, _writer = await asyncio.wait_for(
+                        asyncio.open_connection(sub["host"], port),
+                        timeout=5.0,
+                    )
+                    _writer.close()
+                    try:
+                        await _writer.wait_closed()
+                    except Exception:
+                        pass
+                    sub["is_alive"] = True
+                    sub["status_code"] = None
+                    sub["_scheme"] = scheme
+                    log.debug("[recon_node] TCP fallback alive: %s:%d", sub["host"], port)
+                    return sub
+                except Exception:
+                    continue
             return sub
 
         # Probe ALL subdomains in batches of 50 to avoid exhausting connections.

@@ -1467,6 +1467,7 @@ async def _run_agent(eng: EngagementORM) -> None:
     })
 
     _chk_engine = None
+    _timeout_hours = float(os.environ.get("PENTRA_SCAN_TIMEOUT_HOURS", "8"))
     try:
         # One shared session factory for cross-worker cancellation checks (one query per node)
         from sqlalchemy.ext.asyncio import AsyncSession as _AS, create_async_engine as _cae
@@ -1494,32 +1495,34 @@ async def _run_agent(eng: EngagementORM) -> None:
         graph = agent_service.graph
         config = {"configurable": {"thread_id": engagement_id}}
 
-        async for event in graph.astream_events(initial_state, config=config, version="v2"):
-            kind = event.get("event", "")
-            name = event.get("name", "")
+        _timeout_secs = _timeout_hours * 3600
+        async with asyncio.timeout(_timeout_secs):
+            async for event in graph.astream_events(initial_state, config=config, version="v2"):
+                kind = event.get("event", "")
+                name = event.get("name", "")
 
-            if kind == "on_chain_start" and name not in ("LangGraph", "__start__"):
-                await ws_manager.broadcast(engagement_id, {
-                    "type": "agent_step",
-                    "message": f"▶ {name}",
-                    "timestamp": _ts(),
-                })
-            elif kind == "on_chain_end" and name not in ("LangGraph", "__end__"):
-                data = event.get("data", {})
-                output = data.get("output", {})
-                phase = output.get("current_phase", "") if isinstance(output, dict) else ""
-                msg = f"✓ {name}" + (f" → {phase}" if phase else "")
-                await ws_manager.broadcast(engagement_id, {
-                    "type": "agent_step",
-                    "message": msg,
-                    "timestamp": _ts(),
-                })
-                # Check DB status at each node boundary — handles cross-worker cancellation
-                # where task.cancel() in stop_engagement can't reach us (different process)
-                async with _chk_session() as _cs:
-                    _ce = await _cs.get(EngagementORM, uuid.UUID(engagement_id))
-                    if _ce and _ce.status == "cancelled":
-                        raise _EngagementCancelled()
+                if kind == "on_chain_start" and name not in ("LangGraph", "__start__"):
+                    await ws_manager.broadcast(engagement_id, {
+                        "type": "agent_step",
+                        "message": f"▶ {name}",
+                        "timestamp": _ts(),
+                    })
+                elif kind == "on_chain_end" and name not in ("LangGraph", "__end__"):
+                    data = event.get("data", {})
+                    output = data.get("output", {})
+                    phase = output.get("current_phase", "") if isinstance(output, dict) else ""
+                    msg = f"✓ {name}" + (f" → {phase}" if phase else "")
+                    await ws_manager.broadcast(engagement_id, {
+                        "type": "agent_step",
+                        "message": msg,
+                        "timestamp": _ts(),
+                    })
+                    # Check DB status at each node boundary — handles cross-worker cancellation
+                    # where task.cancel() in stop_engagement can't reach us (different process)
+                    async with _chk_session() as _cs:
+                        _ce = await _cs.get(EngagementORM, uuid.UUID(engagement_id))
+                        if _ce and _ce.status == "cancelled":
+                            raise _EngagementCancelled()
         # After astream_events loop — check if the graph is paused at an interrupt
         config = {"configurable": {"thread_id": engagement_id}}
         graph_state = await graph.aget_state(config)
@@ -1581,6 +1584,28 @@ async def _run_agent(eng: EngagementORM) -> None:
         await ws_manager.broadcast(engagement_id, {
             "type": "agent_cancelled",
             "message": "⛔ Engagement cancelled",
+            "timestamp": _ts(),
+        })
+    except TimeoutError:
+        log.error("[_run_agent] Scan timeout (%.1fh) for %s — marking failed", _timeout_hours, engagement_id)
+        try:
+            from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+            from sqlalchemy.orm import sessionmaker as _sm
+            from app.core.config import get_api_settings as _get_s
+            _engine_t = create_async_engine(_get_s().database_url, echo=False)
+            _asession_t = _sm(_engine_t, class_=AsyncSession, expire_on_commit=False)
+            async with _asession_t() as _sess_t:
+                _eng_t = await _sess_t.get(EngagementORM, uuid.UUID(engagement_id))
+                if _eng_t and _eng_t.status not in ("completed", "awaiting_approval", "cancelled"):
+                    _eng_t.status = "failed"
+                    _eng_t.completed_at = datetime.now(UTC).replace(tzinfo=None)
+                    await _sess_t.commit()
+            await _engine_t.dispose()
+        except Exception:  # noqa: BLE001
+            pass
+        await ws_manager.broadcast(engagement_id, {
+            "type": "error",
+            "message": f"❌ Scan timed out after {_timeout_hours:.0f}h",
             "timestamp": _ts(),
         })
     except Exception as exc:  # noqa: BLE001
