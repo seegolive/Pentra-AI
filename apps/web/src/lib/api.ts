@@ -19,7 +19,6 @@ import type {
   EngagementCreate,
   Finding,
   FindingStatus,
-  FindingWithEngagement,
   PaginatedFindings,
   FindingFilters,
   HitlDecision,
