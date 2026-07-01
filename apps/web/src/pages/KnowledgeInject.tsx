@@ -40,7 +40,7 @@ const SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"];
 type Tab = "url" | "file" | "manual";
 
 const inputCls =
-  "w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent";
+  "w-full rounded-md border border-pentra-border bg-pentra-bg-input px-3 py-2 text-sm text-pentra-text-primary placeholder:text-pentra-text-muted focus:outline-none focus:ring-1 focus:ring-pentra-border-focus focus:border-transparent";
 
 // ── Success state ─────────────────────────────────────────────────────────────
 
@@ -49,15 +49,15 @@ function SuccessPanel({ id, message, onReset }: { id: string; message: string; o
   return (
     <div className="flex flex-col items-center justify-center gap-4 py-16 text-center">
       <CheckCircle2 className="h-12 w-12 text-green-500" />
-      <p className="text-base font-semibold text-foreground">{message}</p>
-      <p className="text-xs text-muted-foreground font-mono">Record ID: {id}</p>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-base font-semibold text-pentra-text-primary">{message}</p>
+      <p className="text-xs text-pentra-text-muted font-mono">Record ID: {id}</p>
+      <p className="text-xs text-pentra-text-muted">
         The worker will embed and index this record within the next hourly cycle.
       </p>
       <div className="flex gap-3 mt-2">
         <button
           onClick={onReset}
-          className="px-4 py-2 rounded-md border border-border text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          className="px-4 py-2 rounded-md border border-pentra-border text-sm text-pentra-text-muted hover:text-pentra-text-primary hover:bg-pentra-bg-hover transition-colors"
         >
           Inject another
         </button>
@@ -94,11 +94,11 @@ function UrlTab() {
       }}
       className="space-y-4"
     >
-      <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-pentra-text-muted">
         Paste the URL of a write-up, blog post, or H1 disclosure. Pentra AI will fetch and extract its content.
       </p>
       <div>
-        <label className="block text-xs font-medium text-muted-foreground mb-1">
+        <label className="block text-xs font-medium text-pentra-text-muted mb-1">
           URL <span className="text-red-400">*</span>
         </label>
         <input
@@ -112,14 +112,14 @@ function UrlTab() {
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Vuln Class</label>
+          <label className="block text-xs font-medium text-pentra-text-muted mb-1">Vuln Class</label>
           <select value={vulnClass} onChange={(e) => setVulnClass(e.target.value)} className={inputCls}>
             {VULN_CLASSES.map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">
-            Tags <span className="text-muted-foreground/50">(comma-separated)</span>
+          <label className="block text-xs font-medium text-pentra-text-muted mb-1">
+            Tags <span className="text-pentra-text-muted/50">(comma-separated)</span>
           </label>
           <input
             value={tags}
@@ -180,7 +180,7 @@ function FileTab() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-pentra-text-muted">
         Upload a Markdown or plain-text write-up (max 5 MB). PDF support requires <code>pypdf</code> installed.
       </p>
 
@@ -192,7 +192,7 @@ function FileTab() {
         onClick={() => fileRef.current?.click()}
         className={cn(
           "border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors",
-          dragOver ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/50",
+          dragOver ? "border-pentra-accent bg-pentra-accent/5" : "border-pentra-border hover:border-pentra-border-light",
         )}
       >
         <input
@@ -203,12 +203,12 @@ function FileTab() {
           onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
         />
         {selectedFile ? (
-          <div className="text-sm text-foreground">
+          <div className="text-sm text-pentra-text-primary">
             <p className="font-medium">{selectedFile.name}</p>
-            <p className="text-xs text-muted-foreground mt-1">{(selectedFile.size / 1024).toFixed(1)} KB</p>
+            <p className="text-xs text-pentra-text-muted mt-1">{(selectedFile.size / 1024).toFixed(1)} KB</p>
           </div>
         ) : (
-          <div className="text-muted-foreground">
+          <div className="text-pentra-text-muted">
             <Upload className="h-8 w-8 mx-auto mb-2 opacity-40" />
             <p className="text-sm">Drop file here or click to browse</p>
             <p className="text-xs mt-1 opacity-60">.md, .txt, .pdf</p>
@@ -218,14 +218,14 @@ function FileTab() {
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Vuln Class</label>
+          <label className="block text-xs font-medium text-pentra-text-muted mb-1">Vuln Class</label>
           <select value={vulnClass} onChange={(e) => setVulnClass(e.target.value)} className={inputCls}>
             {VULN_CLASSES.map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">
-            Tags <span className="text-muted-foreground/50">(comma-separated)</span>
+          <label className="block text-xs font-medium text-pentra-text-muted mb-1">
+            Tags <span className="text-pentra-text-muted/50">(comma-separated)</span>
           </label>
           <input
             value={tags}
@@ -297,53 +297,53 @@ function ManualTab() {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="block text-xs font-medium text-muted-foreground mb-1">Title <span className="text-red-400">*</span></label>
+        <label className="block text-xs font-medium text-pentra-text-muted mb-1">Title <span className="text-red-400">*</span></label>
         <input required value={title} onChange={(e) => setTitle(e.target.value)}
           placeholder="e.g. IDOR on HackerOne via user_id parameter"
           className={inputCls} />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Vuln Class</label>
+          <label className="block text-xs font-medium text-pentra-text-muted mb-1">Vuln Class</label>
           <select value={vulnClass} onChange={(e) => setVulnClass(e.target.value as VulnClass)} className={inputCls}>
             {VULN_CLASSES.map((v) => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Severity</label>
+          <label className="block text-xs font-medium text-pentra-text-muted mb-1">Severity</label>
           <select value={severity} onChange={(e) => setSeverity(e.target.value as Severity)} className={inputCls}>
             {SEVERITIES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
       </div>
       <div>
-        <label className="block text-xs font-medium text-muted-foreground mb-1">Write-up / Raw Text <span className="text-red-400">*</span></label>
+        <label className="block text-xs font-medium text-pentra-text-muted mb-1">Write-up / Raw Text <span className="text-red-400">*</span></label>
         <textarea required rows={5} value={rawText} onChange={(e) => setRawText(e.target.value)}
           placeholder="Paste the full vulnerability description, steps, or write-up…"
           className={cn(inputCls, "resize-y")} />
       </div>
       <div>
-        <label className="block text-xs font-medium text-muted-foreground mb-1">Key Insight <span className="opacity-50 text-[10px]">(optional — LLM fills if empty)</span></label>
+        <label className="block text-xs font-medium text-pentra-text-muted mb-1">Key Insight <span className="opacity-50 text-[10px]">(optional — LLM fills if empty)</span></label>
         <input value={keyInsight} onChange={(e) => setKeyInsight(e.target.value)}
           placeholder="What makes this non-obvious?" className={inputCls} />
       </div>
       <div>
-        <label className="block text-xs font-medium text-muted-foreground mb-1">Attack Technique</label>
+        <label className="block text-xs font-medium text-pentra-text-muted mb-1">Attack Technique</label>
         <input value={technique} onChange={(e) => setTechnique(e.target.value)}
           placeholder="e.g. Horizontal privilege escalation via predictable UUID" className={inputCls} />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Tech Stack</label>
+          <label className="block text-xs font-medium text-pentra-text-muted mb-1">Tech Stack</label>
           <input value={techStack} onChange={(e) => setTechStack(e.target.value)} placeholder="rails, postgresql" className={inputCls} />
         </div>
         <div>
-          <label className="block text-xs font-medium text-muted-foreground mb-1">Tags</label>
+          <label className="block text-xs font-medium text-pentra-text-muted mb-1">Tags</label>
           <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="api, jwt, bypass" className={inputCls} />
         </div>
       </div>
       <div>
-        <label className="block text-xs font-medium text-muted-foreground mb-1">Source URL</label>
+        <label className="block text-xs font-medium text-pentra-text-muted mb-1">Source URL</label>
         <input type="url" value={url} onChange={(e) => setUrl(e.target.value)}
           placeholder="https://hackerone.com/reports/123456" className={inputCls} />
       </div>
@@ -376,18 +376,18 @@ export default function KnowledgeInject() {
   const [activeTab, setActiveTab] = useState<Tab>("url");
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-background">
+    <div className="flex flex-col h-screen overflow-hidden bg-pentra-bg-void">
       {/* Header */}
-      <header className="shrink-0 border-b border-border bg-card/50 backdrop-blur px-6 py-3 flex items-center gap-3">
+      <header className="shrink-0 border-b border-pentra-border bg-pentra-bg-card/50 backdrop-blur px-6 py-3 flex items-center gap-3">
         <button
           onClick={() => navigate("/knowledge")}
-          className="text-muted-foreground hover:text-foreground transition-colors"
+          className="text-pentra-text-muted hover:text-pentra-text-primary transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
         </button>
-        <Database className="h-5 w-5 text-primary shrink-0" />
-        <span className="font-semibold text-foreground text-sm">Inject Knowledge Record</span>
-        <span className="text-muted-foreground text-xs hidden sm:block">
+        <Database className="h-5 w-5 text-pentra-accent shrink-0" />
+        <span className="font-semibold text-pentra-text-primary text-sm">Inject Knowledge Record</span>
+        <span className="text-pentra-text-muted text-xs hidden sm:block">
           — Add write-ups, techniques, and CVEs to the knowledge base
         </span>
       </header>
@@ -396,7 +396,7 @@ export default function KnowledgeInject() {
       <div className="flex-1 overflow-y-auto flex justify-center py-8 px-4">
         <div className="w-full max-w-2xl">
           {/* Tab switcher */}
-          <div className="flex gap-1 bg-muted rounded-lg p-1 mb-6">
+          <div className="flex gap-1 bg-pentra-bg-panel rounded-lg p-1 mb-6">
             {TABS.map((t) => (
               <button
                 key={t.key}
@@ -405,8 +405,8 @@ export default function KnowledgeInject() {
                 className={cn(
                   "flex-1 flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                   activeTab === t.key
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground",
+                    ? "bg-pentra-bg-card text-pentra-text-primary shadow-sm"
+                    : "text-pentra-text-muted hover:text-pentra-text-secondary",
                 )}
               >
                 {t.icon}
@@ -416,7 +416,7 @@ export default function KnowledgeInject() {
           </div>
 
           {/* Tab content */}
-          <div className="bg-card border border-border rounded-xl p-6">
+          <div className="bg-pentra-bg-card border border-pentra-border rounded-xl p-6">
             {activeTab === "url" && <UrlTab />}
             {activeTab === "file" && <FileTab />}
             {activeTab === "manual" && <ManualTab />}
