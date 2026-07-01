@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Bug,
   BookMarked,
@@ -21,6 +22,7 @@ import {
 import type { GeneratedPayload } from "../../lib/api";
 import type {
   Finding,
+  FindingWithEngagement,
   FindingStatus,
   Severity,
 } from "../../lib/types";
@@ -32,8 +34,9 @@ type SortField = "severity" | "title" | "vuln_class" | "status" | "cvss_score";
 type SortDir = "asc" | "desc";
 
 interface FindingsTableProps {
-  engagementId: string;
-  findings: Finding[];
+  engagementId?: string;
+  findings: Finding[] | FindingWithEngagement[];
+  showEngagementColumn?: boolean;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -515,7 +518,11 @@ function Th({
 
 // ── Main component ─────────────────────────────────────────────────────────────
 
-export function FindingsTable({ engagementId, findings }: FindingsTableProps) {
+export function FindingsTable({
+  engagementId,
+  findings,
+  showEngagementColumn = false,
+}: FindingsTableProps) {
   const [sortField, setSortField] = useState<SortField>("severity");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [filterSeverity, setFilterSeverity] = useState<string>("all");
@@ -621,6 +628,11 @@ export function FindingsTable({ engagementId, findings }: FindingsTableProps) {
                 <Th field="status" className="w-36" sortField={sortField} sortDir={sortDir} onSort={toggleSort}>
                   Status
                 </Th>
+                {showEngagementColumn && (
+                  <th className="px-3 py-2 text-left text-[11px] font-medium text-muted-foreground whitespace-nowrap w-40">
+                    Engagement
+                  </th>
+                )}
                 <Th field="cvss_score" className="w-20" sortField={sortField} sortDir={sortDir} onSort={toggleSort}>
                   CVSS
                 </Th>
@@ -693,9 +705,24 @@ export function FindingsTable({ engagementId, findings }: FindingsTableProps) {
                       >
                         <StatusSelect
                           finding={finding}
-                          engagementId={engagementId}
+                          engagementId={engagementId ?? (finding as FindingWithEngagement).engagement_id ?? ""}
                         />
                       </td>
+
+                      {/* Engagement column — global view only */}
+                      {showEngagementColumn && (
+                        <td
+                          className="px-3 py-2"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <Link
+                            to={`/engagements/${(finding as FindingWithEngagement).engagement_id}`}
+                            className="text-xs text-primary hover:underline truncate max-w-[140px] block"
+                          >
+                            {(finding as FindingWithEngagement).engagement_name ?? "—"}
+                          </Link>
+                        </td>
+                      )}
 
                       {/* CVSS */}
                       <td className="px-3 py-2 text-xs font-mono text-muted-foreground">
@@ -749,7 +776,7 @@ export function FindingsTable({ engagementId, findings }: FindingsTableProps) {
                     {/* Expanded detail row */}
                     {isExpanded && (
                       <tr key={`${finding.id}-detail`} className="bg-muted/5">
-                        <td colSpan={6} className="p-0">
+                        <td colSpan={showEngagementColumn ? 7 : 6} className="p-0">
                           <ExpandedDetail finding={finding} />
                         </td>
                       </tr>
@@ -758,7 +785,7 @@ export function FindingsTable({ engagementId, findings }: FindingsTableProps) {
                     {/* KB submit panel row */}
                     {isKB && (
                       <tr key={`${finding.id}-kb`}>
-                        <td colSpan={6} className="p-0">
+                        <td colSpan={showEngagementColumn ? 7 : 6} className="p-0">
                           <SubmitKBPanel
                             findingId={finding.id}
                             findingTitle={finding.title}
@@ -771,7 +798,7 @@ export function FindingsTable({ engagementId, findings }: FindingsTableProps) {
                     {/* Payload panel row */}
                     {isPayload && (
                       <tr key={`${finding.id}-payload`}>
-                        <td colSpan={6} className="p-0">
+                        <td colSpan={showEngagementColumn ? 7 : 6} className="p-0">
                           <PayloadPanel
                             finding={finding}
                             onClose={() => setPayloadFinding(null)}
