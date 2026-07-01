@@ -5,10 +5,15 @@ import type { Severity, VulnClass, SearchFilters } from "../lib/types";
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"];
 
 const VULN_CLASSES: VulnClass[] = [
-  "sqli", "xss", "ssrf", "idor", "rce", "lfi", "xxe",
-  "auth_bypass", "privilege_escalation", "info_disclosure",
-  "csrf", "open_redirect", "ssti", "path_traversal",
-  "race_condition", "business_logic", "misconfig", "dos", "other",
+  "idor", "bola", "privilege_escalation",
+  "sqli", "xss_stored", "xss_reflected", "xss_dom",
+  "xxe", "ssti", "cmdi",
+  "auth_bypass", "jwt_issues", "oauth_misconfig",
+  "ssrf", "path_traversal", "rce", "deserialization",
+  "race_condition", "mass_assignment",
+  "pii_exposure", "api_key_leak",
+  "subdomain_takeover", "cloud_misconfig", "cors",
+  "dos", "open_redirect", "other",
 ];
 
 interface FilterPanelProps {

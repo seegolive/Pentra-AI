@@ -31,7 +31,7 @@ router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 
 @router.get("/search", response_model=SearchResponse)
 async def search_knowledge(
-    q: str = Query(..., min_length=1, max_length=1000, description="Search query"),
+    q: str = Query(default="", min_length=0, max_length=1000, description="Search query (optional when filters provided)"),
     vuln_class: list[VulnClass] | None = Query(default=None),
     severity: list[Severity] | None = Query(default=None),
     tech_stack: list[str] | None = Query(default=None),

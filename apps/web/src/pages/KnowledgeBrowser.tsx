@@ -32,9 +32,14 @@ export default function KnowledgeBrowser() {
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const hasActiveFilters =
+    filters.severity.length > 0 ||
+    filters.vuln_class.length > 0 ||
+    filters.tech_stack.length > 0;
+
   const { data: results, isLoading, isError, error } = useKnowledgeSearch(
     { q: submittedQuery, ...filters },
-    submittedQuery.trim().length > 0,
+    submittedQuery.trim().length > 0 || hasActiveFilters,
   );
 
   // Debounced live search — fires 400 ms after user stops typing (≥2 chars)
@@ -160,8 +165,8 @@ export default function KnowledgeBrowser() {
 
         {/* Results area */}
         <main className="flex-1 overflow-y-auto p-4">
-          {/* Initial empty state — no query yet */}
-          {!query && (
+          {/* Initial empty state — no query and no filters */}
+          {!query && !hasActiveFilters && (
             <div className="flex flex-col items-center justify-center h-full gap-4 text-pentra-text-muted">
               <Search className="h-10 w-10 opacity-20" />
               <div className="text-center">
@@ -183,8 +188,8 @@ export default function KnowledgeBrowser() {
             </div>
           )}
 
-          {/* Typing — fewer than 2 chars */}
-          {query.trim().length > 0 && query.trim().length < 2 && !submittedQuery && (
+          {/* Typing — fewer than 2 chars, no active filters */}
+          {query.trim().length > 0 && query.trim().length < 2 && !submittedQuery && !hasActiveFilters && (
             <div className="flex items-center justify-center h-40 text-pentra-text-muted text-sm opacity-60">
               Type at least 2 characters…
             </div>

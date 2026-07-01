@@ -23,24 +23,61 @@ export const SEVERITY_DOT: Record<Severity, string> = {
 };
 
 export const VULN_CLASS_LABELS: Record<VulnClass, string> = {
-  sqli:                 "SQLi",
-  xss:                  "XSS",
-  ssrf:                 "SSRF",
+  // Access control
   idor:                 "IDOR",
-  rce:                  "RCE",
-  lfi:                  "LFI",
-  xxe:                  "XXE",
-  auth_bypass:          "Auth Bypass",
+  bola:                 "BOLA",
+  bfla:                 "BFLA",
   privilege_escalation: "Priv Esc",
-  info_disclosure:      "Info Disclosure",
-  csrf:                 "CSRF",
-  open_redirect:        "Open Redirect",
+  // Injection
+  sqli:                 "SQLi",
+  xss_stored:           "XSS (Stored)",
+  xss_reflected:        "XSS (Reflected)",
+  xss_dom:              "XSS (DOM)",
+  mxss:                 "mXSS",
+  xxe:                  "XXE",
   ssti:                 "SSTI",
+  cmdi:                 "Cmd Injection",
+  // Auth
+  auth_bypass:          "Auth Bypass",
+  session:              "Session",
+  oauth_misconfig:      "OAuth Misconfig",
+  jwt_issues:           "JWT Issues",
+  // Server-side
+  ssrf:                 "SSRF",
   path_traversal:       "Path Traversal",
+  rce:                  "RCE",
+  deserialization:      "Deserialization",
+  // Logic / API
   race_condition:       "Race Condition",
-  business_logic:       "Business Logic",
-  misconfig:            "Misconfig",
+  mass_assignment:      "Mass Assignment",
+  param_pollution:      "Param Pollution",
+  workflow_bypass:      "Workflow Bypass",
+  // Info disclosure
+  api_key_leak:         "API Key Leak",
+  pii_exposure:         "PII Exposure",
+  debug_info:           "Debug Info",
+  source_code:          "Source Code",
+  // Infrastructure
+  subdomain_takeover:   "Subdomain Takeover",
+  cache_poisoning:      "Cache Poisoning",
+  cloud_misconfig:      "Cloud Misconfig",
+  cors:                 "CORS",
+  // GraphQL
+  introspection:        "GraphQL Introspection",
+  query_depth:          "Query Depth",
+  batch_abuse:          "Batch Abuse",
+  field_suggestion:     "Field Suggestion",
+  // Other
   dos:                  "DoS",
+  open_redirect:        "Open Redirect",
+  // Memory corruption
+  buffer_overflow:      "Buffer Overflow",
+  use_after_free:       "Use-After-Free",
+  integer_overflow:     "Int Overflow",
+  // Crypto
+  weak_algo:            "Weak Algo",
+  padding_oracle:       "Padding Oracle",
+  timing_attack:        "Timing Attack",
   other:                "Other",
 };
 

@@ -128,10 +128,30 @@ describe('SEVERITY_DOT', () => {
 
 describe('VULN_CLASS_LABELS', () => {
   const expectedKeys: VulnClass[] = [
-    'sqli', 'xss', 'ssrf', 'idor', 'rce', 'lfi', 'xxe',
-    'auth_bypass', 'privilege_escalation', 'info_disclosure',
-    'csrf', 'open_redirect', 'ssti', 'path_traversal',
-    'race_condition', 'business_logic', 'misconfig', 'dos', 'other',
+    // Access control
+    'idor', 'bola', 'bfla', 'privilege_escalation',
+    // Injection
+    'sqli', 'xss_stored', 'xss_reflected', 'xss_dom', 'mxss',
+    'xxe', 'ssti', 'cmdi',
+    // Auth
+    'auth_bypass', 'session', 'oauth_misconfig', 'jwt_issues',
+    // Server-side
+    'ssrf', 'path_traversal', 'rce', 'deserialization',
+    // Logic / API
+    'race_condition', 'mass_assignment', 'param_pollution', 'workflow_bypass',
+    // Info disclosure
+    'api_key_leak', 'pii_exposure', 'debug_info', 'source_code',
+    // Infrastructure
+    'subdomain_takeover', 'cache_poisoning', 'cloud_misconfig', 'cors',
+    // GraphQL
+    'introspection', 'query_depth', 'batch_abuse', 'field_suggestion',
+    // Other
+    'dos', 'open_redirect',
+    // Memory corruption
+    'buffer_overflow', 'use_after_free', 'integer_overflow',
+    // Crypto
+    'weak_algo', 'padding_oracle', 'timing_attack',
+    'other',
   ]
 
   it('has a label for every known VulnClass', () => {

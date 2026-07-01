@@ -92,7 +92,8 @@ export interface SearchParams extends Partial<SearchFilters> {
 }
 
 async function fetchSearch(params: SearchParams): Promise<SearchResponse> {
-  const qp = new URLSearchParams({ q: params.q });
+  const qp = new URLSearchParams();
+  if (params.q) qp.set("q", params.q);
   if (params.top_k) qp.set("top_k", String(params.top_k));
   params.vuln_class?.forEach((v: VulnClass) => qp.append("vuln_class", v));
   params.severity?.forEach((s: Severity) => qp.append("severity", s));
@@ -105,7 +106,7 @@ export function useKnowledgeSearch(params: SearchParams, enabled = true) {
   return useQuery<SearchResponse, Error, KnowledgeSummary[]>({
     queryKey: ["knowledge", "search", params],
     queryFn: () => fetchSearch(params),
-    enabled: enabled && params.q.trim().length > 0,
+    enabled,
     staleTime: 30_000,
     select: (data) => data.results,
   });

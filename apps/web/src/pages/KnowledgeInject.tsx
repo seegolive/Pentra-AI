@@ -29,10 +29,19 @@ import { cn } from "../lib/utils";
 import type { Severity, VulnClass } from "../lib/types";
 
 const VULN_CLASSES: VulnClass[] = [
-  "sqli", "xss", "ssrf", "idor", "rce", "lfi", "xxe", "auth_bypass",
-  "privilege_escalation", "info_disclosure", "csrf", "open_redirect",
-  "ssti", "path_traversal", "race_condition", "business_logic", "misconfig",
-  "dos", "other",
+  "idor", "bola", "bfla", "privilege_escalation",
+  "sqli", "xss_stored", "xss_reflected", "xss_dom", "mxss",
+  "xxe", "ssti", "cmdi",
+  "auth_bypass", "session", "oauth_misconfig", "jwt_issues",
+  "ssrf", "path_traversal", "rce", "deserialization",
+  "race_condition", "mass_assignment", "param_pollution", "workflow_bypass",
+  "api_key_leak", "pii_exposure", "debug_info", "source_code",
+  "subdomain_takeover", "cache_poisoning", "cloud_misconfig", "cors",
+  "introspection", "query_depth", "batch_abuse", "field_suggestion",
+  "dos", "open_redirect",
+  "buffer_overflow", "use_after_free", "integer_overflow",
+  "weak_algo", "padding_oracle", "timing_attack",
+  "other",
 ];
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low", "info"];

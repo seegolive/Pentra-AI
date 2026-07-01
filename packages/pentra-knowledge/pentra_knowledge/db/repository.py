@@ -366,15 +366,16 @@ class KnowledgeRepository:
         words = list(dict.fromkeys(re.findall(r"[a-zA-Z0-9]{3,}", query)))[:8]
 
         if not words:
-            # Fallback: return most recent high-quality records
-            stmt = (
-                select(KnowledgeRecordORM)
-                .order_by(
-                    KnowledgeRecordORM.quality_score.desc(),
-                    KnowledgeRecordORM.ingested_at.desc(),
-                )
-                .limit(limit)
-            )
+            # Filter-only mode: apply metadata filters, order by quality
+            stmt = select(KnowledgeRecordORM)
+            if vuln_class:
+                stmt = stmt.where(KnowledgeRecordORM.vuln_class.in_(vuln_class))
+            if severity:
+                stmt = stmt.where(KnowledgeRecordORM.severity.in_(severity))
+            stmt = stmt.order_by(
+                KnowledgeRecordORM.quality_score.desc(),
+                KnowledgeRecordORM.ingested_at.desc(),
+            ).limit(limit)
             result = await self._db.execute(stmt)
             return [_orm_to_schema(row) for row in result.scalars().all()]
 

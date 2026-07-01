@@ -162,6 +162,16 @@ async def hybrid_search(
         settings.knowledge_search_max_top_k,
     )
 
+    # Filter-only mode: skip vector search when query is empty
+    if not query or not query.strip():
+        return await repo.full_text_search(
+            "",
+            vuln_class=vuln_class,
+            severity=severity,
+            tech_stack=tech_stack,
+            limit=effective_top_k,
+        )
+
     # 1. Embed the query
     embedding = await embed(query)
 
