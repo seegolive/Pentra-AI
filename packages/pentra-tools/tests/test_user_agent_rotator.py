@@ -1,6 +1,5 @@
 """Tests for UserAgent rotation module."""
 from __future__ import annotations
-import pytest
 
 
 def test_ua_list_has_15_or_more_entries():
