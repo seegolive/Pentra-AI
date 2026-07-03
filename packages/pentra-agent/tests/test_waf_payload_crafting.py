@@ -102,3 +102,28 @@ async def test_craft_exploit_payloads_blocking_waf_adds_evasion_instruction(clie
     assert captured
     # Must include WAF-specific blocking indicator, not just static RULE 3 text
     assert "ACTIVE WAF BLOCKING" in captured[0] or "akamai" in captured[0].lower()
+
+
+@pytest.mark.asyncio
+async def test_craft_exploit_payloads_unknown_waf_type_uses_generic_fallback(client):
+    """Unknown waf_type should produce a generic hint, not raise."""
+    captured: list[str] = []
+
+    async def capture(system, user):
+        captured.append(system)
+        return []
+
+    with patch.object(client, "complete_json", new=capture):
+        await client.craft_exploit_payloads(
+            url="http://target.com/",
+            method="GET",
+            param_name="q",
+            param_location="query",
+            original_value="x",
+            test_types=["sqli"],
+            tech_stack=[],
+            waf_info={"waf_type": "unknownwaf9000", "is_blocking": False,
+                      "bypass_strategies": [], "safe_rps": 10},
+        )
+    assert captured
+    assert "unknownwaf9000" in captured[0].lower() or "generic" in captured[0].lower()

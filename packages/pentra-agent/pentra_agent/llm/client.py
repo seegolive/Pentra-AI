@@ -815,6 +815,23 @@ class LLMClient:
                     "ModSecurity: use comment splitting, scientific notation (`1e0 UNION`), "
                     "multiline SQL, double URL encoding. Avoid: PARANOIA level 3+ patterns."
                 ),
+                "barracuda": (
+                    "Barracuda WAF: use URL parameter pollution, JSON body with array values, "
+                    "HTTP verb tampering (PATCH/OPTIONS), double URL encoding. Avoid: known OWASP CRS patterns."
+                ),
+                "sucuri": (
+                    "Sucuri WAF: use whitespace variants (tabs, newlines in SQL), "
+                    "comment-based splitting (`SEL/**/ECT`), case variation. "
+                    "Avoid: standard XSS/SQLi signatures."
+                ),
+                "azure_frontdoor": (
+                    "Azure Front Door WAF: use HTTP pipeline smuggling variants, "
+                    "JSON-encoded payloads in query params, hex encoding. Avoid: OWASP CRS SQLi/XSS default rules."
+                ),
+                "fortiweb": (
+                    "FortiWeb WAF: use parameter pollution, multipart encoding tricks, "
+                    "Unicode normalization (`ｓｅｌｅｃｔ`), SQL comment variants. Avoid: AND/OR without obfuscation."
+                ),
             }
             _type_hint = _waf_hints.get(
                 _waf_type.lower(),
