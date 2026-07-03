@@ -47,6 +47,32 @@ function processEvent(
       engagementId,
     });
   }
+  if (event.type === "subscan_started") {
+    const target = (event.data as Record<string, unknown>)?.["target"] as string | undefined;
+    addNotification({
+      type: "FINDING_CONFIRMED",
+      title: "Subscan Started",
+      description: target ? `Scanning ${target}` : "Subscan running…",
+      engagementId,
+    });
+  }
+  if (event.type === "subscan_complete") {
+    const found = (event.data as Record<string, unknown>)?.["findings_count"] as number | undefined;
+    addNotification({
+      type: "ENGAGEMENT_COMPLETED",
+      title: "Subscan Complete",
+      description: found !== undefined ? `${found} finding(s) found` : "Subscan finished",
+      engagementId,
+    });
+  }
+  if (event.type === "subscan_error") {
+    addNotification({
+      type: "AGENT_ERROR",
+      title: "Subscan Failed",
+      description: event.message ?? "Subscan encountered an error",
+      engagementId,
+    });
+  }
   if (event.type !== "ping") {
     setEvents((prev) => [event, ...prev].slice(0, MAX_EVENTS));
   }

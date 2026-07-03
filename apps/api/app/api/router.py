@@ -435,6 +435,37 @@ async def update_engagement_mode(
 
 
 @router.patch(
+    "/engagements/{engagement_id}/tool_config",
+    summary="Update per-engagement tool configuration",
+)
+async def update_tool_config(
+    engagement_id: UUID,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: UserORM = Depends(get_current_user),
+) -> dict:
+    """Merge *body* into the engagement's tool_config.
+
+    Accepted keys: run_nuclei (bool), run_ffuf (bool), run_burp_scan (bool),
+    nuclei_timeout (int), concurrent_candidates (int), max_candidates (int),
+    max_payloads (int), crawl_pages (int), payload_pacing (float).
+    """
+    eng = await db.get(EngagementORM, engagement_id)
+    if eng is None:
+        raise HTTPException(status_code=404, detail="Engagement not found")
+
+    allowed_keys = {
+        "run_nuclei", "run_ffuf", "run_burp_scan", "run_soap_xxe", "run_csrf",
+        "nuclei_timeout", "concurrent_candidates", "max_candidates",
+        "max_payloads", "crawl_pages", "payload_pacing",
+    }
+    patch = {k: v for k, v in body.items() if k in allowed_keys}
+    eng.tool_config = {**(eng.tool_config or {}), **patch}
+    await db.commit()
+    return {"status": "updated", "tool_config": eng.tool_config}
+
+
+@router.patch(
     "/engagements/{engagement_id}/stop",
     summary="Stop engagement",
     description="Cancel a running engagement. Kills the background agent task and sets status to 'cancelled'.",
@@ -580,19 +611,23 @@ async def get_recon_state(
     except Exception as _gs_exc:
         log.debug("[recon_state] Could not read graph state: %s", _gs_exc)
 
-    # Build findings count per subdomain host
+    # Build findings count per subdomain host using a single SQL aggregate query
     host_finding_counts: dict[str, int] = {}
     if subdomains_raw:
         hosts = [s.get("host", "") for s in subdomains_raw if s.get("host")]
         if hosts:
-            # Count findings whose target_url contains the host
-            findings_result = await db.execute(
-                select(FindingORM.target_url)
+            from sqlalchemy import case as sa_case
+            counts_result = await db.execute(
+                select(FindingORM.target_url, func.count(FindingORM.id))
                 .where(FindingORM.engagement_id == engagement_id)
+                .where(FindingORM.target_url.isnot(None))
+                .group_by(FindingORM.target_url)
             )
-            all_findings = findings_result.scalars().all()
+            url_counts = counts_result.all()
             for host in hosts:
-                host_finding_counts[host] = sum(1 for url in all_findings if host in (url or ""))
+                host_finding_counts[host] = sum(
+                    cnt for url, cnt in url_counts if url and host in url
+                )
 
     # Build clean subdomain list (deduplicate by host)
     seen_hosts: set[str] = set()
@@ -1542,6 +1577,7 @@ async def _run_agent(eng: EngagementORM) -> None:
         "auth_credentials": None,
         "js_crawl_result": {},
         "screenshots": [],
+        "tool_config": getattr(eng, "tool_config", None) or {},
     }
 
     def _ts() -> str:

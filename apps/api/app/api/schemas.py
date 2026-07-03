@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -42,6 +42,7 @@ class EngagementCreate(BaseModel):
     request_jitter_ms: int = Field(default=0, ge=0, le=30_000)
     scan_sequential: bool = False
     auto_approve_exploit_validation: bool = False
+    tool_config: dict = Field(default_factory=dict)
 
 
 class EngagementResponse(BaseModel):
@@ -67,6 +68,7 @@ class EngagementResponse(BaseModel):
     updated_at: datetime
     started_at: datetime | None
     completed_at: datetime | None
+    tool_config: dict = Field(default_factory=dict)
 
 
 # ── HITL ──────────────────────────────────────────────────────────────────────
@@ -281,11 +283,31 @@ class ReconSnapshotResponse(BaseModel):
     id: UUID
     engagement_id: UUID
     snapshot_at: datetime
-    subdomains: list
+    subdomains: list[SubdomainInfo]
     open_ports: dict
     endpoints: list
     tech_stack: list
     raw_summary: str | None
+
+    @classmethod
+    def from_orm_safe(cls, obj: Any) -> "ReconSnapshotResponse":
+        """Coerce legacy string[] subdomains to SubdomainInfo on read."""
+        subs = []
+        for s in (obj.subdomains or []):
+            if isinstance(s, dict):
+                subs.append(SubdomainInfo(**{k: v for k, v in s.items() if k in SubdomainInfo.model_fields}))
+            else:
+                subs.append(SubdomainInfo(host=str(s)))
+        return cls(
+            id=obj.id,
+            engagement_id=obj.engagement_id,
+            snapshot_at=obj.snapshot_at,
+            subdomains=subs,
+            open_ports=obj.open_ports or {},
+            endpoints=obj.endpoints or [],
+            tech_stack=obj.tech_stack or [],
+            raw_summary=obj.raw_summary,
+        )
 
 
 class SnapshotDiffResponse(BaseModel):

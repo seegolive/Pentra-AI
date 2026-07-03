@@ -485,6 +485,7 @@ export function DashboardPage() {
     queryKey: ["dashboard-stats"],
     queryFn: () =>
       apiClient.get<AdminStats>("/api/v1/admin/stats").then((r) => r.data),
+    staleTime: 20_000,
     refetchInterval: 30_000,
     retry: false,
   });
@@ -495,6 +496,7 @@ export function DashboardPage() {
       apiClient
         .get<EngagementSummary[]>("/api/v1/engagements?limit=20")
         .then((r) => r.data),
+    staleTime: 10_000,
     refetchInterval: 15_000,
   });
 

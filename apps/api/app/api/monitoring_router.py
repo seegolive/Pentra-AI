@@ -9,6 +9,7 @@ Route summary:
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -154,7 +155,7 @@ async def list_recon_snapshots(
         .limit(limit)
     )
     snapshots = result.scalars().all()
-    return [ReconSnapshotResponse.model_validate(s) for s in snapshots]
+    return [ReconSnapshotResponse.from_orm_safe(s) for s in snapshots]
 
 
 @router.get(
@@ -194,8 +195,11 @@ async def get_snapshot_diff(
         raise HTTPException(status_code=404, detail="Snapshot B not found")
 
     # Compute diffs
-    subs_a: set[str] = {s if isinstance(s, str) else str(s) for s in (snap_a.subdomains or [])}
-    subs_b: set[str] = {s if isinstance(s, str) else str(s) for s in (snap_b.subdomains or [])}
+    def _host(s: Any) -> str:
+        return s["host"] if isinstance(s, dict) else str(s)
+
+    subs_a: set[str] = {_host(s) for s in (snap_a.subdomains or [])}
+    subs_b: set[str] = {_host(s) for s in (snap_b.subdomains or [])}
     new_subdomains = sorted(subs_b - subs_a)
     removed_subdomains = sorted(subs_a - subs_b)
 

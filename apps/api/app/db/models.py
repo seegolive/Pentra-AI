@@ -85,6 +85,7 @@ class EngagementORM(Base):
 
     monitoring_enabled: Mapped[bool] = mapped_column(nullable=False, default=False, comment="Whether continuous monitoring is enabled for this engagement")
     monitoring_interval_hours: Mapped[int] = mapped_column(nullable=False, default=24, comment="How often to run recon snapshot (hours)")
+    tool_config: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, comment="Per-engagement tool flag overrides (run_nuclei, run_ffuf, etc.)")
 
     workspace: Mapped["WorkspaceORM"] = relationship(back_populates="engagements")
     findings: Mapped[list["FindingORM"]] = relationship(back_populates="engagement")

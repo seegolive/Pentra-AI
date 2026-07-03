@@ -1,5 +1,5 @@
 import { useSearchParams } from "react-router-dom";
-import { Bug, AlertTriangle } from "lucide-react";
+import { Bug, AlertTriangle, RefreshCw } from "lucide-react";
 import { useAllFindings, useEngagements } from "../lib/api";
 import { FindingsTable } from "../components/findings/FindingsTable";
 import type { FindingFilters, Severity, FindingStatus } from "../lib/types";
@@ -86,7 +86,7 @@ export default function FindingsPage() {
 
   const total = data?.total ?? 0;
   const results = data?.results ?? [];
-  const totalPages = Math.max(1, Math.ceil(total / 25));
+  const totalPages = Math.max(1, Math.ceil(total / (data?.page_size ?? 25)));
 
   const clearFilters = () => {
     setFilters({
@@ -97,6 +97,8 @@ export default function FindingsPage() {
       discovered_after: null,
       discovered_before: null,
       page: 1,
+      sortBy: "discovered_at",
+      sortDir: "desc",
     });
   };
 
@@ -288,8 +290,9 @@ export default function FindingsPage() {
               )}
             </div>
           ) : isLoading ? (
-            <div className="flex-1 flex items-center justify-center text-muted-foreground text-xs">
-              Loading…
+            <div className="flex-1 flex items-center justify-center gap-2 text-muted-foreground text-xs">
+              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              Loading findings…
             </div>
           ) : (
             <>

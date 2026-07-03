@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Literal
 
 log = logging.getLogger(__name__)
 
@@ -140,3 +139,40 @@ class LocatedMemory:
             "exhausted": len(self.exhausted),
             "effective_payload_classes": list(self.effective_payloads.keys()),
         }
+
+    # ── Redis serialisation ───────────────────────────────────────────────────
+
+    def to_dict(self) -> dict:
+        """Serialise to a JSON-safe dict for Redis storage."""
+        return {
+            "confirmed": {
+                f"{url}|||{param}": finding
+                for (url, param), finding in self.confirmed.items()
+            },
+            "failed_payloads": {
+                f"{url}|||{param}": list(payloads)
+                for (url, param), payloads in self.failed_payloads.items()
+            },
+            "exhausted": [f"{url}|||{param}" for url, param in self.exhausted],
+            "effective_payloads": self.effective_payloads,
+            "react_history": self.react_history,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "LocatedMemory":
+        """Deserialise from a dict stored in Redis."""
+        def _split(key: str) -> tuple[str, str]:
+            parts = key.split("|||", 1)
+            return (parts[0], parts[1]) if len(parts) == 2 else (parts[0], "")
+
+        instance = cls()
+        instance.confirmed = {
+            _split(k): v for k, v in data.get("confirmed", {}).items()
+        }
+        instance.failed_payloads = {
+            _split(k): set(v) for k, v in data.get("failed_payloads", {}).items()
+        }
+        instance.exhausted = {_split(k) for k in data.get("exhausted", [])}
+        instance.effective_payloads = data.get("effective_payloads", {})
+        instance.react_history = data.get("react_history", [])
+        return instance

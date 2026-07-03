@@ -282,6 +282,20 @@ export function useUpdateEngagementMode(id: string) {
   });
 }
 
+export function useUpdateToolConfig(id: string) {
+  const qc = useQueryClient();
+  return useMutation<{ status: string; tool_config: Record<string, unknown> }, Error, Record<string, unknown>>({
+    mutationFn: async (patch) => {
+      const res = await apiClient.patch<{ status: string; tool_config: Record<string, unknown> }>(
+        `/api/v1/engagements/${id}/tool_config`,
+        patch
+      );
+      return res.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["engagement", id] }),
+  });
+}
+
 // ── Findings ───────────────────────────────────────────────────────────────────
 
 export function useFindings(engagementId: string) {
@@ -499,11 +513,19 @@ export interface MonitoringAlert {
   created_at: string;
 }
 
+export interface SubdomainInfo {
+  host: string;
+  ip?: string;
+  source?: string;
+  status_code?: number;
+  is_alive?: boolean;
+}
+
 export interface ReconSnapshot {
   id: string;
   engagement_id: string;
   snapshot_at: string;
-  subdomains: string[];
+  subdomains: SubdomainInfo[];
   open_ports: Record<string, number[]>;
   endpoints: string[];
   tech_stack: string[];
@@ -699,6 +721,7 @@ export function useWorkerHealth() {
       const res = await apiClient.get<WorkerHealth>("/api/v1/admin/worker/health");
       return res.data;
     },
+    staleTime: 15_000,
     refetchInterval: 30_000,
     retry: false,
   });

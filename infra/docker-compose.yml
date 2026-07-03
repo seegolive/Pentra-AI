@@ -134,6 +134,29 @@ services:
       -Q default,knowledge
       --concurrency 2
 
+  beat:
+    build:
+      context: ..
+      dockerfile: infra/docker/Dockerfile.worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://pentra:${POSTGRES_PASSWORD:-pentra}@db:5432/pentra
+      REDIS_URL: redis://redis:6379/0
+      QDRANT_URL: http://qdrant:6333
+      MINIO_URL: http://minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-pentra}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-pentra_minio_secret}
+      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL_DEFAULT: ${OLLAMA_MODEL_DEFAULT:-qwen2.5-coder:32b}
+      OLLAMA_MODEL_FAST: ${OLLAMA_MODEL_FAST:-qwen2.5-coder:7b}
+      OLLAMA_MODEL_EMBEDDING: ${OLLAMA_MODEL_EMBEDDING:-bge-m3}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: uv run celery -A app.worker beat -l info --scheduler celery.beat:PersistentScheduler
+
   web:
     build:
       context: ..

@@ -49,15 +49,16 @@ async def start_redis_bridge() -> None:
 
                 try:
                     event = json.loads(message["data"])
-                    await ws_manager.broadcast(engagement_id, event)
+                    # Persist to DB so event history survives API restarts.
+                    from app.db.base import _get_session_factory
+                    async with _get_session_factory()() as db:
+                        await ws_manager.broadcast_and_persist(engagement_id, event, db)
                 except (json.JSONDecodeError, Exception):
                     pass
 
         except asyncio.CancelledError:
-            # Shutdown requested — exit cleanly
             break
         except Exception:
-            # Redis disconnected — wait 3 s then reconnect
             await asyncio.sleep(3)
         finally:
             if r is not None:

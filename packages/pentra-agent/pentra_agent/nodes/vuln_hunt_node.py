@@ -105,9 +105,42 @@ _ACTIVE_TAGS = "cve,vuln,sqli,xss,lfi,rce,injection,ssti,ssrf"
 # ── LocatedMemory cross-round persistence ─────────────────────────────────────
 # Keyed by engagement_id — survives DO-NOT-STOP re-entry within the same process.
 # Cleared at the end of vuln_hunt_node (normal exit) and on round 0 restart.
-# Scoped to one OS process, so a worker restart resets memory, which is
-# acceptable (the node comment: "not persisted to DB in this sprint").
+# Also persisted to Redis (TTL 24h) so worker restarts don't reset memory.
 _located_memory_cache: dict[str, "LocatedMemory"] = {}  # type: ignore[name-defined]
+
+_MEMORY_REDIS_TTL = 86400  # 24 hours
+
+
+def _redis_memory_key(engagement_id: str) -> str:
+    return f"located_memory:{engagement_id}"
+
+
+async def _load_memory_from_redis(engagement_id: str) -> "LocatedMemory | None":
+    import json as _json
+    import os as _os
+    try:
+        import redis.asyncio as _aioredis
+        from pentra_agent.memory.located_memory import LocatedMemory
+        r = _aioredis.from_url(_os.getenv("REDIS_URL", "redis://localhost:6379"))
+        raw = await r.get(_redis_memory_key(engagement_id))
+        await r.aclose()
+        if raw:
+            return LocatedMemory.from_dict(_json.loads(raw))
+    except Exception as _exc:
+        log.debug("[memory] Redis load failed: %s", _exc)
+    return None
+
+
+async def _save_memory_to_redis(engagement_id: str, memory: "LocatedMemory") -> None:
+    import json as _json
+    import os as _os
+    try:
+        import redis.asyncio as _aioredis
+        r = _aioredis.from_url(_os.getenv("REDIS_URL", "redis://localhost:6379"))
+        await r.setex(_redis_memory_key(engagement_id), _MEMORY_REDIS_TTL, _json.dumps(memory.to_dict()))
+        await r.aclose()
+    except Exception as _exc:
+        log.debug("[memory] Redis save failed: %s", _exc)
 
 
 # ── Burp MCP config helpers ───────────────────────────────────────────────────
@@ -185,21 +218,23 @@ async def vuln_hunt_node(state: PentraState) -> dict:
     # Re-read preset-controlled flags from os.environ at call time so that
     # apply_to_env() called in _run_agent (before graph.astream_events) is
     # honoured. Module-level constants are frozen at import — these p_ locals override them.
-    p_nuclei: bool = os.getenv("PENTRA_RUN_NUCLEI", "true").lower() == "true"
-    p_ffuf: bool = os.getenv("PENTRA_RUN_FFUF", "true").lower() == "true"
-    p_burp_scan: bool = os.getenv("PENTRA_RUN_BURP_SCAN", "true").lower() == "true"
-    p_soap_xxe: bool = os.getenv("PENTRA_RUN_SOAP_XXE", "true").lower() == "true"
-    p_csrf: bool = os.getenv("PENTRA_RUN_CSRF_CHECK", "true").lower() == "true"
-    p_max_candidates: int = int(os.getenv("PENTRA_MAX_CANDIDATES", "50"))
-    p_max_payloads: int = int(os.getenv("PENTRA_MAX_PAYLOADS", "4"))
-    p_crawl_pages: int = int(os.getenv("PENTRA_CRAWL_PAGES", "49"))
-    p_nuclei_timeout: int = int(os.getenv("PENTRA_NUCLEI_TIMEOUT", "300"))
-    p_concurrent: int = int(os.getenv("PENTRA_CONCURRENT_CANDIDATES", "3"))
-    p_pacing: float = float(os.getenv("PENTRA_PAYLOAD_PACING", "0.15"))
+    # Per-engagement tool_config takes highest priority, then env/preset.
+    _tc: dict = state.get("tool_config") or {}
+    p_nuclei: bool = _tc.get("run_nuclei", os.getenv("PENTRA_RUN_NUCLEI", "true").lower() == "true")
+    p_ffuf: bool = _tc.get("run_ffuf", os.getenv("PENTRA_RUN_FFUF", "true").lower() == "true")
+    p_burp_scan: bool = _tc.get("run_burp_scan", os.getenv("PENTRA_RUN_BURP_SCAN", "true").lower() == "true")
+    p_soap_xxe: bool = _tc.get("run_soap_xxe", os.getenv("PENTRA_RUN_SOAP_XXE", "true").lower() == "true")
+    p_csrf: bool = _tc.get("run_csrf", os.getenv("PENTRA_RUN_CSRF_CHECK", "true").lower() == "true")
+    p_max_candidates: int = int(_tc.get("max_candidates", os.getenv("PENTRA_MAX_CANDIDATES", "50")))
+    p_max_payloads: int = int(_tc.get("max_payloads", os.getenv("PENTRA_MAX_PAYLOADS", "4")))
+    p_crawl_pages: int = int(_tc.get("crawl_pages", os.getenv("PENTRA_CRAWL_PAGES", "49")))
+    p_nuclei_timeout: int = int(_tc.get("nuclei_timeout", os.getenv("PENTRA_NUCLEI_TIMEOUT", "300")))
+    p_concurrent: int = int(_tc.get("concurrent_candidates", os.getenv("PENTRA_CONCURRENT_CANDIDATES", "3")))
+    p_pacing: float = float(_tc.get("payload_pacing", os.getenv("PENTRA_PAYLOAD_PACING", "0.15")))
     log.info(
-        "[vuln_hunt_node] Preset flags: nuclei=%s ffuf=%s burp=%s soap_xxe=%s csrf=%s "
+        "[vuln_hunt_node] Flags (tool_config override=%s): nuclei=%s ffuf=%s burp=%s soap_xxe=%s csrf=%s "
         "max_cand=%d max_payloads=%d crawl=%d conc=%d",
-        p_nuclei, p_ffuf, p_burp_scan, p_soap_xxe, p_csrf,
+        bool(_tc), p_nuclei, p_ffuf, p_burp_scan, p_soap_xxe, p_csrf,
         p_max_candidates, p_max_payloads, p_crawl_pages, p_concurrent,
     )
 
@@ -566,8 +601,16 @@ async def vuln_hunt_node(state: PentraState) -> dict:
         )
     )
 
-    # Clean up LocatedMemory for this engagement on normal exit so completed
-    # engagements don't accumulate indefinitely in the process-global cache.
+    # Attach KB record IDs to every finding so triage/report can link back.
+    if updated_knowledge:
+        kb_ids = [str(r["id"]) for r in updated_knowledge if r.get("id")]
+        if kb_ids:
+            deduped = [{**f, "knowledge_refs": kb_ids} for f in deduped]
+
+    # Save LocatedMemory to Redis before clearing from process cache so a
+    # worker restart within 24h can resume without re-testing exhausted candidates.
+    if engagement_id_for_cache in _located_memory_cache:
+        await _save_memory_to_redis(engagement_id_for_cache, _located_memory_cache[engagement_id_for_cache])
     _located_memory_cache.pop(engagement_id_for_cache, None)
 
     return {
@@ -2493,7 +2536,9 @@ async def _run_llm_burp_active_testing(
     # Loaded from _located_memory_cache so DO-NOT-STOP re-entry rounds inherit
     # skip-gates from round 1 instead of re-testing exhausted candidates.
     from pentra_agent.memory.located_memory import LocatedMemory
-    memory = _located_memory_cache.get(engagement_id) or LocatedMemory()
+    memory = _located_memory_cache.get(engagement_id)
+    if memory is None:
+        memory = await _load_memory_from_redis(engagement_id) or LocatedMemory()
     _located_memory_cache[engagement_id] = memory
 
     # Backward-compat alias for react_history (now inside memory)

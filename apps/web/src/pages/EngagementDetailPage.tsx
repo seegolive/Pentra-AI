@@ -21,13 +21,14 @@ import {
   Square,
   Terminal,
   Globe,
+  Settings,
 } from "lucide-react";
-import { useEngagement, useStartEngagement, useApproveAction, useFindings, downloadEngagementExport, useUpdateEngagementMode, useWorkspaces, useMonitoringAlerts, useStopEngagement } from "../lib/api";
+import { useEngagement, useStartEngagement, useApproveAction, useFindings, downloadEngagementExport, useUpdateEngagementMode, useWorkspaces, useMonitoringAlerts, useStopEngagement, useUpdateToolConfig } from "../lib/api";
 import { MonitoringPanel } from "../components/monitoring/MonitoringPanel";
 import { FindingsTable } from "../components/findings/FindingsTable";
 import { ReportViewer } from "../components/engagement/ReportViewer";
 import { ReconSurfaceTab } from "../components/engagement/ReconSurfaceTab";
-import type { FeedEvent, EngagementStatus } from "../lib/types";
+import type { FeedEvent, EngagementStatus, ToolConfig, Engagement } from "../lib/types";
 import { useEngagementFeed } from "../hooks/useEngagementFeed";
 import { cn } from "../lib/utils";
 
@@ -537,9 +538,91 @@ function ReportsPanel({ engagementId }: { engagementId: string }) {
   return <ReportViewer engagementId={engagementId} />;
 }
 
+// ── Tool config panel ──────────────────────────────────────────────────────────
+
+function ToolConfigPanel({ engagement }: { engagement: Engagement }) {
+  const tc: ToolConfig = engagement.tool_config ?? {};
+  const update = useUpdateToolConfig(engagement.id);
+
+  const toggle = (key: keyof ToolConfig, current: boolean | undefined, defaultVal: boolean) => {
+    update.mutate({ [key]: !(current ?? defaultVal) });
+  };
+
+  const setNum = (key: keyof ToolConfig, val: number) => {
+    if (!isNaN(val) && val > 0) update.mutate({ [key]: val });
+  };
+
+  const ToggleRow = ({ label, desc, field, def }: { label: string; desc: string; field: keyof ToolConfig; def: boolean }) => {
+    const active = (tc[field] as boolean | undefined) ?? def;
+    return (
+      <div className="flex items-center justify-between py-3 border-b border-border">
+        <div>
+          <p className="text-sm font-medium text-foreground">{label}</p>
+          <p className="text-xs text-muted-foreground">{desc}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => toggle(field, tc[field] as boolean | undefined, def)}
+          className={cn(
+            "relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 transition-colors",
+            active ? "bg-primary border-primary" : "bg-muted border-border",
+          )}
+        >
+          <span className={cn(
+            "pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform",
+            active ? "translate-x-4" : "translate-x-0",
+          )} />
+        </button>
+      </div>
+    );
+  };
+
+  return (
+    <div className="max-w-lg space-y-6">
+      <div>
+        <h2 className="text-sm font-semibold text-foreground mb-1">Tool Configuration</h2>
+        <p className="text-xs text-muted-foreground">Per-engagement overrides. Empty = use scan preset defaults.</p>
+      </div>
+
+      <div className="rounded-lg border border-border divide-y divide-border overflow-hidden">
+        <ToggleRow label="Nuclei" desc="Template-based vulnerability scanner" field="run_nuclei" def={true} />
+        <ToggleRow label="FFuF" desc="Fast web fuzzer for parameter/path discovery" field="run_ffuf" def={true} />
+        <ToggleRow label="Burp Active Scan" desc="Requires BURP_MCP_URL to be set" field="run_burp_scan" def={true} />
+      </div>
+
+      <div className="space-y-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Limits</h3>
+        {([
+          { label: "Nuclei timeout (s)", field: "nuclei_timeout" as keyof ToolConfig, def: 300 },
+          { label: "Max candidates per round", field: "max_candidates" as keyof ToolConfig, def: 50 },
+          { label: "Concurrent candidates", field: "concurrent_candidates" as keyof ToolConfig, def: 3 },
+        ] as const).map(({ label, field, def }) => (
+          <div key={field} className="flex items-center justify-between gap-4">
+            <label className="text-sm text-foreground w-48 shrink-0">{label}</label>
+            <input
+              type="number"
+              min={1}
+              defaultValue={(tc[field] as number | undefined) ?? def}
+              onBlur={(e) => setNum(field, parseInt(e.target.value, 10))}
+              className="w-24 text-xs bg-background border border-border rounded px-2 py-1 text-foreground text-right focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+        ))}
+      </div>
+
+      {update.isSuccess && (
+        <p className="text-xs text-green-400">Saved ✓</p>
+      )}
+      {update.isError && (
+        <p className="text-xs text-red-400">Failed to save</p>
+      )}
+    </div>
+  );
+}
+
 // ── Main page ──────────────────────────────────────────────────────────────────
 
-type Tab = "feed" | "findings" | "recon" | "monitoring" | "reports";
+type Tab = "feed" | "findings" | "recon" | "monitoring" | "reports" | "settings";
 
 export default function EngagementDetailPage() {
   const { engagementId } = useParams<{ engagementId: string }>();
@@ -830,6 +913,12 @@ export default function EngagementDetailPage() {
             icon: <Download className="h-3.5 w-3.5" />,
             count: undefined,
           },
+          {
+            key: "settings" as Tab,
+            label: "Settings",
+            icon: <Settings className="h-3.5 w-3.5" />,
+            count: undefined,
+          },
         ].map(({ key, label, icon, count }) => (
           <button
             key={key}
@@ -946,6 +1035,12 @@ export default function EngagementDetailPage() {
         {tab === "reports" && engagementId && (
           <div className="h-full overflow-auto">
             <ReportsPanel engagementId={engagementId} />
+          </div>
+        )}
+
+        {tab === "settings" && engagementId && engagement && (
+          <div className="h-full overflow-auto p-6">
+            <ToolConfigPanel engagement={engagement} />
           </div>
         )}
       </div>

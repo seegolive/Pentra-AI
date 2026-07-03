@@ -169,3 +169,8 @@ class PentraState(TypedDict):
     # ── Screenshot recon (Sprint 32.2) ────────────────────────────────
     # Populated by recon_node; list of {url, host, title, status_code, minio_url, error}
     screenshots: list[dict]
+
+    # ── Per-engagement tool overrides ────────────────────────────────────
+    # Keys: run_nuclei, run_ffuf, nuclei_timeout, concurrent_candidates, max_candidates.
+    # Empty dict = use env/preset defaults.
+    tool_config: dict

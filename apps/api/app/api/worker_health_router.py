@@ -5,11 +5,12 @@ Admin-only endpoint.
 """
 from __future__ import annotations
 
-import json
+import asyncio
+import time
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from app.core.deps import get_current_admin
@@ -17,6 +18,10 @@ from app.db.models import UserORM
 from app.worker_client import _get_celery
 
 router = APIRouter(prefix="/api/v1/admin/worker", tags=["admin-worker"])
+
+# ── In-memory cache (avoids 9s Celery inspect on every dashboard load) ────────
+_health_cache: dict[str, Any] = {}
+_CACHE_TTL = 15.0  # seconds
 
 
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
@@ -51,12 +56,8 @@ class WorkerHealthResponse(BaseModel):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _safe_inspect(timeout: float = 3.0) -> tuple[dict, dict, dict]:
-    """
-    Run Celery inspect commands against all connected workers.
-    Returns (stats, active, reserved) dicts keyed by worker hostname.
-    Falls back to empty dicts if the broker is unreachable.
-    """
+def _safe_inspect_sync(timeout: float = 1.5) -> tuple[dict, dict, dict]:
+    """Run Celery inspect in a thread (blocking). Uses short timeout per call."""
     try:
         app = _get_celery()
         i = app.control.inspect(timeout=timeout)
@@ -66,6 +67,45 @@ def _safe_inspect(timeout: float = 3.0) -> tuple[dict, dict, dict]:
         return stats, active, reserved
     except Exception:  # noqa: BLE001
         return {}, {}, {}
+
+
+async def _inspect_with_cache() -> tuple[dict, dict, dict]:
+    """Return cached result if fresh, otherwise run all 3 inspect calls in parallel threads."""
+    now = time.monotonic()
+    if _health_cache.get("ts", 0) + _CACHE_TTL > now:
+        return _health_cache["stats"], _health_cache["active"], _health_cache["reserved"]
+
+    loop = asyncio.get_event_loop()
+
+    def _run_stats() -> dict:
+        try:
+            return _get_celery().control.inspect(timeout=1.5).stats() or {}
+        except Exception:
+            return {}
+
+    def _run_active() -> dict:
+        try:
+            return _get_celery().control.inspect(timeout=1.5).active() or {}
+        except Exception:
+            return {}
+
+    def _run_reserved() -> dict:
+        try:
+            return _get_celery().control.inspect(timeout=1.5).reserved() or {}
+        except Exception:
+            return {}
+
+    stats, active, reserved = await asyncio.gather(
+        loop.run_in_executor(None, _run_stats),
+        loop.run_in_executor(None, _run_active),
+        loop.run_in_executor(None, _run_reserved),
+    )
+
+    _health_cache["ts"] = time.monotonic()
+    _health_cache["stats"] = stats
+    _health_cache["active"] = active
+    _health_cache["reserved"] = reserved
+    return stats, active, reserved
 
 
 def _parse_worker(
@@ -103,17 +143,15 @@ def _parse_active_task(task: dict[str, Any], worker: str) -> ActiveTask:
 
 # ── Endpoint ──────────────────────────────────────────────────────────────────
 
-@router.get("/health", response_model=WorkerHealthResponse, summary="Worker health", description="Return health status of background workers, Celery beat, and scheduled task queue depth.")
+@router.get("/health", response_model=WorkerHealthResponse, summary="Worker health")
 async def get_worker_health(
     current_user: UserORM = Depends(get_current_admin),
 ) -> WorkerHealthResponse:
-    """
-    Return live health status of all connected Celery workers.
+    """Return live health status of all connected Celery workers.
 
-    - Uses Celery broadcast inspect with a 3s timeout.
-    - If no workers respond, `healthy=False` with empty workers list.
+    Result is cached for 15 seconds to avoid blocking on Celery inspect.
     """
-    stats, active_map, reserved_map = _safe_inspect(timeout=3.0)
+    stats, active_map, reserved_map = await _inspect_with_cache()
 
     workers: list[WorkerStats] = []
     all_active_tasks: list[ActiveTask] = []

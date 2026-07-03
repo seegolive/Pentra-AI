@@ -163,10 +163,11 @@ async def _run_single(engagement_id: str) -> dict:
 
 async def _collect_snapshot(in_scope: list[str], settings: Any) -> dict:
     """Collect lightweight recon data: passive subdomain list + HTTP probe."""
-    subdomains: list[str] = []
+    subdomains: list[dict] = []  # SubdomainInfo dicts: {host, source, status_code?, ip?}
     endpoints: list[str] = []
     open_ports: dict[str, list[int]] = {}
     tech_stack: list[str] = []
+    _seen_hosts: set[str] = set()
 
     for scope_entry in in_scope[:5]:  # cap to 5 scope entries per cycle
         domain = scope_entry.lstrip("*.").strip()
@@ -183,12 +184,15 @@ async def _collect_snapshot(in_scope: list[str], settings: Any) -> dict:
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=60)
             for line in stdout.decode().splitlines():
                 sub = line.strip()
-                if sub:
-                    subdomains.append(sub)
+                if sub and sub not in _seen_hosts:
+                    subdomains.append({"host": sub, "source": "subfinder"})
+                    _seen_hosts.add(sub)
         except (FileNotFoundError, asyncio.TimeoutError):
-            subdomains.append(domain)
+            if domain not in _seen_hosts:
+                subdomains.append({"host": domain, "source": "scope"})
+                _seen_hosts.add(domain)
 
-        # HTTP probe: check if host is alive
+        # HTTP probe: check if host is alive and capture status_code
         try:
             async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
                 for port in [80, 443, 8080, 8443]:
@@ -199,6 +203,10 @@ async def _collect_snapshot(in_scope: list[str], settings: Any) -> dict:
                         if resp.status_code < 600:
                             open_ports.setdefault(domain, []).append(port)
                             endpoints.append(url)
+                            # Enrich the subdomain entry with status_code
+                            for entry in subdomains:
+                                if entry["host"] == domain and "status_code" not in entry:
+                                    entry["status_code"] = resp.status_code
                             # Rudimentary tech detection from response headers
                             server = resp.headers.get("server", "")
                             x_powered = resp.headers.get("x-powered-by", "")
@@ -212,7 +220,7 @@ async def _collect_snapshot(in_scope: list[str], settings: Any) -> dict:
             log.debug("HTTP probe failed for %s: %s", domain, exc)
 
     return {
-        "subdomains": sorted(set(subdomains)),
+        "subdomains": sorted(subdomains, key=lambda s: s["host"]),
         "open_ports": open_ports,
         "endpoints": sorted(set(endpoints)),
         "tech_stack": sorted(set(tech_stack)),
@@ -223,8 +231,11 @@ def _detect_delta(previous: Any, current: dict) -> list[dict]:
     """Compare previous snapshot ORM with current dict and return change list."""
     deltas: list[dict] = []
 
-    prev_subs = set(previous.subdomains or [])
-    curr_subs = set(current["subdomains"])
+    def _host(s: Any) -> str:
+        return s["host"] if isinstance(s, dict) else str(s)
+
+    prev_subs: set[str] = {_host(s) for s in (previous.subdomains or [])}
+    curr_subs: set[str] = {_host(s) for s in current["subdomains"]}
 
     for new_sub in curr_subs - prev_subs:
         deltas.append({"type": "new_subdomain", "value": new_sub})

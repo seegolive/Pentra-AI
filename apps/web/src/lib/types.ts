@@ -90,6 +90,15 @@ export interface WorkspaceCreate {
 
 // ── Engagement ────────────────────────────────────────────────────────────────
 
+export interface ToolConfig {
+  run_nuclei?: boolean;
+  run_ffuf?: boolean;
+  run_burp_scan?: boolean;
+  nuclei_timeout?: number;
+  concurrent_candidates?: number;
+  max_candidates?: number;
+}
+
 export type EngagementMode = "semi_auto" | "agentic";
 export type EngagementStatus = "planning" | "active" | "awaiting_approval" | "paused" | "completed" | "failed" | "cancelled";
 
@@ -114,6 +123,7 @@ export interface Engagement {
   updated_at: string;
   started_at: string | null;
   completed_at: string | null;
+  tool_config: ToolConfig;
 }
 
 export interface EngagementCreate {

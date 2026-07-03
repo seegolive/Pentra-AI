@@ -1,7 +1,9 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useSearchParams, Link } from "react-router-dom";
 import { X, Map as MapIcon, Info, RefreshCw } from "lucide-react";
 import { cn } from "../lib/utils";
 import { useEngagements, useEngagement, useFindings, useReconSnapshots, useSubscan } from "../lib/api";
+import type { SubdomainInfo } from "../lib/api";
 import type { Finding, Severity } from "../lib/types";
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -13,6 +15,16 @@ function extractBaseDomain(url: string): string {
   } catch {
     return url.split("/")[0] || url;
   }
+}
+
+function nodeLabel(domain: string, isRoot: boolean): string {
+  if (isRoot) {
+    return domain.length > 12 ? domain.slice(0, 11) + "…" : domain;
+  }
+  // Show only the first segment so labels don't overlap in dense rings
+  // e.g. "api.target.com" → "api", "staging.internal.example.com" → "staging"
+  const first = domain.split(".")[0];
+  return first.length > 10 ? first.slice(0, 9) + "…" : first;
 }
 
 const SEVERITY_ORDER: Severity[] = ["critical", "high", "medium", "low", "info"];
@@ -31,7 +43,7 @@ const SEVERITY_COLOR: Record<Severity | "root" | "clean", string> = {
   low: "var(--low)",
   info: "var(--info)",
   root: "var(--accent)",
-  clean: "var(--low)",
+  clean: "#6b7280",
 };
 
 const SEVERITY_LABEL_COLOR: Record<Severity, string> = {
@@ -53,56 +65,94 @@ interface DomainNode {
   y: number;
   r: number;
   color: string;
+  showLabel: boolean;
+}
+
+interface RingMeta {
+  label: string;
+  radius: number;
 }
 
 function layoutNodes(
   domainMap: Map<string, Finding[]>,
   rootDomains: Set<string>,
   width: number,
-  height: number
-): DomainNode[] {
+  height: number,
+  showAll: boolean,
+): { nodes: DomainNode[]; rings: RingMeta[] } {
   const entries = Array.from(domainMap.entries());
-  const nonRoot = entries.filter(([d]) => !rootDomains.has(d));
   const roots = entries.filter(([d]) => rootDomains.has(d));
+  const allNonRoot = entries.filter(([d]) => !rootDomains.has(d));
+
+  const withFindings = allNonRoot.filter(([, f]) => f.length > 0);
+  const clean = allNonRoot.filter(([, f]) => f.length === 0);
+  const peripheral = showAll ? allNonRoot : withFindings;
 
   const nodes: DomainNode[] = [];
+  const rings: RingMeta[] = [];
+  const maxRadius = Math.min(width / 2, height / 2) - 52;
 
-  // Root domains in center cluster
+  // Root nodes — center cluster
   roots.forEach(([domain, findings], i) => {
     const angle = roots.length > 1 ? (i / roots.length) * 2 * Math.PI : 0;
     const r = Math.min(40, Math.max(22, 22 + findings.length * 3));
     nodes.push({
-      domain,
-      findings,
+      domain, findings,
       severity: highestSeverity(findings),
       isRoot: true,
       x: width / 2 + (roots.length > 1 ? 40 * Math.cos(angle) : 0),
       y: height / 2 + (roots.length > 1 ? 40 * Math.sin(angle) : 0),
-      r,
-      color: SEVERITY_COLOR.root,
+      r, color: SEVERITY_COLOR.root, showLabel: true,
     });
   });
 
-  // Peripheral nodes in a ring around center
-  const n = nonRoot.length;
-  nonRoot.forEach(([domain, findings], i) => {
-    const angle = (i / Math.max(n, 1)) * 2 * Math.PI - Math.PI / 2;
-    const ringRadius = Math.min(width, height) * (roots.length > 0 ? 0.35 : 0.32);
-    const sev = highestSeverity(findings);
-    const r = Math.min(36, Math.max(18, 18 + findings.length * 3));
-    nodes.push({
-      domain,
-      findings,
-      severity: sev,
-      isRoot: false,
-      x: width / 2 + ringRadius * Math.cos(angle),
-      y: height / 2 + ringRadius * Math.sin(angle),
-      r,
-      color: findings.length > 0 ? SEVERITY_COLOR[sev] : SEVERITY_COLOR.clean,
-    });
-  });
+  // Place a ring of nodes at the given radius, adapting node size to available arc space
+  function placeRing(ringEntries: [string, Finding[]][], ringRadius: number) {
+    const n = ringEntries.length;
+    if (n === 0) return;
+    const arcSpacing = (2 * Math.PI * ringRadius) / n;
+    const showLabel = arcSpacing >= 28;
 
-  return nodes;
+    ringEntries.forEach(([domain, findings], i) => {
+      const angle = (i / n) * 2 * Math.PI - Math.PI / 2;
+      const sev = highestSeverity(findings);
+      // Shrink nodes to guarantee no circle overlap regardless of count
+      const maxR = Math.max(6, Math.min(36, arcSpacing / 2 - 3));
+      const r = findings.length > 0
+        ? Math.min(maxR, Math.max(6, 6 + findings.length * 2))
+        : Math.min(8, maxR);
+      nodes.push({
+        domain, findings, severity: sev, isRoot: false,
+        x: width / 2 + ringRadius * Math.cos(angle),
+        y: height / 2 + ringRadius * Math.sin(angle),
+        r, showLabel,
+        color: findings.length > 0 ? SEVERITY_COLOR[sev] : SEVERITY_COLOR.clean,
+      });
+    });
+  }
+
+  if (showAll && clean.length > 0 && withFindings.length > 0) {
+    // Two rings: inner = hosts with findings, outer = clean hosts
+    const innerMin = (withFindings.length * 44) / (2 * Math.PI);
+    const innerRadius = Math.min(maxRadius * 0.56, Math.max(120, innerMin));
+
+    const outerMin = (clean.length * 30) / (2 * Math.PI);
+    const outerRadius = Math.min(maxRadius, Math.max(innerRadius + 52, innerRadius + outerMin));
+
+    placeRing(withFindings, innerRadius);
+    placeRing(clean, outerRadius);
+    rings.push({ label: "with findings", radius: innerRadius });
+    rings.push({ label: "clean hosts", radius: outerRadius });
+  } else {
+    // Single ring — expand radius so nodes don't overlap, capped to viewBox
+    const n = peripheral.length;
+    const minRadius = (n * 44) / (2 * Math.PI);
+    const defaultRadius = Math.min(width, height) * (roots.length > 0 ? 0.35 : 0.32);
+    const ringRadius = Math.min(maxRadius, Math.max(defaultRadius, minRadius));
+    placeRing(peripheral, ringRadius);
+  }
+
+  return { nodes, rings };
 }
 
 // ── Detail Panel ─────────────────────────────────────────────────────────────
@@ -161,17 +211,18 @@ function DetailPanel({
           <p className="text-[12px] text-pentra-text-muted italic">No findings on this host yet.</p>
         ) : (
           node.findings.map((f) => (
-            <div
+            <Link
               key={f.id}
-              className="rounded-ds-md border border-pentra-border bg-pentra-bg-card p-2.5 space-y-1"
+              to={`/engagements/${f.engagement_id}`}
+              className="block rounded-ds-md border border-pentra-border bg-pentra-bg-card p-2.5 space-y-1 transition-colors hover:border-pentra-border-focus hover:bg-pentra-bg-hover"
             >
               <div className="flex items-start gap-2">
                 <span
-                  className={cn("text-[10px] font-bold uppercase", SEVERITY_LABEL_COLOR[f.severity])}
+                  className={cn("text-[10px] font-bold uppercase shrink-0", SEVERITY_LABEL_COLOR[f.severity])}
                 >
                   {f.severity}
                 </span>
-                <p className="text-[12px] font-medium text-pentra-text-primary flex-1 leading-snug">
+                <p className="text-[12px] font-medium text-pentra-text-primary flex-1 leading-snug line-clamp-2">
                   {f.title}
                 </p>
               </div>
@@ -179,7 +230,7 @@ function DetailPanel({
               {f.vuln_class && (
                 <p className="text-[10px] text-pentra-text-muted">{f.vuln_class}</p>
               )}
-            </div>
+            </Link>
           ))
         )}
 
@@ -224,11 +275,18 @@ function AttackSurfaceCanvas({
   engagementId,
 }: {
   findings: Finding[];
-  subdomains: string[];
+  subdomains: SubdomainInfo[];
   rootDomains: string[];
   engagementId: string;
 }) {
   const [selectedDomain, setSelectedDomain] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
+
+  // Close detail panel and reset mode when switching engagements
+  useEffect(() => {
+    setSelectedDomain(null);
+    setShowAll(false);
+  }, [engagementId]);
 
   const rootSet = useMemo(() => new Set(rootDomains.map(extractBaseDomain)), [rootDomains]);
 
@@ -237,7 +295,7 @@ function AttackSurfaceCanvas({
 
     // Seed all recon subdomains (with empty findings arrays)
     for (const sub of subdomains) {
-      const d = extractBaseDomain(sub);
+      const d = extractBaseDomain(sub.host);
       if (d && !m.has(d)) m.set(d, []);
     }
 
@@ -257,9 +315,20 @@ function AttackSurfaceCanvas({
     return m;
   }, [findings, subdomains, rootDomains]);
 
+  const cleanCount = useMemo(() => {
+    let count = 0;
+    for (const [domain, f] of domainMap.entries()) {
+      if (!rootSet.has(domain) && f.length === 0) count++;
+    }
+    return count;
+  }, [domainMap, rootSet]);
+
   const W = 700;
   const H = 480;
-  const nodes = useMemo(() => layoutNodes(domainMap, rootSet, W, H), [domainMap, rootSet]);
+  const { nodes, rings } = useMemo(
+    () => layoutNodes(domainMap, rootSet, W, H, showAll),
+    [domainMap, rootSet, showAll],
+  );
 
   const selectedNode = nodes.find((n) => n.domain === selectedDomain) ?? null;
 
@@ -274,25 +343,64 @@ function AttackSurfaceCanvas({
         }}
       />
 
-      {/* Stats badge */}
-      <div className="absolute top-3 left-3 z-10 flex items-center gap-2 rounded-ds-md border border-pentra-border bg-pentra-bg-panel/90 px-3 py-1.5 backdrop-blur-sm">
+      {/* Stats badge — pointer-events-none so SVG nodes below remain clickable */}
+      <div className="pointer-events-none absolute top-3 left-3 z-10 flex items-center gap-2 rounded-ds-md border border-pentra-border bg-pentra-bg-panel/90 px-3 py-1.5 backdrop-blur-sm">
         <span className="text-[11px] text-pentra-text-secondary">
           <span className="font-semibold text-pentra-text-primary">{nodes.length}</span> hosts ·{" "}
           <span className="font-semibold text-pentra-text-primary">{findings.length}</span> findings
         </span>
       </div>
 
-      {/* SVG Canvas */}
-      <svg
-        viewBox={`0 0 ${W} ${H}`}
-        className="relative h-full w-full"
-        style={{ maxHeight: "100%" }}
-      >
-        {/* Lines: root → peripheral */}
+      {/* Mode toggle — only shown when there are clean hosts to hide/show */}
+      {cleanCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setShowAll((v) => !v)}
+          className="absolute top-3 right-3 z-10 flex items-center gap-1.5 rounded-ds-md border border-pentra-border bg-pentra-bg-panel/90 px-3 py-1.5 backdrop-blur-sm text-[11px] text-pentra-text-secondary transition-colors hover:border-pentra-border-focus hover:text-pentra-text-primary"
+        >
+          {showAll ? (
+            <><span className="text-pentra-accent text-[8px]">●</span> Findings only</>
+          ) : (
+            <>+ {cleanCount} clean hosts</>
+          )}
+        </button>
+      )}
+
+      {/* SVG Canvas — right edge shrinks when detail panel is open so no nodes are blocked */}
+      <div className={cn("absolute inset-0", selectedNode && "right-72")}>
+        <svg
+          viewBox={`0 0 ${W} ${H}`}
+          className="h-full w-full"
+          style={{ maxHeight: "100%" }}
+        >
+        {/* Ring labels — shown in multi-ring mode */}
+        {rings.map((ring) => (
+          <text
+            key={ring.label}
+            x={W / 2}
+            y={H / 2 - ring.radius - 8}
+            textAnchor="middle"
+            fill="var(--text-muted)"
+            fontSize={8}
+            letterSpacing={1}
+            className="select-none uppercase"
+          >
+            {ring.label}
+          </text>
+        ))}
+
+        {/* Lines: peripheral → nearest root */}
         {nodes
           .filter((n) => !n.isRoot)
           .map((b) => {
-            const root = nodes.find((n) => n.isRoot);
+            const root = nodes
+              .filter((n) => n.isRoot)
+              .reduce<DomainNode | null>((closest, r) => {
+                if (!closest) return r;
+                const dClosest = Math.hypot(b.x - closest.x, b.y - closest.y);
+                const dR = Math.hypot(b.x - r.x, b.y - r.y);
+                return dR < dClosest ? r : closest;
+              }, null);
             if (!root) return null;
             return (
               <line
@@ -314,17 +422,20 @@ function AttackSurfaceCanvas({
           <g
             key={node.domain}
             onClick={() => setSelectedDomain(node.domain === selectedDomain ? null : node.domain)}
-            className="cursor-pointer"
+            className="cursor-pointer group"
           >
-            {/* Glow halo */}
+            {/* Native browser tooltip — full domain name always visible on hover */}
+            <title>{node.domain}{node.findings.length > 0 ? ` · ${node.findings.length} finding${node.findings.length !== 1 ? "s" : ""}` : " · clean"}</title>
+            {/* Glow halo — expands on hover */}
             <circle
               cx={node.x}
               cy={node.y}
               r={node.r + 6}
               fill={node.color}
               opacity={node.domain === selectedDomain ? 0.3 : node.isRoot ? 0.15 : 0.08}
+              className="transition-all duration-150 group-hover:opacity-30"
             />
-            {/* Main circle */}
+            {/* Main circle — brightens on hover */}
             <circle
               cx={node.x}
               cy={node.y}
@@ -333,6 +444,7 @@ function AttackSurfaceCanvas({
               opacity={0.85}
               stroke={node.domain === selectedDomain ? "white" : node.isRoot ? "rgba(255,255,255,0.4)" : "transparent"}
               strokeWidth={node.isRoot ? 2 : 1.5}
+              className="transition-all duration-150 group-hover:opacity-100 group-hover:stroke-white group-hover:[stroke-width:1.5]"
             />
             {/* Finding count or root indicator */}
             <text
@@ -346,20 +458,23 @@ function AttackSurfaceCanvas({
             >
               {node.isRoot ? "●" : node.findings.length > 0 ? node.findings.length : "·"}
             </text>
-            {/* Domain label */}
-            <text
-              x={node.x}
-              y={node.y + node.r + 14}
-              textAnchor="middle"
-              fill="var(--text-secondary)"
-              fontSize={9}
-              className="select-none"
-            >
-              {node.domain.length > 20 ? "…" + node.domain.slice(-18) : node.domain}
-            </text>
+            {/* Domain label — hidden when nodes are too dense */}
+            {node.showLabel && (
+              <text
+                x={node.x}
+                y={node.y + node.r + 14}
+                textAnchor="middle"
+                fill="var(--text-secondary)"
+                fontSize={9}
+                className="select-none"
+              >
+                {nodeLabel(node.domain, node.isRoot)}
+              </text>
+            )}
           </g>
         ))}
-      </svg>
+        </svg>
+      </div>
 
       {/* Detail Panel */}
       {selectedNode && (
@@ -370,8 +485,8 @@ function AttackSurfaceCanvas({
         />
       )}
 
-      {/* Legend */}
-      <div className="absolute bottom-3 left-3 flex items-center gap-3 rounded-ds-md border border-pentra-border bg-pentra-bg-panel/90 px-3 py-1.5 backdrop-blur-sm">
+      {/* Legend — pointer-events-none so SVG nodes below remain clickable */}
+      <div className="pointer-events-none absolute bottom-3 left-3 flex items-center gap-3 rounded-ds-md border border-pentra-border bg-pentra-bg-panel/90 px-3 py-1.5 backdrop-blur-sm">
         <div className="flex items-center gap-1">
           <div className="h-2.5 w-2.5 rounded-full" style={{ background: SEVERITY_COLOR.root }} />
           <span className="text-[10px] text-pentra-text-muted">root</span>
@@ -439,7 +554,15 @@ function AttackSurfaceContent({ engagementId }: { engagementId: string }) {
 
 export default function AttackSurfacePage() {
   const { data: engagements = [] } = useEngagements();
-  const [selectedId, setSelectedId] = useState<string>("");
+  const [sp, setSp] = useSearchParams();
+  const selectedId = sp.get("engagement_id") ?? "";
+
+  function setSelectedId(id: string) {
+    const next = new URLSearchParams(sp);
+    if (id) next.set("engagement_id", id);
+    else next.delete("engagement_id");
+    setSp(next, { replace: true });
+  }
 
   return (
     <div className="flex min-h-full flex-col gap-4 p-6">
