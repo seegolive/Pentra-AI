@@ -1,6 +1,5 @@
 """Tests for bypass header injection module."""
 from __future__ import annotations
-import pytest
 
 
 def test_build_bypass_headers_returns_dict():
