@@ -713,6 +713,7 @@ class LLMClient:
         tech_stack: list[str],
         collaborator_url: str | None = None,
         waf_info: dict | None = None,
+        kb_context: list[dict] | None = None,
     ) -> list[dict]:
         """Generate targeted test payloads for a specific injection candidate.
 
@@ -728,6 +729,10 @@ class LLMClient:
             waf_info: optional WAF profile {"waf_type": str|None, "is_blocking": bool,
                       "bypass_strategies": list[str]}. When present, injects evasion
                       hints into the payload generation prompt.
+            kb_context: optional list of KB records from similar past findings.
+                        Each record: {"vuln_class": str, "key_insight": str,
+                        "technique": str, "indicators": list}. Injects historical
+                        attack technique hints into the payload generation prompt.
 
         Returns:
             list of {test_type, payload, injected_value, detection_hint,
@@ -878,12 +883,26 @@ class LLMClient:
             '"detection_hint":"DB version string appears in response body",'
             '"is_blind":false,"uses_collaborator":false}]'
         )
+        # Build KB technique hints from historical findings
+        kb_hints = ""
+        if kb_context:
+            _records = kb_context[:4]  # cap at 4 to avoid context bloat
+            _lines = []
+            for r in _records:
+                _insight = r.get("key_insight") or r.get("technique") or ""
+                _vc = r.get("vuln_class", "")
+                if _insight:
+                    _lines.append(f"  - [{_vc}] {_insight}")
+            if _lines:
+                kb_hints = "Historical attack techniques from similar targets:\n" + "\n".join(_lines) + "\n\n"
+
         user = (
             f"Target endpoint: {method} {url}\n"
             f"Vulnerable parameter: {param_name!r} (location: {param_location})\n"
             f"Current legitimate value in captured traffic: {original_value!r}\n"
             f"Vulnerability hypotheses to test: {', '.join(test_types)}\n"
             f"Tech stack: {', '.join(tech_stack) or 'unknown — infer from URL patterns and previous responses'}\n\n"
+            f"{kb_hints}"
             "Think: what is the server-side code doing with this parameter? "
             "What SQL query? What file operation? What template evaluation?\n"
             "Craft payloads that will give a CLEAR, OBSERVABLE signal if vulnerable.\n"
