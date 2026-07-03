@@ -2799,6 +2799,7 @@ async def _run_llm_burp_active_testing(
                     test_types=test_types,
                     tech_stack=tech_stack,
                     collaborator_url=collab_url,
+                    waf_info=waf_info,
                 )
             except Exception as exc:
                 log.warning("[llm_burp] craft_exploit_payloads failed: %s — retrying once", exc)
@@ -2812,6 +2813,7 @@ async def _run_llm_burp_active_testing(
                         test_types=test_types,
                         tech_stack=tech_stack,
                         collaborator_url=collab_url,
+                        waf_info=waf_info,
                     )
                 except Exception as exc2:
                     log.warning("[llm_burp] craft_exploit_payloads retry also failed: %s — using arsenal fallback only", exc2)

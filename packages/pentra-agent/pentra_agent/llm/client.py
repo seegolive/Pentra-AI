@@ -712,6 +712,7 @@ class LLMClient:
         test_types: list[str],
         tech_stack: list[str],
         collaborator_url: str | None = None,
+        waf_info: dict | None = None,
     ) -> list[dict]:
         """Generate targeted test payloads for a specific injection candidate.
 
@@ -724,6 +725,9 @@ class LLMClient:
             test_types: list like ["sqli", "xss"].
             tech_stack: for tech-specific payloads (e.g. MSSQL for aspnet).
             collaborator_url: Burp Collaborator URL for blind OOB payloads.
+            waf_info: optional WAF profile {"waf_type": str|None, "is_blocking": bool,
+                      "bypass_strategies": list[str]}. When present, injects evasion
+                      hints into the payload generation prompt.
 
         Returns:
             list of {test_type, payload, injected_value, detection_hint,
@@ -772,6 +776,55 @@ class LLMClient:
             )
         tech_hints_text = "\n".join(tech_hints) if tech_hints else ""
 
+        # Build WAF-specific payload evasion context
+        waf_context = "No WAF detected — use standard payload variants.\n"
+        if waf_info and waf_info.get("waf_type"):
+            _waf_type = waf_info["waf_type"]
+            _is_blocking = waf_info.get("is_blocking", False)
+            _strategies = waf_info.get("bypass_strategies", [])
+            _evasion_prefix = (
+                "⚠️ ACTIVE WAF BLOCKING DETECTED — payloads MUST use evasion techniques:\n"
+                if _is_blocking
+                else "WAF detected (not currently blocking) — include evasion variants:\n"
+            )
+            _waf_hints = {
+                "cloudflare": (
+                    "Cloudflare WAF: use case variation (`SeLeCt`), inline comments (`SEL/**/ECT`), "
+                    "URL double-encoding (`%2527`), hex encoding (`0x41`), "
+                    "Unicode normalization (`ＳＥＬＥＣＴ`). Avoid: UNION SELECT, <script>, alert(1)."
+                ),
+                "akamai": (
+                    "Akamai WAF: use chunked encoding bypass, HTTP parameter pollution, "
+                    "multipart boundary tricks, null-byte injection (`%00`), "
+                    "Unicode fullwidth chars. Avoid: standard SQLi/XSS signatures."
+                ),
+                "imperva": (
+                    "Imperva/Incapsula: use HPP (duplicate params), JSON in GET params, "
+                    "whitespace variants (`\\t`, `\\n` in SQL), comment-based obfuscation. "
+                    "Avoid: AND/OR keywords without obfuscation."
+                ),
+                "f5_bigip": (
+                    "F5 BIG-IP ASM: use hex character encoding, SQL comment variants "
+                    "(`/*!50000SELECT*/`), HTTP header injection for bypasses."
+                ),
+                "aws_waf": (
+                    "AWS WAF: newline injection in SQL (`SEL\\nECT`), "
+                    "URL-encoded variants, JSON path injection. Avoid: known OWASP CRS signatures."
+                ),
+                "modsecurity": (
+                    "ModSecurity: use comment splitting, scientific notation (`1e0 UNION`), "
+                    "multiline SQL, double URL encoding. Avoid: PARANOIA level 3+ patterns."
+                ),
+            }
+            _type_hint = _waf_hints.get(
+                _waf_type.lower(),
+                f"Generic WAF ({_waf_type}): use encoding, comment injection, case variation.",
+            )
+            _strategy_note = (
+                f"Known working strategies: {', '.join(_strategies)}." if _strategies else ""
+            )
+            waf_context = f"\n{_evasion_prefix}{_type_hint} {_strategy_note}\n"
+
         system = (
             f"{self._PERSONA_PENTESTER}\n\n"
             "You are crafting precise HTTP test payloads to confirm a vulnerability hypothesis.\n\n"
@@ -796,6 +849,7 @@ class LLMClient:
             "  9. TIME-BASED SQLi: 'injected_value' must be the complete payload replacing original value. "
             "For MSSQL: '; WAITFOR DELAY ''0:0:5''--  (detection_hint: response >5s confirms blind SQLi)\n\n"
             f"{tech_hints_text}\n\n"
+            f"{waf_context}"
             f"{collab_context}\n\n"
             "Return JSON array (2-4 payloads per test_type):\n"
             '[{"test_type":"sqli","payload":"\' OR SLEEP(5)--",'
