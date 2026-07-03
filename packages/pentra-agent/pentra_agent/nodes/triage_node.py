@@ -18,7 +18,7 @@ from __future__ import annotations
 import logging
 import os
 import time
-from typing import Literal
+from typing import Literal  # noqa: F401  (kept for future type annotation use)
 
 import httpx
 from langchain_core.messages import AIMessage
@@ -72,7 +72,7 @@ async def triage_node(state: PentraState) -> dict:
 
     llm = LLMClient(
         base_url=_get_ollama_url(),
-        model=state["llm_model"],
+        model=os.getenv("OLLAMA_MODEL_FAST", state["llm_model"]),
     )
 
     other_titles = [f.get("title", "") for f in findings]
@@ -266,7 +266,7 @@ async def _reprobe_request(
 
     Returns (verified: bool, note: str).
     """
-    from urllib.parse import urlencode, urlparse, parse_qs, urljoin
+    from urllib.parse import urlencode, urlparse, parse_qs
 
     try:
         parsed = urlparse(url)

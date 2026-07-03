@@ -57,7 +57,7 @@ async def plan_node(state: PentraState) -> dict:
     except Exception as exc:
         log.warning("[plan_node] KB / learnings query failed: %s", exc)
 
-    llm = LLMClient(base_url=_ollama_url(), model=state["llm_model"])
+    llm = LLMClient(base_url=_ollama_url(), model=os.getenv("OLLAMA_MODEL_REASONING", state["llm_model"]))
     plan = await llm.plan_engagement(
         target=state["target"],
         scope=state["scope"],
