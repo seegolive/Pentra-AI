@@ -40,6 +40,13 @@ except ImportError:
     _WAF_RETRY_AVAILABLE = False
 
 try:
+    from pentra_tools.http.bypass_headers import build_bypass_headers as _build_bypass_headers
+    _BYPASS_HEADERS_AVAILABLE = True
+except ImportError:
+    _build_bypass_headers = None  # type: ignore[assignment]
+    _BYPASS_HEADERS_AVAILABLE = False
+
+try:
     from pentra_tools.analysis.response_baseline import ResponseBaseline as _ResponseBaseline
     _RESPONSE_BASELINE_AVAILABLE = True
 except ImportError:
@@ -2358,13 +2365,44 @@ async def _run_llm_burp_active_testing(
 
         _crawl_sem = asyncio.Semaphore(8)
 
+        _waf_type_crawl = (waf_info or {}).get("waf_type")
+
         async def _crawl_one(crawl_url: str) -> dict | None:
             async with _crawl_sem:
                 try:
                     enforcer.validate_or_raise(crawl_url)
-                    raw_req, raw_resp = await _direct_request(
-                        crawl_url, method="GET", proxy=burp_proxy
-                    )
+                    if _WAF_RETRY_AVAILABLE and _waf_type_crawl and not burp_proxy:
+                        import httpx as _httpx_waf
+                        async with _httpx_waf.AsyncClient(
+                            follow_redirects=True, timeout=30.0, verify=False
+                        ) as _wc:
+                            try:
+                                resp = await _waf_aware_get(
+                                    _wc,
+                                    crawl_url,
+                                    waf_type=_waf_type_crawl,
+                                )
+                                raw_req = (
+                                    f"GET {crawl_url}\n"
+                                    + "\n".join(f"{k}: {v}" for k, v in resp.request.headers.items())
+                                )
+                                raw_resp = (
+                                    f"HTTP {resp.status_code}\n"
+                                    + "\n".join(f"{k}: {v}" for k, v in resp.headers.items())
+                                    + "\n\n"
+                                    + resp.text[:8000]
+                                )
+                                log.debug(
+                                    "[llm_burp] waf_aware crawled: %s (status=%d, %d bytes)",
+                                    crawl_url, resp.status_code, len(raw_resp),
+                                )
+                            except Exception as waf_exc:
+                                log.debug("[llm_burp] waf_aware_get failed %s: %s — falling back", crawl_url, waf_exc)
+                                raw_req, raw_resp = await _direct_request(crawl_url, method="GET", proxy=burp_proxy)
+                    else:
+                        raw_req, raw_resp = await _direct_request(
+                            crawl_url, method="GET", proxy=burp_proxy
+                        )
                     log.debug("[llm_burp] crawled: %s (%d bytes)", crawl_url, len(raw_resp))
                     return {"url": crawl_url, "method": "GET", "request": raw_req, "response": raw_resp}
                 except ScopeViolationError:
