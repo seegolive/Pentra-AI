@@ -53,10 +53,17 @@ async def profile_waf(
     Detect dan profile WAF pada target URL.
     Kirim 3 probe requests (normal + xss + sqli) dan analisis responses.
     """
+    try:
+        from pentra_tools.http.user_agent_rotator import get_random_ua as _get_ua
+        _probe_ua = _get_ua()
+    except Exception:
+        _probe_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+
     async with httpx.AsyncClient(
         timeout=timeout,
         follow_redirects=True,
         verify=False,
+        headers={"User-Agent": _probe_ua},
     ) as client:
 
         responses = {}
