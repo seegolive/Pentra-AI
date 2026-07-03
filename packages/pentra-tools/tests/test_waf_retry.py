@@ -1,7 +1,7 @@
 """Tests for WAF-aware retry client."""
 from __future__ import annotations
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 
 def test_is_waf_block_true_for_403():
