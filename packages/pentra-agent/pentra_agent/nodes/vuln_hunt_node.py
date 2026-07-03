@@ -223,6 +223,54 @@ async def _noop_list() -> list:
     return []
 
 
+def _select_tools_for_tech_stack(
+    tech_stack: list[str],
+    tool_config: dict,
+) -> dict[str, bool]:
+    """Return per-tool enable flags based on tech stack signals.
+
+    Only disables tools that are clearly irrelevant for the detected tech stack.
+    Never enables a tool that tool_config has explicitly disabled.
+    Defaults to True (run) when uncertain.
+    """
+    ts = " ".join(tech_stack).lower()
+
+    # GraphQL: only worth running if GraphQL indicators present
+    has_graphql = any(kw in ts for kw in ["graphql", "apollo", "hasura", "relay"])
+    run_graphql = has_graphql or not tech_stack  # default True if no tech info
+
+    # SOAP/XXE: only worth running if XML/SOAP indicators present
+    has_soap = any(kw in ts for kw in ["soap", "xml", "wsdl", "webservice", "wcf", "axis"])
+    run_soap = has_soap or not tech_stack
+
+    # JWT: run if auth-related tech present, or no info (conservative)
+    has_jwt = any(kw in ts for kw in ["jwt", "oauth", "auth0", "keycloak", "okta", "oidc", "passport"])
+    has_api = any(kw in ts for kw in ["api", "rest", "fastapi", "express", "rails", "spring", "django"])
+    run_jwt = has_jwt or has_api or not tech_stack
+
+    # Second-order SQLi: only worth running if SQL tech present
+    has_sql = any(kw in ts for kw in ["sql", "mysql", "postgres", "mssql", "oracle", "sqlite",
+                                       "php", "aspnet", "asp.net", "laravel", "rails", "django"])
+    run_second_order = has_sql or not tech_stack
+
+    # Business logic: always run (applies to any tech stack)
+    run_biz_logic = True
+
+    # Apply tool_config overrides — tool_config disables take priority
+    def _apply(key: str, default: bool) -> bool:
+        if key in tool_config:
+            return bool(tool_config[key])
+        return default
+
+    return {
+        "run_graphql": _apply("run_graphql", run_graphql),
+        "run_soap_xxe": _apply("run_soap_xxe", run_soap),
+        "run_jwt": _apply("run_jwt", run_jwt),
+        "run_second_order": _apply("run_second_order", run_second_order),
+        "run_biz_logic": _apply("run_biz_logic", run_biz_logic),
+    }
+
+
 async def vuln_hunt_node(state: PentraState) -> dict:
     """Orchestrate active vuln scanning across discovered endpoints."""
     domain = state["target"]["domain"]
@@ -238,7 +286,6 @@ async def vuln_hunt_node(state: PentraState) -> dict:
     p_nuclei: bool = _tc.get("run_nuclei", os.getenv("PENTRA_RUN_NUCLEI", "true").lower() == "true")
     p_ffuf: bool = _tc.get("run_ffuf", os.getenv("PENTRA_RUN_FFUF", "true").lower() == "true")
     p_burp_scan: bool = _tc.get("run_burp_scan", os.getenv("PENTRA_RUN_BURP_SCAN", "true").lower() == "true")
-    p_soap_xxe: bool = _tc.get("run_soap_xxe", os.getenv("PENTRA_RUN_SOAP_XXE", "true").lower() == "true")
     p_csrf: bool = _tc.get("run_csrf", os.getenv("PENTRA_RUN_CSRF_CHECK", "true").lower() == "true")
     p_max_candidates: int = int(_tc.get("max_candidates", os.getenv("PENTRA_MAX_CANDIDATES", "50")))
     p_max_payloads: int = int(_tc.get("max_payloads", os.getenv("PENTRA_MAX_PAYLOADS", "4")))
@@ -246,11 +293,24 @@ async def vuln_hunt_node(state: PentraState) -> dict:
     p_nuclei_timeout: int = int(_tc.get("nuclei_timeout", os.getenv("PENTRA_NUCLEI_TIMEOUT", "300")))
     p_concurrent: int = int(_tc.get("concurrent_candidates", os.getenv("PENTRA_CONCURRENT_CANDIDATES", "3")))
     p_pacing: float = float(_tc.get("payload_pacing", os.getenv("PENTRA_PAYLOAD_PACING", "0.15")))
+    # Tech-stack-driven tool selection for the 5 specialised domain-level scanners.
+    # _select_tools_for_tech_stack() only *disables* tools that are clearly irrelevant
+    # for the detected tech stack. tool_config overrides take priority.
+    _tool_flags = _select_tools_for_tech_stack(state.get("tech_stack", []), _tc)
+    p_graphql: bool = _tool_flags["run_graphql"]
+    p_soap_xxe: bool = _tool_flags["run_soap_xxe"]
+    p_jwt: bool = _tool_flags["run_jwt"]
+    p_second_order: bool = _tool_flags["run_second_order"]
+    p_biz_logic: bool = _tool_flags["run_biz_logic"]
     log.info(
         "[vuln_hunt_node] Flags (tool_config override=%s): nuclei=%s ffuf=%s burp=%s soap_xxe=%s csrf=%s "
         "max_cand=%d max_payloads=%d crawl=%d conc=%d",
         bool(_tc), p_nuclei, p_ffuf, p_burp_scan, p_soap_xxe, p_csrf,
         p_max_candidates, p_max_payloads, p_crawl_pages, p_concurrent,
+    )
+    log.info(
+        "[vuln_hunt_node] Tool selection (tech=%s): graphql=%s soap=%s jwt=%s 2nd_order=%s biz=%s",
+        state.get("tech_stack", [])[:3], p_graphql, p_soap_xxe, p_jwt, p_second_order, p_biz_logic,
     )
 
     current_round = state.get("hunt_rounds", 0)
@@ -376,11 +436,11 @@ async def vuln_hunt_node(state: PentraState) -> dict:
                 _get_burp_proxy_findings(domain, state["scope"]),
                 _run_burp_extended_checks(domain, state["scope"], endpoints),
                 _run_soap_xxe_scan(domain, state["scope"], state.get("auth_credentials")) if p_soap_xxe else _noop_list(),
-                _run_graphql_scan(domain, state["scope"], state.get("auth_credentials")),
+                _run_graphql_scan(domain, state["scope"], state.get("auth_credentials")) if p_graphql else _noop_list(),
                 _run_race_condition_scan(endpoints, state["scope"], state.get("auth_credentials")),
-                _run_jwt_scan(domain, state["scope"], state.get("auth_credentials"), state),
-                _run_second_order_sqli_scan(domain, state["scope"], state.get("auth_credentials")),
-                _run_business_logic_scan(domain, state["scope"], state.get("auth_credentials")),
+                _run_jwt_scan(domain, state["scope"], state.get("auth_credentials"), state) if p_jwt else _noop_list(),
+                _run_second_order_sqli_scan(domain, state["scope"], state.get("auth_credentials")) if p_second_order else _noop_list(),
+                _run_business_logic_scan(domain, state["scope"], state.get("auth_credentials")) if p_biz_logic else _noop_list(),
                 return_exceptions=True,
             )
 
