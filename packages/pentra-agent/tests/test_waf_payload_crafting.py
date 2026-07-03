@@ -75,7 +75,7 @@ async def test_craft_exploit_payloads_waf_cloudflare_injects_bypass_context(clie
         )
     assert captured
     system_lower = captured[0].lower()
-    assert "cloudflare" in system_lower or "waf" in system_lower
+    assert "cloudflare" in system_lower
 
 
 @pytest.mark.asyncio
@@ -100,5 +100,5 @@ async def test_craft_exploit_payloads_blocking_waf_adds_evasion_instruction(clie
                       "bypass_strategies": ["unicode_bypass"], "safe_rps": 5},
         )
     assert captured
-    # Must emphasize evasion when blocking
-    assert any(kw in captured[0].lower() for kw in ["evad", "bypass", "evasion", "obfuscat"])
+    # Must include WAF-specific blocking indicator, not just static RULE 3 text
+    assert "ACTIVE WAF BLOCKING" in captured[0] or "akamai" in captured[0].lower()
