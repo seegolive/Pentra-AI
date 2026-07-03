@@ -32,6 +32,14 @@ except ImportError:
     _PAYLOAD_MUTATOR = None  # type: ignore[assignment]
 
 try:
+    from pentra_tools.http.waf_retry import waf_aware_get as _waf_aware_get, WAFRetryConfig as _WAFRetryConfig
+    _WAF_RETRY_AVAILABLE = True
+except ImportError:
+    _waf_aware_get = None  # type: ignore[assignment]
+    _WAFRetryConfig = None  # type: ignore[assignment]
+    _WAF_RETRY_AVAILABLE = False
+
+try:
     from pentra_tools.analysis.response_baseline import ResponseBaseline as _ResponseBaseline
     _RESPONSE_BASELINE_AVAILABLE = True
 except ImportError:
@@ -5052,6 +5060,11 @@ async def _probe_host_limits(host: str) -> tuple[dict, dict]:
             })
             if waf.waf_detected:
                 log.info("[per_subdomain] WAF on %s: %s (blocking=%s) → %s", host, waf.waf_type, waf.is_blocking, waf.bypass_strategies[:2])
+            if waf.waf_detected and _WAF_RETRY_AVAILABLE:
+                log.info(
+                    "[per_subdomain] WAF-aware retry enabled for %s (waf=%s)",
+                    host, waf.waf_type,
+                )
         except Exception as exc:
             log.debug("[per_subdomain] WAF probe failed for %s (non-fatal): %s", host, exc)
 
