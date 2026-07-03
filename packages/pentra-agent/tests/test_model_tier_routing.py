@@ -139,3 +139,29 @@ async def test_triage_node_fallback_when_env_unset(monkeypatch):
         f"Expected fallback {fallback_model!r} but got {captured[0]!r} — "
         "triage_node must fall back to state['llm_model'] when OLLAMA_MODEL_FAST is unset"
     )
+
+
+# ── Test 4: plan_node fallback when env unset ─────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_plan_node_fallback_when_env_unset(monkeypatch):
+    """When OLLAMA_MODEL_REASONING is not set, plan_node falls back to state['llm_model']."""
+    fallback_model = "user-chosen-model:13b"
+    captured: list[str] = []
+
+    monkeypatch.delenv("OLLAMA_MODEL_REASONING", raising=False)
+    monkeypatch.delenv("OLLAMA_MODEL_FAST", raising=False)
+    monkeypatch.setenv("OLLAMA_URL", "http://localhost:11434")
+    monkeypatch.setattr(
+        "pentra_agent.nodes.plan_node.LLMClient",
+        _make_plan_mock_llm(captured),
+    )
+
+    from pentra_agent.nodes import plan_node as pn
+    await pn.plan_node(_plan_state(llm_model=fallback_model))
+
+    assert captured, "LLMClient was never instantiated — check plan_node imports"
+    assert captured[0] == fallback_model, (
+        f"Expected fallback {fallback_model!r} but got {captured[0]!r} — "
+        "plan_node must fall back to state['llm_model'] when OLLAMA_MODEL_REASONING is unset"
+    )

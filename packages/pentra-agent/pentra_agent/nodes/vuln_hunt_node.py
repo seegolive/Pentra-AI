@@ -254,7 +254,6 @@ def _select_tools_for_tech_stack(
     run_second_order = has_sql or not tech_stack
 
     # Business logic: always run (applies to any tech stack)
-    run_biz_logic = True
 
     # Apply tool_config overrides — tool_config disables take priority
     def _apply(key: str, default: bool) -> bool:
@@ -267,7 +266,7 @@ def _select_tools_for_tech_stack(
         "run_soap_xxe": _apply("run_soap_xxe", run_soap),
         "run_jwt": _apply("run_jwt", run_jwt),
         "run_second_order": _apply("run_second_order", run_second_order),
-        "run_biz_logic": _apply("run_biz_logic", run_biz_logic),
+        "run_biz_logic": _apply("run_biz_logic", True),
     }
 
 
@@ -294,9 +293,12 @@ async def vuln_hunt_node(state: PentraState) -> dict:
     p_concurrent: int = int(_tc.get("concurrent_candidates", os.getenv("PENTRA_CONCURRENT_CANDIDATES", "3")))
     p_pacing: float = float(_tc.get("payload_pacing", os.getenv("PENTRA_PAYLOAD_PACING", "0.15")))
     # Tech-stack-driven tool selection for the 5 specialised domain-level scanners.
-    # _select_tools_for_tech_stack() only *disables* tools that are clearly irrelevant
-    # for the detected tech stack. tool_config overrides take priority.
-    _tool_flags = _select_tools_for_tech_stack(state.get("tech_stack", []), _tc)
+    # Priority chain: tool_config (engagement-specific, highest) > env var > tech-stack detection.
+    # _effective_tool_config seeds the PENTRA_RUN_SOAP_XXE env var as a low-priority default
+    # so the env var is honoured when tool_config does not contain an explicit override.
+    _env_soap = os.getenv("PENTRA_RUN_SOAP_XXE", "true").lower() == "true"
+    _effective_tool_config = {"run_soap_xxe": _env_soap, **_tc}
+    _tool_flags = _select_tools_for_tech_stack(state.get("tech_stack", []), _effective_tool_config)
     p_graphql: bool = _tool_flags["run_graphql"]
     p_soap_xxe: bool = _tool_flags["run_soap_xxe"]
     p_jwt: bool = _tool_flags["run_jwt"]
