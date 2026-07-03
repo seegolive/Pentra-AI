@@ -883,7 +883,6 @@ class LLMClient:
             '"detection_hint":"DB version string appears in response body",'
             '"is_blind":false,"uses_collaborator":false}]'
         )
-        # Build KB technique hints from historical findings
         kb_hints = ""
         if kb_context:
             _records = kb_context[:4]  # cap at 4 to avoid context bloat
@@ -894,7 +893,7 @@ class LLMClient:
                 if _insight:
                     _lines.append(f"  - [{_vc}] {_insight}")
             if _lines:
-                kb_hints = "Historical attack techniques from similar targets:\n" + "\n".join(_lines) + "\n\n"
+                kb_hints = "Historical attack techniques (from KB):\n" + "\n".join(_lines) + "\n\n"
 
         user = (
             f"Target endpoint: {method} {url}\n"
